@@ -1,0 +1,107 @@
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase Client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export interface ConstituencyOption {
+  lok_sabha_id: number;
+  name: string;
+  state: string;
+}
+
+export interface PincodeResolutionResult {
+  status: 'AUTO_LOCKED' | 'SELECTION_REQUIRED' | 'INVALID_PIN';
+  pincode: string;
+  autoLockedSeat?: ConstituencyOption;
+  availableSeats?: ConstituencyOption[];
+  message: string;
+}
+
+/**
+ * STEP 1 & 2: Resolves a 6-digit postal PIN code against the Supabase Delimitation Crosswalk
+ */
+export async function resolvePincode(pincodeInput: string): Promise<PincodeResolutionResult> {
+  const cleanPin = pincodeInput.trim();
+
+  // Validate 6-digit Indian PIN format
+  if (!/^[1-9][0-9]{5}$/.test(cleanPin)) {
+    return {
+      status: 'INVALID_PIN',
+      pincode: cleanPin,
+      message: 'Please enter a valid 6-digit postal PIN code.'
+    };
+  }
+
+  // Query Supabase for candidate Lok Sabha seats
+  const { data, error } = await supabase
+    .from('pincode_pc_crosswalk')
+    .select(`
+      is_boundary_overlap,
+      lok_sabha_constituencies (
+        id,
+        name,
+        state
+      )
+    `)
+    .eq('pincode', cleanPin);
+
+  if (error || !data || data.length === 0) {
+    return {
+      status: 'INVALID_PIN',
+      pincode: cleanPin,
+      message: 'PIN code not yet mapped or invalid. Please check and re-enter.'
+    };
+  }
+
+  // Extract linked constituencies cleanly
+  const candidateSeats: ConstituencyOption[] = data
+    .map((row: any) => ({
+      lok_sabha_id: row.lok_sabha_constituencies.id,
+      name: row.lok_sabha_constituencies.name,
+      state: row.lok_sabha_constituencies.state
+    }))
+    .filter(Boolean);
+
+  // CASE A: Clean 1:1 Mapping (e.g., Darbhanga: 846001, Kanpur: 208001)
+  if (candidateSeats.length === 1) {
+    return {
+      status: 'AUTO_LOCKED',
+      pincode: cleanPin,
+      autoLockedSeat: candidateSeats[0],
+      message: `Assigned to ${candidateSeats[0].name} (${candidateSeats[0].state})`
+    };
+  }
+
+  // CASE B: Boundary-Straddling PIN (e.g., Mayur Vihar: 110091)
+  return {
+    status: 'SELECTION_REQUIRED',
+    pincode: cleanPin,
+    availableSeats: candidateSeats,
+    message: 'This PIN code spans multiple parliamentary seats. Please choose yours.'
+  };
+}
+
+/**
+ * STEP 4: Saves the confirmed Lok Sabha Seat & PIN to the Citizen's Profile
+ */
+export async function lockCitizenConstituency(
+  userId: string,
+  pincode: string,
+  lokSabhaId: number
+): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      pincode: pincode,
+      lok_sabha_id: lokSabhaId
+    })
+    .eq('id', userId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
