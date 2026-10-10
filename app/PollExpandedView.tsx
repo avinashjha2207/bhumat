@@ -163,7 +163,6 @@ export default function PollExpandedView({
     return map;
   }, [seats, poll.options, dbTelemetry]);
 
-  // Unified Mathematical Tree: Seat -> State -> National
   const { nationalLeading, stateLeading, localLeading, stateSummary, nationalOptionAverages } = useMemo(() => {
     const optCount = Math.max(poll.options?.length || 2, 1);
     let totalNatVotes = 0;
@@ -323,7 +322,7 @@ export default function PollExpandedView({
           {poll.category} AUDIT • 543 SEATS
         </span>
 
-        {/* 3-Way Drishti Mode Switch: Map, Grid, Graph */}
+        {/* 3-Way Mode Switch: Map, Graph, Grid */}
         <div style={{ display: 'flex', gap: '2px', backgroundColor: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
           <button
             onClick={() => setViewMode('map')}
@@ -365,10 +364,10 @@ export default function PollExpandedView({
           </p>
         </div>
 
-        {/* Improved Strategic Title: Live Consensus Distribution */}
+        {/* Strategic Title: Live Public Opinion Distribution (No "Consensus") */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '14px' }}>
-            Live Consensus Distribution • राष्ट्र सम्मति विभाजन
+            Live Public Opinion • राष्ट्रीय जनमत
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
@@ -423,7 +422,7 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* View Mode: Map, Graph, or Grid */}
+        {/* View Mode 1: Map View */}
         {viewMode === 'map' && (
           <div
             ref={containerRef}
@@ -531,7 +530,7 @@ export default function PollExpandedView({
 
             <button
               onClick={() => {
-                const msg = `🇮🇳 *BHUMAT AUDIT SCORECARD*\n\n"${poll.title_en}"\n\n📍 *${userSeatName || 'Bharat'} Verdict:* ${localLeading.text} (${localLeading.pct}%)\n🗳️ *Total Ballots:* ${localLeading.total.toLocaleString()} Votes\n\nLive Pan-Bharat Consensus:\nhttps://vote.bhumat.com/audit/${poll.id}?seat=${encodeURIComponent(userSeatName || 'Bharat')}&state=${encodeURIComponent(userState || 'India')}`;
+                const msg = `🇮🇳 *BHUMAT PUBLIC OPINION AUDIT*\n\n"${poll.title_en}"\n\n📍 *${userSeatName || 'Bharat'} Leading Opinion:* ${localLeading.text} (${localLeading.pct}%)\n🗳️ *Total Ballots:* ${localLeading.total.toLocaleString()} Votes\n\nLive National Map:\nhttps://vote.bhumat.com/audit/${poll.id}?seat=${encodeURIComponent(userSeatName || 'Bharat')}&state=${encodeURIComponent(userState || 'India')}`;
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
               }}
               style={{ width: '100%', marginTop: '14px', padding: '12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -541,11 +540,11 @@ export default function PollExpandedView({
           </div>
         )}
 
-        {/* View Mode: Graph Analytical Breakdown */}
+        {/* View Mode 2: Graph View */}
         {viewMode === 'graph' && (
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>Comparative Consensus Spectrum</div>
-            <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Cross-tier distribution across National, {userState || 'State'}, and {userSeatName || 'Lok Sabha'} tiers:</p>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>Comparative Public Opinion Spectrum</div>
+            <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>Cross-tier breakdown across National, {userState || 'State'}, and {userSeatName || 'Lok Sabha'} tiers:</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '6px' }}>
               {poll.options.map((opt, idx) => {
@@ -596,7 +595,7 @@ export default function PollExpandedView({
           </div>
         )}
 
-        {/* View Mode: Grid View */}
+        {/* View Mode 3: Grid View */}
         {viewMode === 'grid' && (
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
             <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>

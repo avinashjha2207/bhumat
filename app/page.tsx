@@ -60,7 +60,6 @@ const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
-// Canonical 18th Lok Sabha MP Dossier Dataset
 const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
   'hyderabad': { pcCode: '09-TG', mpName: 'Asaduddin Owaisi', party: 'AIMIM', cases: 5, education: "Barrister-at-Law (Lincoln's Inn)", assets: '₹19.5 Crore', turnout: '48.48%', margin: '3,38,087 Votes', electors: '21,87,310 Electors', vidhanSabhaSegments: ['Malakpet (58)', 'Karwan (59)', 'Goshamahal (60)', 'Charminar (61)', 'Chandrayangutta (62)', 'Yakutpura (63)', 'Bahadurpura (64)'] },
   'secunderabad': { pcCode: '08-TG', mpName: 'G. Kishan Reddy', party: 'Bharatiya Janata Party (BJP)', cases: 1, education: 'Diploma', assets: '₹7.2 Crore', turnout: '49.20%', margin: '49,944 Votes', electors: '19,64,300 Electors', vidhanSabhaSegments: ['Musheerabad (57)', 'Amberpet (59)', 'Khairatabad (60)', 'Jubilee Hills (61)', 'Sanathnagar (62)', 'Nampally (63)', 'Secunderabad (70)'] },
@@ -92,20 +91,20 @@ function resolveConstituencyDossier(seatName: string, stateName: string) {
 }
 
 function getHumanizedTimeAgo(timestampStr?: string): string {
-  if (!timestampStr) return 'Recently';
+  if (!timestampStr) return 'recently';
   const diffMs = Date.now() - new Date(timestampStr).getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  if (diffHours < 1) return 'Just now';
-  if (diffHours < 24) return `${diffHours} hours ago`;
+  if (diffHours < 1) return 'just now';
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   const diffMonths = Math.floor(diffDays / 30);
   return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
 }
 
 async function getAnonymousDeviceHash(): Promise<string> {
   try {
-    const rawData = [navigator.userAgent, screen.height, screen.width, screen.colorDepth, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|||');
+    const rawData = [navigator.userAgent, screen.height, screen.width, screen.colorDepth, Intl.DateTimeFormat().resolvedOptions].join('|||');
     const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawData));
     return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
   } catch (e) {
@@ -121,9 +120,11 @@ export default function BhuMatApp() {
 
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
 
-  // Profile, Karma, Metadata
+  // Profile & Karma Metrics
   const [username] = useState('CitizenBharat');
   const [bhumatPoints, setBhumatPoints] = useState(50);
+  const [janmatAuditsCount, setJanmatAuditsCount] = useState(0);
+  const [lokmatPollsCount, setLokmatPollsCount] = useState(0);
   const [deviceHash, setDeviceHash] = useState<string>('');
   const [votingSinceDate, setVotingSinceDate] = useState('October 2026');
   const [lastSeatChangeTimestamp, setLastSeatChangeTimestamp] = useState<string>('');
@@ -160,6 +161,8 @@ export default function BhuMatApp() {
       const savedFirstVote = localStorage.getItem('bhumat_first_vote_date');
       const savedSeatChange = localStorage.getItem('bhumat_last_seat_change');
       const savedTimestamps = localStorage.getItem('bhumat_vote_timestamps');
+      const savedJanCount = localStorage.getItem('bhumat_janmat_count');
+      const savedLokCount = localStorage.getItem('bhumat_lokmat_count');
 
       if (savedSeat && savedState) {
         setSelectedSeat({ name: savedSeat, state: savedState });
@@ -175,8 +178,10 @@ export default function BhuMatApp() {
       if (savedFirstVote) setVotingSinceDate(savedFirstVote);
       if (savedSeatChange) setLastSeatChangeTimestamp(savedSeatChange);
       if (savedTimestamps) setVoteTimestamps(JSON.parse(savedTimestamps));
+      if (savedJanCount) setJanmatAuditsCount(Number(savedJanCount));
+      if (savedLokCount) setLokmatPollsCount(Number(savedLokCount));
     } catch (e) {
-      console.warn('LocalStorage notice:', e);
+      console.warn('LocalStorage load note:', e);
     }
   }, []);
 
@@ -220,7 +225,7 @@ export default function BhuMatApp() {
           setPolls(formatted);
         }
       } catch (err) {
-        console.warn('Poll fetch notice:', err);
+        console.warn('Poll load note:', err);
       }
     }
 
@@ -280,6 +285,19 @@ export default function BhuMatApp() {
 
     const newPoints = bhumatPoints + 10;
     setBhumatPoints(newPoints);
+
+    // Gamification track increment
+    let newJan = janmatAuditsCount;
+    let newLok = lokmatPollsCount;
+    if (poll.category === 'JanMat') {
+      newJan += 1;
+      setJanmatAuditsCount(newJan);
+      localStorage.setItem('bhumat_janmat_count', String(newJan));
+    } else {
+      newLok += 1;
+      setLokmatPollsCount(newLok);
+      localStorage.setItem('bhumat_lokmat_count', String(newLok));
+    }
 
     if (!localStorage.getItem('bhumat_first_vote_date')) {
       const monthYear = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
@@ -351,6 +369,20 @@ export default function BhuMatApp() {
     ];
   }, []);
 
+  // Point 16, 17, 18: Balanced Recognition Badges
+  const civicBadge = useMemo(() => {
+    if (janmatAuditsCount >= 3 && lokmatPollsCount >= 3) {
+      return { title: '🇮🇳 Rashtriya Nagrik', bg: '#fef3c7', text: '#b45309', border: '#fde68a' };
+    }
+    if (janmatAuditsCount > lokmatPollsCount) {
+      return { title: '🏛️ Civic Auditor', bg: '#e0f2fe', text: '#0369a1', border: '#bae6fd' };
+    }
+    if (lokmatPollsCount > 0) {
+      return { title: '🌅 Culture Chronicler', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' };
+    }
+    return { title: '🥉 Verified Citizen', bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+  }, [janmatAuditsCount, lokmatPollsCount]);
+
   if (!mounted) return null;
 
   if (expandedPoll) {
@@ -385,12 +417,12 @@ export default function BhuMatApp() {
         }
       `}</style>
 
-      {/* Header: Exclusive "Beta Access" Badge */}
+      {/* Header with "EARLY ACCESS" Tag */}
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BHUMAT</span>
           <span style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, letterSpacing: '0.05em' }}>
-            BETA ACCESS
+            EARLY ACCESS
           </span>
         </div>
 
@@ -478,7 +510,9 @@ export default function BhuMatApp() {
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                   const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
                   const isBlackedOut = poll.blackout_seats && poll.blackout_seats.includes(selectedSeat?.name || '');
-                  const voteTimeLabel = getHumanizedTimeAgo(voteTimestamps[poll.id]);
+                  
+                  // Point 10: Humanized time ONLY for LokMat
+                  const lokmatTimeAgo = getHumanizedTimeAgo(voteTimestamps[poll.id]);
 
                   return (
                     <div key={poll.id} style={{ perspective: '1000px', width: '100%' }}>
@@ -492,7 +526,7 @@ export default function BhuMatApp() {
                                 {poll.category}
                               </span>
                               
-                              {/* Breathing Indicator Badge */}
+                              {/* Point 10: Strict distinction between JanMat and LokMat */}
                               <span
                                 className="breathing-badge"
                                 style={{
@@ -502,8 +536,8 @@ export default function BhuMatApp() {
                                 }}
                               >
                                 {hasVotedThisCycle 
-                                  ? (isJanMat ? `🔒 BALLOT SEALED (${voteTimeLabel})` : `✓ CHOICE LOGGED (${voteTimeLabel})`) 
-                                  : (isJanMat ? '● LIVE SECRET BALLOT' : '● LIVE OPEN CONSENSUS')}
+                                  ? (isJanMat ? '🔒 BALLOT SEALED' : `✓ Voted (${lokmatTimeAgo})`) 
+                                  : (isJanMat ? '● LIVE SECRET BALLOT' : '● LIVE OPEN POLL')}
                               </span>
                             </div>
 
@@ -518,11 +552,11 @@ export default function BhuMatApp() {
                               <TickerTape activePoll={poll} lang={lang} />
                             </div>
 
-                            {/* Options with Generous Bilingual Spacing */}
+                            {/* Options with Distinct Spacing */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                               {poll.options.map((opt, idx) => {
                                 const isPicked = selectedVotes[poll.id] === idx;
-                                const showChoice = !isJanMat && isPicked;
+                                const showChoice = !isJanMat && isPicked; // JanMat stays strictly secret
 
                                 return (
                                   <button
@@ -553,7 +587,7 @@ export default function BhuMatApp() {
                           {/* Dual-Sided Deep-Link Navigation */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
                             <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                              {isJanMat ? '🔒 Cryptographic Secret Ballot' : '🗳️ Verified Open Consensus'}
+                              {isJanMat ? '🔒 Cryptographic Secret Ballot' : '🗳️ Verified Open Poll'}
                             </span>
                             <div style={{ display: 'flex', gap: '6px' }}>
                               {hasVotedThisCycle && (
@@ -587,11 +621,11 @@ export default function BhuMatApp() {
                             </button>
                           </div>
 
-                          {/* High-Converting WhatsApp CTA */}
+                          {/* WhatsApp CTA */}
                           <button
                             onClick={() => {
                               const shareUrl = `https://vote.bhumat.com?ref=${deviceHash}&seat=${encodeURIComponent(selectedSeat?.name || 'Bharat')}`;
-                              const msg = `🇮🇳 *BHUMAT CONSENSUS AUDIT | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_en}"\n\nOur Lok Sabha seat needs only a few more verified citizens to fortify quorum on the Pan-Bharat Map.\n\nCast your verified ballot:\n${shareUrl}`;
+                              const msg = `🇮🇳 *BHUMAT PUBLIC OPINION AUDIT | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_en}"\n\nOur Lok Sabha seat needs only a few more verified citizens to fortify quorum on the National Map.\n\nCast your verified ballot:\n${shareUrl}`;
                               window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
                             }}
                             style={{
@@ -610,7 +644,7 @@ export default function BhuMatApp() {
                               gap: '6px'
                             }}
                           >
-                            <span>📲</span> Mobilize {selectedSeat?.name} Consensus (+25 pts)
+                            <span>📲</span> Mobilize {selectedSeat?.name} (+25 pts)
                           </button>
                         </div>
                       </div>
@@ -633,7 +667,7 @@ export default function BhuMatApp() {
                 Sovereign Ballot Index
               </h2>
               <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 14px 0' }}>
-                Inspect verified consensus records and MP dossiers for any parliamentary seat across India:
+                Inspect verified public opinion records and MP dossiers for any parliamentary seat across India:
               </p>
 
               <input
@@ -750,12 +784,12 @@ export default function BhuMatApp() {
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>EDITORIAL SCHEDULE</span>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Consensus Drop Timetable</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Public Opinion Timetable</h2>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div style={{ backgroundColor: '#fef3c7', padding: '12px', borderRadius: '12px', border: '1px solid #fde68a' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309' }}>🌅 08:00 AM Daily</div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate</div>
-                  <div style={{ fontSize: '10px', color: '#78350f', marginTop: '2px' }}>Cultural & Everyday Consensus</div>
+                  <div style={{ fontSize: '10px', color: '#78350f', marginTop: '2px' }}>Cultural & Everyday Pulse</div>
                 </div>
                 <div style={{ backgroundColor: '#e0f2fe', padding: '12px', borderRadius: '12px', border: '1px solid #bae6fd' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1' }}>🌆 08:00 PM Daily</div>
@@ -786,7 +820,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 5: PROFILE WITH CIVIC GAMIFICATION & HISTORICAL METADATA */}
+        {/* TAB 5: PROFILE WITH BALANCED GAMIFICATION (JanMat + LokMat) */}
         {activeTab === 'profile' && (
           <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
@@ -795,8 +829,10 @@ export default function BhuMatApp() {
                   <div style={{ fontSize: '18px', fontWeight: 800 }}>{username}</div>
                   <div style={{ fontSize: '12px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Verified Sovereign Citizen</div>
                 </div>
-                <span style={{ backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
-                  🥇 Quorum Builder
+                
+                {/* Dynamic Balanced Civic Badge */}
+                <span style={{ backgroundColor: civicBadge.bg, color: civicBadge.text, border: `1px solid ${civicBadge.border}`, fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>
+                  {civicBadge.title}
                 </span>
               </div>
 
@@ -807,6 +843,20 @@ export default function BhuMatApp() {
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#f59e0b' }}>{bhumatPoints} pts</div>
                 </div>
                 <div style={{ fontSize: '11px', color: '#38bdf8' }}>Seat Change Fee: 50 pts</div>
+              </div>
+
+              {/* Balanced Civic vs Cultural Tiers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px' }}>
+                <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#0369a1' }}>🌆 JanMat Audits</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#0c4a6e', marginTop: '2px' }}>{janmatAuditsCount}</div>
+                  <div style={{ fontSize: '9px', color: '#0284c7' }}>Civic Duty Track</div>
+                </div>
+                <div style={{ backgroundColor: '#fefce8', border: '1px solid #fef08a', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#b45309' }}>🌅 LokMat Polls</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#78350f', marginTop: '2px' }}>{lokmatPollsCount}</div>
+                  <div style={{ fontSize: '9px', color: '#d97706' }}>Culture & Pulse Track</div>
+                </div>
               </div>
 
               {/* Historical Metadata */}
@@ -831,16 +881,16 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Referral Attribution Card */}
+              {/* Referral Attribution */}
               <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #a7f3d0', borderRadius: '16px', padding: '16px', marginTop: '14px' }}>
                 <div style={{ fontSize: '12px', fontWeight: 800, color: '#065f46' }}>Refer Citizens & Earn Points</div>
                 <p style={{ fontSize: '11px', color: '#047857', margin: '4px 0 10px 0', lineHeight: 1.4 }}>
-                  Invite voters from your constituency. Earn +25 Points per verified citizen to unlock seat migrations and governance features.
+                  Invite voters in your constituency. Earn +25 Points per verified citizen to unlock seat migrations and governance features.
                 </p>
                 <button
                   onClick={() => {
                     const shareUrl = `https://vote.bhumat.com?ref=${deviceHash}`;
-                    const msg = `🇮🇳 Join BhuMat — Track sovereign consensus audits across 543 Lok Sabha seats:\n${shareUrl}`;
+                    const msg = `🇮🇳 Join BhuMat — Track sovereign public opinion audits across 543 Lok Sabha seats:\n${shareUrl}`;
                     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
                   }}
                   style={{ width: '100%', padding: '10px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
@@ -853,7 +903,7 @@ export default function BhuMatApp() {
         )}
       </main>
 
-      {/* Dock Navigation: Renamed Dossier */}
+      {/* Dock Navigation */}
       <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px', backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-around', zIndex: 50 }}>
         <button onClick={() => setActiveTab('search')} style={{ background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
           <span style={{ fontSize: '18px' }}>🔍</span>
