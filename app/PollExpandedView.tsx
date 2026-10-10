@@ -7,8 +7,7 @@ import TickerTape from './TickerTape';
 const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lleeljlvqltfzlidmsqs.supabase.co';
 const supabaseUrl = rawUrl.replace(/[()]/g, '').trim();
 const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsZWVsamx2cWx0ZnpsaWRtc3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODE3NTUsImV4cCI6MjEwNjk1Nzc1NX0.sQdPyFJpjKrt8mZx_xpOh8lgYPxCGrsO7IgDmxiwJfc';
-const supabaseKey = rawKey.trim();
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, rawKey.trim());
 
 interface PollOption {
   id: number;
@@ -55,7 +54,6 @@ export default function PollExpandedView({
   const [seats, setSeats] = useState<PreprojectedSeat[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
-  const [filterOption, setFilterOption] = useState<'leading' | number>('leading');
   const [searchQuery, setSearchQuery] = useState('');
   const [userBeaconCoords, setUserBeaconCoords] = useState<{ x: number; y: number } | null>(null);
   const [dbTelemetry, setDbTelemetry] = useState<Record<string, any>>({});
@@ -103,7 +101,11 @@ export default function PollExpandedView({
               totalVotes: Number(row.total_votes || 0),
               isFortified: Boolean(row.is_fortified),
               votesTowardsQuorum: Math.min(Number(row.total_votes || 0), 50),
-              optBreakdown: [Number(row.opt_0_votes || 0), Number(row.opt_1_votes || 0), Number(row.opt_2_votes || 0)]
+              optBreakdown: [
+                Number(row.opt_0_votes || 0),
+                Number(row.opt_1_votes || 0),
+                Number(row.opt_2_votes || 0)
+              ]
             };
           });
           setDbTelemetry(map);
@@ -126,7 +128,7 @@ export default function PollExpandedView({
 
   const telemetryMap = useMemo(() => {
     const map = new Map<string, any>();
-    const optCount = Math.max(poll.options?.length || 3, 1);
+    const optCount = Math.max(poll.options?.length || 2, 1);
 
     seats.forEach((seat, idx) => {
       const cleanKey = seat.name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -135,7 +137,7 @@ export default function PollExpandedView({
         return;
       }
 
-      // Seed fallback if zero DB votes
+      // Consistent seed fallback if no DB votes yet
       const seed = seat.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), idx * 17);
       const leadingOpt = Math.abs(seed) % optCount;
       const votesTowardsQuorum = 35 + (Math.abs(seed) % 165);
@@ -164,14 +166,14 @@ export default function PollExpandedView({
   }, [seats, poll.options, dbTelemetry]);
 
   const nationalOptionAverages = useMemo(() => {
-    const optCount = Math.max(poll.options?.length || 3, 1);
+    const optCount = Math.max(poll.options?.length || 2, 1);
     const totals = new Array(optCount).fill(0);
     let grandTotal = 0;
 
     telemetryMap.forEach((t) => {
       grandTotal += t.totalVotes;
       t.optBreakdown?.forEach((votes: number, idx: number) => {
-        totals[idx] += votes;
+        if (totals[idx] !== undefined) totals[idx] += votes;
       });
     });
 
@@ -257,9 +259,7 @@ export default function PollExpandedView({
     if (isUserSeat(seat)) return '#10b981';
     const t = telemetryMap.get(seat.id);
     if (!t || !t.isFortified) return BELOW_QUORUM_COLOR;
-    return filterOption === 'leading'
-      ? OPTION_PALETTE[t.leadingOpt % OPTION_PALETTE.length]
-      : (t.leadingOpt === filterOption ? OPTION_PALETTE[filterOption % OPTION_PALETTE.length] : '#f1f5f9');
+    return OPTION_PALETTE[t.leadingOpt % OPTION_PALETTE.length];
   };
 
   return (
@@ -341,7 +341,7 @@ export default function PollExpandedView({
       </header>
 
       <div style={{ width: '100%', maxWidth: '480px', marginTop: '4px' }}>
-        <TickerTape lang={lang} />
+        <TickerTape activePoll={poll} lang={lang} />
       </div>
 
       <div style={{ maxWidth: '480px', width: '100%', padding: '12px 14px 80px 14px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
@@ -412,7 +412,7 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* Map View */}
+        {/* View Mode: Map or Grid */}
         {viewMode === 'map' ? (
           <div
             ref={containerRef}
@@ -520,7 +520,7 @@ export default function PollExpandedView({
 
             <button
               onClick={() => {
-                const msg = `🇮🇳 *BHUMAT AUDIT SCORECARD*\n\n"${poll.title_en}"\n\n📍 *${userSeatName || 'Bharat'} Verdict:* ${localLeading.text} (${localLeading.pct}%)\n🗳️ *Total Ballots:* ${localLeading.total.toLocaleString()} Votes\n\nLive Pan-Bharat Consensus:\nhttps://bhumat.vercel.app/audit/${poll.id}?seat=${encodeURIComponent(userSeatName || 'Bharat')}&state=${encodeURIComponent(userState || 'India')}`;
+                const msg = `🇮🇳 *BHUMAT AUDIT SCORECARD*\n\n"${poll.title_en}"\n\n📍 *${userSeatName || 'Bharat'} Verdict:* ${localLeading.text} (${localLeading.pct}%)\n🗳️ *Total Ballots:* ${localLeading.total.toLocaleString()} Votes\n\nLive Pan-Bharat Consensus:\nhttps://vote.bhumat.com/audit/${poll.id}?seat=${encodeURIComponent(userSeatName || 'Bharat')}&state=${encodeURIComponent(userState || 'India')}`;
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
               }}
               style={{ width: '100%', marginTop: '14px', padding: '12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -529,40 +529,44 @@ export default function PollExpandedView({
             </button>
           </div>
         ) : (
-          /* Grid View */
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', padding: '6px 8px', fontSize: '9.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
-              <span>STATE / UT</span>
-              <span>TOTAL VOTES</span>
-              <span>QUORUM MET</span>
-              <span>STATE VERDICT</span>
-              <span>VERDICT VOTES</span>
-            </div>
-
-            {stateSummary.map(([stName, stData]: [string, any]) => {
-              const hasMet50Percent = stData.totalSeats > 0 ? (stData.fortifiedSeats / stData.totalSeats) >= 0.5 : false;
-              const leadIdx = stData.optVotes.indexOf(Math.max(...stData.optVotes));
-              const leadingOptText = poll.options[leadIdx]?.text_en?.split('/')[0]?.trim() || 'Option';
-
-              return (
-                <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 8px', fontSize: '11px' }}>
-                  <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
-                  <span style={{ color: '#0284c7', fontWeight: 700 }}>{stData.totalVotes.toLocaleString()}</span>
-                  <span style={{ color: '#059669', fontWeight: 700 }}>{stData.fortifiedSeats} / {stData.totalSeats} seats</span>
-
-                  {hasMet50Percent ? (
-                    <>
-                      <span style={{ color: '#0f172a', fontWeight: 800, fontSize: '11px' }}>{leadingOptText}</span>
-                      <span style={{ color: '#059669', fontWeight: 700, fontSize: '11px' }}>{stData.optVotes[leadIdx].toLocaleString()}</span>
-                    </>
-                  ) : (
-                    <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#d97706', backgroundColor: '#fef3c7', padding: '3px 6px', borderRadius: '6px', fontWeight: 700 }}>
-                      🔒 Locked (Needs 50% Quorum: {stData.fortifiedSeats}/{Math.ceil(stData.totalSeats * 0.5)})
-                    </span>
-                  )}
+          /* Mobile-Optimized Horizontally Scrollable Grid View */
+          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
+            <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+              <div style={{ minWidth: '520px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', padding: '6px 8px', fontSize: '9.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
+                  <span>STATE / UT</span>
+                  <span>TOTAL VOTES</span>
+                  <span>QUORUM MET</span>
+                  <span>STATE VERDICT</span>
+                  <span>VERDICT VOTES</span>
                 </div>
-              );
-            })}
+
+                {stateSummary.map(([stName, stData]: [string, any]) => {
+                  const hasMet50Percent = stData.totalSeats > 0 ? (stData.fortifiedSeats / stData.totalSeats) >= 0.5 : false;
+                  const leadIdx = stData.optVotes.indexOf(Math.max(...stData.optVotes));
+                  const leadingOptText = poll.options[leadIdx]?.text_en?.split('/')[0]?.trim() || 'Option';
+
+                  return (
+                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 8px', fontSize: '11px', marginTop: '6px' }}>
+                      <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
+                      <span style={{ color: '#0284c7', fontWeight: 700 }}>{stData.totalVotes.toLocaleString()}</span>
+                      <span style={{ color: '#059669', fontWeight: 700 }}>{stData.fortifiedSeats} / {stData.totalSeats} seats</span>
+
+                      {hasMet50Percent ? (
+                        <>
+                          <span style={{ color: '#0f172a', fontWeight: 800, fontSize: '11px' }}>{leadingOptText}</span>
+                          <span style={{ color: '#059669', fontWeight: 700, fontSize: '11px' }}>{stData.optVotes[leadIdx].toLocaleString()}</span>
+                        </>
+                      ) : (
+                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#d97706', backgroundColor: '#fef3c7', padding: '3px 6px', borderRadius: '6px', fontWeight: 700 }}>
+                          🔒 Locked (Needs 50% Quorum: {stData.fortifiedSeats}/{Math.ceil(stData.totalSeats * 0.5)})
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 

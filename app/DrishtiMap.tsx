@@ -6,14 +6,16 @@ import * as d3 from 'd3';
 interface DrishtiMapProps {
   selectedConstituencyName?: string;
   selectedState?: string;
+  options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9', '#f59e0b'];
 const BELOW_QUORUM_COLOR = '#cbd5e1';
 
 export default function DrishtiMap({
-  selectedConstituencyName = 'Darbhanga',
-  selectedState = 'Bihar'
+  selectedConstituencyName = 'Machilipatnam',
+  selectedState = 'Andhra Pradesh',
+  options = []
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -51,7 +53,7 @@ export default function DrishtiMap({
       return targetState && (st.includes(targetState) || targetState.includes(st));
     });
 
-    return matches.length > 0 ? matches : geoData.features.slice(0, 28);
+    return matches.length > 0 ? matches : geoData.features.slice(0, 25);
   }, [geoData, selectedState]);
 
   const seatTelemetry = useMemo(() => {
@@ -61,10 +63,10 @@ export default function DrishtiMap({
       const name = (p.PC_NAME || p.pc_name || p.NAME || `Seat_${idx}`).trim();
       const seed = name.split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), idx * 11);
       const isFortified = (Math.abs(seed) % 10) > 2;
-      map.set(clean(name), { leadingOpt: Math.abs(seed) % 3, isFortified, name });
+      map.set(clean(name), { leadingOpt: Math.abs(seed) % Math.max(options.length || 3, 1), isFortified, name });
     });
     return map;
-  }, [stateFeatures]);
+  }, [stateFeatures, options]);
 
   const isTargetMatch = (pcName: string) => {
     const c = clean(pcName);
@@ -83,13 +85,13 @@ export default function DrishtiMap({
     if (!stateFeatures.length || !svgRef.current) return;
 
     const width = 360;
-    const height = 280;
+    const height = 300;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
     const projection = d3.geoMercator().fitExtent(
-      [[15, 15], [width - 15, height - 15]],
+      [[25, 25], [width - 25, height - 25]],
       { type: 'FeatureCollection', features: stateFeatures } as any
     );
 
@@ -118,7 +120,6 @@ export default function DrishtiMap({
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Centroid Beacon Ring on Active Seat
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -149,6 +150,11 @@ export default function DrishtiMap({
     }
   }, [stateFeatures, selectedConstituencyName]);
 
+  const leadOptionLabel = (idx: number) => {
+    if (options[idx]) return options[idx].text_en.split('/')[0].slice(0, 18);
+    return idx === 0 ? 'Strict Penalty' : (idx === 1 ? 'Infra Funding' : 'Advisory Audits');
+  };
+
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <style>{`
@@ -175,30 +181,30 @@ export default function DrishtiMap({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>National</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>Option A</div>
-          <div style={{ fontSize: '8px', color: '#94a3b8' }}>Live Verdict</div>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
+          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>35% Leading</div>
         </div>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>Option A</div>
-          <div style={{ fontSize: '8px', color: '#94a3b8' }}>Live Verdict</div>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
+          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>26% Leading</div>
         </div>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>Option A</div>
-          <div style={{ fontSize: '8px', color: '#94a3b8' }}>Live Verdict</div>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
+          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>67% Leading</div>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
+        <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
           Rendering State Grid...
         </div>
       ) : (
         <svg
           ref={svgRef}
-          viewBox="0 0 360 280"
-          style={{ width: '100%', height: '260px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'block' }}
+          viewBox="0 0 360 300"
+          style={{ width: '100%', height: '300px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'block' }}
         />
       )}
     </div>
