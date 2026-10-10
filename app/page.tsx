@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { createClient } from '@supabase/supabase-js';
 import TickerTape from './TickerTape';
-import { getCurrentCycleId } from './utils/cycleManager';
+import { getCurrentCycleId, getNextCycleDropLabel } from './utils/cycleManager';
 
 const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
@@ -29,6 +29,7 @@ interface Poll {
   participation_mode?: string;
   current_cycle?: string;
   recurrence?: string;
+  is_active?: boolean;
   options: { id: number; text_en: string; text_hi: string }[];
 }
 
@@ -219,6 +220,7 @@ export default function BhuMatApp() {
               participation_mode: d.participation_mode || 'one_time',
               current_cycle: d.current_cycle || '2026-10',
               recurrence: d.recurrence || 'monthly',
+              is_active: d.is_active,
               options: parsedOpts
             };
           });
@@ -286,7 +288,6 @@ export default function BhuMatApp() {
     const newPoints = bhumatPoints + 10;
     setBhumatPoints(newPoints);
 
-    // Gamification track increment
     let newJan = janmatAuditsCount;
     let newLok = lokmatPollsCount;
     if (poll.category === 'JanMat') {
@@ -331,9 +332,10 @@ export default function BhuMatApp() {
 
   const inspectedKyc = resolveConstituencyDossier(inspectedSeatName, inspectedSeatState);
 
+  // Smart Feed Sorting: Unvoted live polls first, then completed polls
   const liveAccessiblePolls = useMemo(() => {
     const now = new Date();
-    return polls.filter((p) => {
+    const filtered = polls.filter((p) => {
       if (pillarFilter !== 'ALL' && p.category !== pillarFilter) return false;
       if (p.starts_at && new Date(p.starts_at) > now) return false;
       if (!selectedSeat) return true;
@@ -343,7 +345,17 @@ export default function BhuMatApp() {
       }
       return true;
     });
-  }, [polls, pillarFilter, selectedSeat]);
+
+    return filtered.sort((a, b) => {
+      const aCycleKey = `${a.id}___${a.participation_mode === 'recurring' ? getCurrentCycleId(a.recurrence) : 'lifetime'}`;
+      const bCycleKey = `${b.id}___${b.participation_mode === 'recurring' ? getCurrentCycleId(b.recurrence) : 'lifetime'}`;
+      const aVoted = votedCycleKeys.includes(aCycleKey) ? 1 : 0;
+      const bVoted = votedCycleKeys.includes(bCycleKey) ? 1 : 0;
+
+      if (aVoted !== bVoted) return aVoted - bVoted;
+      return new Date(b.starts_at || 0).getTime() - new Date(a.starts_at || 0).getTime();
+    });
+  }, [polls, pillarFilter, selectedSeat, votedCycleKeys]);
 
   const allFlattenedSeats = useMemo(() => {
     const list: Array<{ name: string; state: string }> = [];
@@ -369,16 +381,15 @@ export default function BhuMatApp() {
     ];
   }, []);
 
-  // Point 16, 17, 18: Balanced Recognition Badges
   const civicBadge = useMemo(() => {
     if (janmatAuditsCount >= 3 && lokmatPollsCount >= 3) {
       return { title: '🇮🇳 Rashtriya Nagrik', bg: '#fef3c7', text: '#b45309', border: '#fde68a' };
     }
     if (janmatAuditsCount > lokmatPollsCount) {
-      return { title: '🏛️ Civic Auditor', bg: '#e0f2fe', text: '#0369a1', border: '#bae6fd' };
+      return { title: '🏛️ Civic Auditor', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' };
     }
     if (lokmatPollsCount > 0) {
-      return { title: '🌅 Culture Chronicler', bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' };
+      return { title: '🌅 Culture Chronicler', bg: '#fffbeb', text: '#d97706', border: '#fde68a' };
     }
     return { title: '🥉 Verified Citizen', bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
   }, [janmatAuditsCount, lokmatPollsCount]);
@@ -415,9 +426,22 @@ export default function BhuMatApp() {
           display: inline-flex;
           align-items: center;
         }
+        @keyframes livePulseDot {
+          0% { transform: scale(0.85); opacity: 0.6; }
+          50% { transform: scale(1.25); opacity: 1; }
+          100% { transform: scale(0.85); opacity: 0.6; }
+        }
+        .red-dot-live {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background-color: #ef4444;
+          display: inline-block;
+          animation: livePulseDot 1.6s infinite ease-in-out;
+        }
       `}</style>
 
-      {/* Header with "EARLY ACCESS" Tag */}
+      {/* Header: EARLY ACCESS */}
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BHUMAT</span>
@@ -504,40 +528,56 @@ export default function BhuMatApp() {
                   </button>
                 </div>
 
+                {/* Pillar Switch: Green JanMat vs Orange LokMat */}
+                <div style={{ display: 'flex', gap: '6px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '4px', borderRadius: '12px', boxSizing: 'border-box' }}>
+                  <button onClick={() => setPillarFilter('ALL')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'ALL' ? '#0f172a' : 'transparent', color: pillarFilter === 'ALL' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                    All Feeds
+                  </button>
+                  <button onClick={() => setPillarFilter('JanMat')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'JanMat' ? '#059669' : 'transparent', color: pillarFilter === 'JanMat' ? '#ffffff' : '#059669', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                    🌆 JanMat (Civic)
+                  </button>
+                  <button onClick={() => setPillarFilter('LokMat')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'LokMat' ? '#d97706' : 'transparent', color: pillarFilter === 'LokMat' ? '#ffffff' : '#d97706', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                    🌅 LokMat (Culture)
+                  </button>
+                </div>
+
                 {liveAccessiblePolls.map((poll) => {
                   const isFlipped = !!flippedCards[poll.id];
                   const isJanMat = poll.category === 'JanMat';
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                   const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
                   const isBlackedOut = poll.blackout_seats && poll.blackout_seats.includes(selectedSeat?.name || '');
-                  
-                  // Point 10: Humanized time ONLY for LokMat
                   const lokmatTimeAgo = getHumanizedTimeAgo(voteTimestamps[poll.id]);
+                  const nextDropWindow = getNextCycleDropLabel(poll.recurrence);
 
                   return (
                     <div key={poll.id} style={{ perspective: '1000px', width: '100%' }}>
                       <div style={{ position: 'relative', minHeight: '660px', transition: 'transform 0.7s cubic-bezier(0.4, 0, 0.2, 1)', transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
                         
                         {/* Front: Ballot View */}
-                        <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                              <span style={{ backgroundColor: isJanMat ? '#e0f2fe' : '#fef3c7', color: isJanMat ? '#0369a1' : '#b45309', fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '999px' }}>
-                                {poll.category}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="red-dot-live" />
+                                <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444' }}>LIVE</span>
+                                <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>
+                                  {poll.category}
+                                </span>
+                              </div>
                               
-                              {/* Point 10: Strict distinction between JanMat and LokMat */}
+                              {/* Distinction: JanMat vs LokMat */}
                               <span
                                 className="breathing-badge"
                                 style={{
                                   fontSize: '11px',
                                   fontWeight: 800,
-                                  color: hasVotedThisCycle ? '#0284c7' : (isJanMat ? '#0284c7' : '#d97706')
+                                  color: hasVotedThisCycle ? (isJanMat ? '#059669' : '#d97706') : '#64748b'
                                 }}
                               >
                                 {hasVotedThisCycle 
                                   ? (isJanMat ? '🔒 BALLOT SEALED' : `✓ Voted (${lokmatTimeAgo})`) 
-                                  : (isJanMat ? '● LIVE SECRET BALLOT' : '● LIVE OPEN POLL')}
+                                  : (isJanMat ? '● SECRET BALLOT' : '● OPEN POLL')}
                               </span>
                             </div>
 
@@ -552,11 +592,11 @@ export default function BhuMatApp() {
                               <TickerTape activePoll={poll} lang={lang} />
                             </div>
 
-                            {/* Options with Distinct Spacing */}
+                            {/* Options with Generous Space */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                               {poll.options.map((opt, idx) => {
                                 const isPicked = selectedVotes[poll.id] === idx;
-                                const showChoice = !isJanMat && isPicked; // JanMat stays strictly secret
+                                const showChoice = !isJanMat && isPicked;
 
                                 return (
                                   <button
@@ -567,7 +607,7 @@ export default function BhuMatApp() {
                                       padding: '16px',
                                       borderRadius: '14px',
                                       backgroundColor: showChoice ? '#ecfdf5' : '#f8fafc',
-                                      border: showChoice ? '2px solid #10b981' : '1px solid #e2e8f0',
+                                      border: showChoice ? `2px solid ${isJanMat ? '#059669' : '#d97706'}` : '1px solid #e2e8f0',
                                       textAlign: 'left',
                                       cursor: hasVotedThisCycle ? 'default' : 'pointer'
                                     }}
@@ -582,9 +622,16 @@ export default function BhuMatApp() {
                                 );
                               })}
                             </div>
+
+                            {/* Next Ballot Reset Indicator */}
+                            {poll.participation_mode === 'recurring' && (
+                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px', textAlign: 'center', fontWeight: 600 }}>
+                                ⏰ Next cycle opens: {nextDropWindow}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Dual-Sided Deep-Link Navigation */}
+                          {/* Footer with Exploration Button */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
                             <span style={{ fontSize: '11px', color: '#94a3b8' }}>
                               {isJanMat ? '🔒 Cryptographic Secret Ballot' : '🗳️ Verified Open Poll'}
@@ -592,10 +639,10 @@ export default function BhuMatApp() {
                             <div style={{ display: 'flex', gap: '6px' }}>
                               {hasVotedThisCycle && (
                                 <>
-                                  <button onClick={() => setExpandedPoll(poll)} style={{ background: '#f0fdf4', color: '#059669', border: '1px solid #a7f3d0', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                                  <button onClick={() => setExpandedPoll(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                                     Explore Map ↗
                                   </button>
-                                  <button onClick={() => setFlippedCards((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#e0f2fe', color: '#0284c7', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                  <button onClick={() => setFlippedCards((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
                                     View State ↺
                                   </button>
                                 </>
@@ -605,10 +652,12 @@ export default function BhuMatApp() {
                         </div>
 
                         {/* Back: Drishti State View */}
-                        <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', backgroundColor: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', backgroundColor: '#ffffff', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <span style={{ backgroundColor: '#ecfdf5', color: '#059669', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>✓ DRISHTI PULSE ACTIVE</span>
+                              <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
+                                ✓ DRISHTI PULSE ACTIVE
+                              </span>
                               <button onClick={() => setFlippedCards((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', fontSize: '11px', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer' }}>
                                 View Ballot ↻
                               </button>
@@ -616,12 +665,11 @@ export default function BhuMatApp() {
 
                             <DrishtiMap selectedConstituencyName={selectedSeat?.name} selectedState={selectedSeat?.state} options={poll.options} />
 
-                            <button onClick={() => setExpandedPoll(poll)} style={{ width: '100%', padding: '10px', backgroundColor: '#ecfdf5', border: '1.5px solid #a7f3d0', borderRadius: '10px', color: '#059669', fontSize: '11px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
+                            <button onClick={() => setExpandedPoll(poll)} style={{ width: '100%', padding: '10px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '10px', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
                               Explore Pan-Bharat Drishti (543 Seats) 🔓
                             </button>
                           </div>
 
-                          {/* WhatsApp CTA */}
                           <button
                             onClick={() => {
                               const shareUrl = `https://vote.bhumat.com?ref=${deviceHash}&seat=${encodeURIComponent(selectedSeat?.name || 'Bharat')}`;
@@ -711,7 +759,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 3: CONSTITUENCY DOSSIER (Replaces "KYC") */}
+        {/* TAB 3: CONSTITUENCY DOSSIER */}
         {activeTab === 'dossier' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {isInspectingFromSearch && (
@@ -784,17 +832,17 @@ export default function BhuMatApp() {
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
               <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>EDITORIAL SCHEDULE</span>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Public Opinion Timetable</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Consensus Drop Timetable</h2>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div style={{ backgroundColor: '#fef3c7', padding: '12px', borderRadius: '12px', border: '1px solid #fde68a' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309' }}>🌅 08:00 AM Daily</div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate</div>
-                  <div style={{ fontSize: '10px', color: '#78350f', marginTop: '2px' }}>Cultural & Everyday Pulse</div>
+                <div style={{ backgroundColor: '#ecfdf5', padding: '12px', borderRadius: '12px', border: '1px solid #a7f3d0' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>🌆 08:00 PM Daily</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#065f46' }}>JanMat Audit</div>
+                  <div style={{ fontSize: '10px', color: '#047857', marginTop: '2px' }}>Statutory Civic Track</div>
                 </div>
-                <div style={{ backgroundColor: '#e0f2fe', padding: '12px', borderRadius: '12px', border: '1px solid #bae6fd' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1' }}>🌆 08:00 PM Daily</div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#075985' }}>JanMat Audit</div>
-                  <div style={{ fontSize: '10px', color: '#0c4a6e', marginTop: '2px' }}>Statutory Civic Accountability</div>
+                <div style={{ backgroundColor: '#fffbeb', padding: '12px', borderRadius: '12px', border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#d97706' }}>🌅 08:00 AM Daily</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate</div>
+                  <div style={{ fontSize: '10px', color: '#78350f', marginTop: '2px' }}>Culture & Pulse Track</div>
                 </div>
               </div>
             </div>
@@ -806,7 +854,7 @@ export default function BhuMatApp() {
               {upcomingScheduleList.map((item, idx) => (
                 <div key={idx} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: item.category === 'JanMat' ? '#0369a1' : '#b45309' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: item.category === 'JanMat' ? '#059669' : '#d97706' }}>
                       {item.time}
                     </span>
                     <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px' }}>
@@ -820,7 +868,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 5: PROFILE WITH BALANCED GAMIFICATION (JanMat + LokMat) */}
+        {/* TAB 5: PROFILE */}
         {activeTab === 'profile' && (
           <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
@@ -829,14 +877,12 @@ export default function BhuMatApp() {
                   <div style={{ fontSize: '18px', fontWeight: 800 }}>{username}</div>
                   <div style={{ fontSize: '12px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Verified Sovereign Citizen</div>
                 </div>
-                
-                {/* Dynamic Balanced Civic Badge */}
                 <span style={{ backgroundColor: civicBadge.bg, color: civicBadge.text, border: `1px solid ${civicBadge.border}`, fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>
                   {civicBadge.title}
                 </span>
               </div>
 
-              {/* BhuMat Points Balance */}
+              {/* Karma Points */}
               <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#94a3b8' }}>Civic Karma Balance</div>
@@ -845,21 +891,21 @@ export default function BhuMatApp() {
                 <div style={{ fontSize: '11px', color: '#38bdf8' }}>Seat Change Fee: 50 pts</div>
               </div>
 
-              {/* Balanced Civic vs Cultural Tiers */}
+              {/* Balanced Track Counters */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px' }}>
-                <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '10px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#0369a1' }}>🌆 JanMat Audits</div>
-                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#0c4a6e', marginTop: '2px' }}>{janmatAuditsCount}</div>
-                  <div style={{ fontSize: '9px', color: '#0284c7' }}>Civic Duty Track</div>
+                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#059669' }}>🌆 JanMat Audits</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#064e3b', marginTop: '2px' }}>{janmatAuditsCount}</div>
+                  <div style={{ fontSize: '9px', color: '#047857' }}>Civic Duty Track</div>
                 </div>
-                <div style={{ backgroundColor: '#fefce8', border: '1px solid #fef08a', padding: '10px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#b45309' }}>🌅 LokMat Polls</div>
-                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#78350f', marginTop: '2px' }}>{lokmatPollsCount}</div>
-                  <div style={{ fontSize: '9px', color: '#d97706' }}>Culture & Pulse Track</div>
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#d97706' }}>🌅 LokMat Polls</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#92400e', marginTop: '2px' }}>{lokmatPollsCount}</div>
+                  <div style={{ fontSize: '9px', color: '#b45309' }}>Culture & Pulse Track</div>
                 </div>
               </div>
 
-              {/* Historical Metadata */}
+              {/* Metadata */}
               <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                   <span style={{ color: '#64748b' }}>Voting Since:</span>
