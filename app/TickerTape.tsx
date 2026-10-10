@@ -15,7 +15,8 @@ interface TickerItem {
 
 export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: any; lang?: 'EN' | 'HI' }) {
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [animDuration, setAnimDuration] = useState(20);
 
   useEffect(() => {
     async function fetchLiveTicker() {
@@ -37,33 +38,30 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           return;
         }
       } catch (e) {
-        console.warn('Ticker RPC notice:', e);
+        console.warn('Ticker telemetry notice:', e);
       }
 
       setTickerItems([
         { seat: 'Machilipatnam', verdict: 'Advisory Audits' },
-        { seat: 'Darbhanga', verdict: 'Strict Accountability' },
+        { seat: 'Darbhanga', verdict: 'Strict Mandatory Accountability' },
         { seat: 'Bangalore South', verdict: 'Infrastructure First' },
-        { seat: 'Hyderabad', verdict: 'Strict Accountability' },
-        { seat: 'West Delhi', verdict: 'Excellent & Maintained' },
-        { seat: 'Araria', verdict: 'Strict Accountability' },
-        { seat: 'Patna Sahib', verdict: 'Infrastructure First' }
+        { seat: 'Hyderabad', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'West Delhi', verdict: 'Excellent & Well Maintained' },
+        { seat: 'Araria', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'Amalapuram', verdict: 'Infrastructure Priority' }
       ]);
     }
 
     fetchLiveTicker();
-
-    const channel = supabase
-      .channel(`ticker_${activePoll?.id || 'default'}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
-        fetchLiveTicker();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [activePoll?.id, lang]);
+
+  useEffect(() => {
+    if (trackRef.current) {
+      const scrollW = trackRef.current.scrollWidth;
+      const speed = 35; // uniform 35 pixels per second
+      setAnimDuration(Math.max(scrollW / 2 / speed, 12));
+    }
+  }, [tickerItems]);
 
   const items = tickerItems.length > 0 ? tickerItems : [
     { seat: 'Pan-Bharat', verdict: 'Live Civic Consensus' }
@@ -71,7 +69,6 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
   return (
     <div
-      ref={containerRef}
       style={{
         width: '100%',
         height: '34px',
@@ -86,21 +83,26 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
       }}
     >
       <style>{`
-        @keyframes normalizedTicker {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+        @keyframes steadyLinearScroll {
+          0% { transform: translate3d(0, 0, 0); }
+          100% { transform: translate3d(-50%, 0, 0); }
         }
-        .ticker-uniform-track {
+        .ticker-calibrated-track {
           display: flex;
           white-space: nowrap;
-          animation: normalizedTicker 18s linear infinite;
           will-change: transform;
         }
-        .ticker-uniform-track:hover {
+        .ticker-calibrated-track:hover {
           animation-play-state: paused;
         }
       `}</style>
-      <div className="ticker-uniform-track">
+      <div
+        ref={trackRef}
+        className="ticker-calibrated-track"
+        style={{
+          animation: `steadyLinearScroll ${animDuration}s linear infinite`
+        }}
+      >
         {[...items, ...items].map((item, idx) => (
           <div
             key={idx}

@@ -128,34 +128,33 @@ export default function DrishtiMap({
     if (activeFeature) {
       const centroid = pathGenerator.centroid(activeFeature);
       if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
-        // High-Intensity Dual Radar Wave
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 18)
+          .attr('r', 16)
           .attr('fill', 'none')
           .attr('stroke', '#10b981')
-          .attr('stroke-width', 4)
-          .attr('class', 'state-beacon-ring')
+          .attr('stroke-width', 3)
+          .attr('class', 'state-calm-radar')
           .attr('pointer-events', 'none');
 
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 28)
+          .attr('r', 26)
           .attr('fill', 'none')
           .attr('stroke', '#34d399')
-          .attr('stroke-width', 2)
-          .attr('class', 'state-beacon-ring-outer')
+          .attr('stroke-width', 1.5)
+          .attr('class', 'state-calm-radar-outer')
           .attr('pointer-events', 'none');
 
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 6)
+          .attr('r', 5.5)
           .attr('fill', '#065f46')
           .attr('stroke', '#ffffff')
-          .attr('stroke-width', 2.5)
+          .attr('stroke-width', 2)
           .attr('pointer-events', 'none');
       }
     }
@@ -169,45 +168,45 @@ export default function DrishtiMap({
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <style>{`
-        @keyframes stateBeaconPulse {
-          0% { r: 6px; opacity: 1; stroke-width: 4px; }
-          100% { r: 34px; opacity: 0; stroke-width: 0.5px; }
+        @keyframes calmRadarWave {
+          0% { r: 6px; opacity: 0.9; stroke-width: 3px; }
+          100% { r: 36px; opacity: 0; stroke-width: 0.2px; }
         }
-        @keyframes stateBeaconOuterPulse {
-          0% { r: 12px; opacity: 0.8; stroke-width: 3px; }
-          100% { r: 44px; opacity: 0; stroke-width: 0.2px; }
+        @keyframes calmRadarWaveOuter {
+          0% { r: 10px; opacity: 0.7; stroke-width: 2px; }
+          100% { r: 48px; opacity: 0; stroke-width: 0.1px; }
         }
-        .state-beacon-ring {
-          animation: stateBeaconPulse 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
+        .state-calm-radar {
+          animation: calmRadarWave 3.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .state-beacon-ring-outer {
-          animation: stateBeaconOuterPulse 1.6s infinite 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        .state-calm-radar-outer {
+          animation: calmRadarWaveOuter 3.2s infinite 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        @keyframes deepSeatPulse {
+        @keyframes calmSeatBreathing {
           0% {
             stroke: #047857;
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5));
+            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4));
           }
           50% {
             stroke: #10b981;
-            stroke-width: 5px;
-            filter: drop-shadow(0 0 16px rgba(16, 185, 129, 1)) drop-shadow(0 0 28px rgba(16, 185, 129, 0.6));
+            stroke-width: 4.5px;
+            filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.9));
           }
           100% {
             stroke: #047857;
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5));
+            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4));
           }
         }
         .user-state-glow {
-          animation: deepSeatPulse 2s infinite ease-in-out !important;
+          animation: calmSeatBreathing 3.2s infinite ease-in-out !important;
           stroke: #10b981 !important;
           fill: #10b981 !important;
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard (Consistent Qualitative Indicators) */}
+      {/* 3-Box Live Scorecard Header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>National</div>
@@ -226,7 +225,7 @@ export default function DrishtiMap({
         </div>
       </div>
 
-      {/* Point 7: Heatmap Option Color Legend */}
+      {/* Heatmap Option Color Legend */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', padding: '6px 8px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
         {options.map((opt, idx) => (
           <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
