@@ -11,32 +11,26 @@ const supabase = createClient(supabaseUrl, rawKey.trim());
 interface TickerItem {
   seat: string;
   verdict: string;
-  pct: string;
 }
 
 export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: any; lang?: 'EN' | 'HI' }) {
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const tickerRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch real database telemetry or fall back to verified sample baseline
   useEffect(() => {
     async function fetchLiveTicker() {
       if (!activePoll?.id) return;
       try {
         const { data, error } = await supabase.rpc('get_poll_telemetry', { p_poll_id: activePoll.id });
         if (data && data.length > 0 && !error) {
-          const formatted: TickerItem[] = data.slice(0, 15).map((row: any) => {
+          const formatted: TickerItem[] = data.slice(0, 25).map((row: any) => {
             const optIndex = Number(row.leading_option || 0);
             const optText = activePoll.options?.[optIndex]
               ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
-              : 'Leading';
-            const total = Number(row.total_votes || 1);
-            const lead = Number(row.leading_votes || 0);
-            const pct = Math.round((lead / total) * 100);
+              : 'Active Audit';
             return {
               seat: row.constituency_name,
-              verdict: optText,
-              pct: `${pct}%`
+              verdict: optText
             };
           });
           setTickerItems(formatted);
@@ -46,20 +40,20 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
         console.warn('Ticker telemetry fallback:', e);
       }
 
-      // Default baseline if poll has zero ballots
+      // Qualitative verdicts ONLY — ZERO percentages
       setTickerItems([
-        { seat: 'Darbhanga', verdict: 'Strict Accountability', pct: '68%' },
-        { seat: 'Bangalore South', verdict: 'Infrastructure First', pct: '54%' },
-        { seat: 'Hyderabad', verdict: 'Strict Accountability', pct: '71%' },
-        { seat: 'Machilipatnam', verdict: 'Advisory Audits', pct: '62%' },
-        { seat: 'Varanasi', verdict: 'Strict Accountability', pct: '79%' },
-        { seat: 'Araria', verdict: 'Strict Accountability', pct: '64%' }
+        { seat: 'Machilipatnam', verdict: 'Advisory Audits' },
+        { seat: 'Darbhanga', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'Bangalore South', verdict: 'Infrastructure First' },
+        { seat: 'Hyderabad', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'West Delhi', verdict: 'Excellent & Well Maintained' },
+        { seat: 'Araria', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'Patna Sahib', verdict: 'Infrastructure First' }
       ]);
     }
 
     fetchLiveTicker();
 
-    // Listen on WebSocket for real-time votes to refresh marquee
     const channel = supabase
       .channel(`ticker_${activePoll?.id || 'live'}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
@@ -73,7 +67,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   }, [activePoll?.id, lang]);
 
   const items = tickerItems.length > 0 ? tickerItems : [
-    { seat: 'Pan-Bharat', verdict: 'Live Consensus Auditing', pct: '100%' }
+    { seat: 'Pan-Bharat', verdict: 'Live Civic Consensus' }
   ];
 
   return (
@@ -99,7 +93,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
         .ticker-track {
           display: flex;
           white-space: nowrap;
-          animation: tickerSlide 25s linear infinite;
+          animation: tickerSlide 28s linear infinite;
         }
         .ticker-track:hover {
           animation-play-state: paused;
@@ -119,8 +113,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
             }}
           >
             <span style={{ color: '#38bdf8', fontWeight: 800 }}>📍 {item.seat}:</span>
-            <span style={{ color: '#ffffff' }}>{item.verdict}</span>
-            <span style={{ color: '#34d399', fontWeight: 800 }}>({item.pct})</span>
+            <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.verdict}</span>
             <span style={{ color: '#475569', marginLeft: '12px' }}>•</span>
           </div>
         ))}

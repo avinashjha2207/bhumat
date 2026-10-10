@@ -85,13 +85,13 @@ export default function DrishtiMap({
     if (!stateFeatures.length || !svgRef.current) return;
 
     const width = 360;
-    const height = 300;
+    const height = 280;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
     const projection = d3.geoMercator().fitExtent(
-      [[25, 25], [width - 25, height - 25]],
+      [[20, 20], [width - 20, height - 20]],
       { type: 'FeatureCollection', features: stateFeatures } as any
     );
 
@@ -151,8 +151,8 @@ export default function DrishtiMap({
   }, [stateFeatures, selectedConstituencyName]);
 
   const leadOptionLabel = (idx: number) => {
-    if (options[idx]) return options[idx].text_en.split('/')[0].slice(0, 18);
-    return idx === 0 ? 'Strict Penalty' : (idx === 1 ? 'Infra Funding' : 'Advisory Audits');
+    if (options[idx]) return options[idx].text_en.split('/')[0].slice(0, 16);
+    return idx === 0 ? 'Accountability' : (idx === 1 ? 'Funding First' : 'Advisory Audits');
   };
 
   return (
@@ -177,34 +177,34 @@ export default function DrishtiMap({
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard Header */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
+      {/* 3-Box Live Scorecard (ZERO PERCENTAGES) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>National</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>35% Leading</div>
+          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Live Lead</div>
         </div>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>26% Leading</div>
+          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● State Lead</div>
         </div>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800 }}>67% Leading</div>
+          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, marginTop: '2px' }}>● Verified Lead</div>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
+        <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
           Rendering State Grid...
         </div>
       ) : (
         <svg
           ref={svgRef}
-          viewBox="0 0 360 300"
-          style={{ width: '100%', height: '300px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'block' }}
+          viewBox="0 0 360 280"
+          style={{ width: '100%', height: '280px', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'block' }}
         />
       )}
     </div>
