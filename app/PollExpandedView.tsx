@@ -42,7 +42,6 @@ interface PollExpandedViewProps {
 const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
 const BELOW_QUORUM_COLOR = '#cbd5e1';
 
-// In-memory module-level cache for instant sub-second opening
 let CACHED_PREPROJECTED_SEATS: PreprojectedSeat[] | null = null;
 
 export default function PollExpandedView({
@@ -74,7 +73,6 @@ export default function PollExpandedView({
     };
   } | null>(null);
 
-  // Fast Cached Load
   useEffect(() => {
     if (CACHED_PREPROJECTED_SEATS) {
       setSeats(CACHED_PREPROJECTED_SEATS);
@@ -296,9 +294,9 @@ export default function PollExpandedView({
           fill: #10b981 !important;
         }
         @keyframes pulseDot {
-          0% { transform: scale(0.9); opacity: 0.6; }
-          50% { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(0.9); opacity: 0.6; }
+          0% { transform: scale(0.85); opacity: 0.6; }
+          50% { transform: scale(1.25); opacity: 1; }
+          100% { transform: scale(0.85); opacity: 0.6; }
         }
         .live-dot {
           width: 8px;
@@ -362,7 +360,7 @@ export default function PollExpandedView({
 
       <div style={{ maxWidth: '480px', width: '100%', padding: '12px 14px 80px 14px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
         
-        {/* Question Header with Pulsing Dot */}
+        {/* Question Header */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
             <span className="live-dot" />
@@ -379,13 +377,8 @@ export default function PollExpandedView({
           </p>
         </div>
 
-        {/* Clean Distribution Header */}
+        {/* Options Distribution (Header removed cleanly) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
-            <span className="live-dot" />
-            <span style={{ fontSize: '11px', fontWeight: 900, color: '#0f172a', letterSpacing: '0.02em' }}>LIVE DISTRIBUTION</span>
-          </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
               const stat = nationalOptionAverages[idx] || { pct: 0, votes: 0 };
@@ -555,36 +548,37 @@ export default function PollExpandedView({
             </button>
           </div>
         ) : (
-          /* Grid View */
+          /* Restored 5-Column Grid Table */
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
             <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-              <div style={{ minWidth: '520px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', padding: '6px 8px', fontSize: '9.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ minWidth: '580px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', padding: '8px 10px', fontSize: '10px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
                   <span>STATE / UT</span>
                   <span>TOTAL VOTES</span>
                   <span>QUORUM MET</span>
                   <span>STATE VERDICT</span>
-                  <span>VERDICT VOTES</span>
+                  <span style={{ textAlign: 'right' }}>VERDICT VOTES</span>
                 </div>
 
                 {stateSummary.map(([stName, stData]: [string, any]) => {
                   const hasMet50Percent = stData.totalSeats > 0 ? (stData.fortifiedSeats / stData.totalSeats) >= 0.5 : false;
                   const leadIdx = stData.optVotes.indexOf(Math.max(...stData.optVotes));
                   const leadingOptText = poll.options[leadIdx]?.text_en?.split('/')[0]?.trim() || 'Option';
+                  const leadVotes = stData.optVotes[leadIdx] || 0;
 
                   return (
-                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1.3fr 1.8fr 1.2fr', gap: '6px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 8px', fontSize: '11px', marginTop: '6px' }}>
+                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 10px', fontSize: '11px', marginTop: '6px' }}>
                       <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
                       <span style={{ color: isJanMat ? '#059669' : '#d97706', fontWeight: 700 }}>{stData.totalVotes.toLocaleString()}</span>
                       <span style={{ color: '#059669', fontWeight: 700 }}>{stData.fortifiedSeats} / {stData.totalSeats} seats</span>
 
                       {hasMet50Percent ? (
                         <>
-                          <span style={{ color: '#0f172a', fontWeight: 800, fontSize: '11px' }}>{leadingOptText}</span>
-                          <span style={{ color: '#059669', fontWeight: 700, fontSize: '11px' }}>{stData.optVotes[leadIdx].toLocaleString()}</span>
+                          <span style={{ color: '#0f172a', fontWeight: 800 }}>{leadingOptText}</span>
+                          <span style={{ color: '#059669', fontWeight: 800, textAlign: 'right' }}>{leadVotes.toLocaleString()}</span>
                         </>
                       ) : (
-                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#d97706', backgroundColor: '#fef3c7', padding: '3px 6px', borderRadius: '6px', fontWeight: 700 }}>
+                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#d97706', backgroundColor: '#fef3c7', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, textAlign: 'center' }}>
                           🔒 Locked (Needs 50% Quorum: {stData.fortifiedSeats}/{Math.ceil(stData.totalSeats * 0.5)})
                         </span>
                       )}

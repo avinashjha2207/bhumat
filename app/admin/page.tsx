@@ -56,8 +56,8 @@ export default function AdminPollManager() {
 
   async function fetchPolls() {
     setLoading(true);
-    const { data } = await supabase.from('polls').select('*').order('starts_at', { ascending: false });
-    if (data) setPolls(data);
+    const { data, error } = await supabase.from('polls').select('*').order('starts_at', { ascending: false });
+    if (data && !error) setPolls(data);
     setLoading(false);
   }
 
@@ -71,7 +71,7 @@ export default function AdminPollManager() {
       setIsAuthenticated(true);
       setAuthError('');
     } else {
-      setAuthError('Invalid Admin Passcode');
+      setAuthError('Invalid Sovereign Admin Passcode');
     }
   };
 
@@ -92,14 +92,59 @@ export default function AdminPollManager() {
     );
   };
 
+  // Fixed Deactivate / Activate Toggle with Optimistic UI & Error Handler
   async function handleToggleActive(p: any) {
-    const updated = !p.is_active;
-    await supabase.from('polls').update({ is_active: updated }).eq('id', p.id);
-    fetchPolls();
+    const updatedStatus = !p.is_active;
+
+    // Optimistic UI update
+    setPolls((prev) =>
+      prev.map((item) => (item.id === p.id ? { ...item, is_active: updatedStatus } : item))
+    );
+
+    const { error } = await supabase
+      .from('polls')
+      .update({ is_active: updatedStatus })
+      .eq('id', p.id);
+
+    if (error) {
+      alert(`Database error toggling active status: ${error.message}`);
+      fetchPolls(); // Rollback on error
+    } else {
+      setStatusMessage(`✓ Status updated: ${p.id} is now ${updatedStatus ? 'LIVE' : 'INACTIVE'}`);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
+  }
+
+  // Shift Drop Date / Schedule Shifter
+  async function handleShiftSchedule(p: any) {
+    const newDateStr = prompt(
+      `Shift Go-Live Date/Time for ${p.id}:\nCurrent: ${new Date(p.starts_at).toLocaleString()}\nEnter new date (YYYY-MM-DDTHH:mm):`,
+      new Date(p.starts_at).toISOString().slice(0, 16)
+    );
+
+    if (newDateStr) {
+      const parsedDate = new Date(newDateStr);
+      if (isNaN(parsedDate.getTime())) {
+        alert('Invalid date format. Use YYYY-MM-DDTHH:mm (e.g. 2026-10-20T20:00)');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('polls')
+        .update({ starts_at: parsedDate.toISOString() })
+        .eq('id', p.id);
+
+      if (!error) {
+        alert(`✓ Go-live date shifted to ${parsedDate.toLocaleString()}`);
+        fetchPolls();
+      } else {
+        alert(`Error shifting schedule: ${error.message}`);
+      }
+    }
   }
 
   async function handleToggleBlackout(poll: any) {
-    const seat = prompt(`Enter Lok Sabha constituency to add/remove from ECI Silence Blackout for ${poll.id}:`);
+    const seat = prompt(`Enter Lok Sabha seat name to add/remove from Election Silence Blackout for ${poll.id}:`);
     if (!seat) return;
     const current = poll.blackout_seats || [];
     const updated = current.includes(seat) ? current.filter((s: string) => s !== seat) : [...current, seat];
@@ -222,7 +267,7 @@ export default function AdminPollManager() {
                 <select disabled={participationMode === 'one_time'} value={recurrence} onChange={(e: any) => setRecurrence(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, marginTop: '4px' }}>
                   <option value="daily">Daily Reset (24 Hours)</option>
                   <option value="weekly">Weekly Cycle (Monday Drop)</option>
-                  <option value="monthly">Monthly Cycle (1st of Month)</option>
+                  <option value="monthly">Monthly Cycle (Customizable Date)</option>
                 </select>
               </div>
               <div>
@@ -343,12 +388,12 @@ export default function AdminPollManager() {
           </form>
         </div>
 
-        {/* Refined Active Polls & Blackouts Section */}
+        {/* Working Active Polls & Blackouts Section */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Active Polls & ECI Blackout Windows</h2>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>Manage live visibility and constituency election silence</p>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>Manage live visibility, shift drop dates, and toggle constituency silence</p>
             </div>
             <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '6px' }}>{polls.length} Registered</span>
           </div>
@@ -357,30 +402,41 @@ export default function AdminPollManager() {
             {polls.map((p) => {
               const isJanMat = p.category === 'JanMat';
               const blackouts = p.blackout_seats || [];
-              const isLive = p.is_active && new Date(p.starts_at) <= new Date();
+              const isFuture = new Date(p.starts_at) > new Date();
+              const isLive = p.is_active && !isFuture;
 
               return (
-                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ maxWidth: '65%' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', backgroundColor: p.is_active ? '#f8fafc' : '#f1f5f9', borderRadius: '12px', border: `1px solid ${p.is_active ? '#e2e8f0' : '#cbd5e1'}`, opacity: p.is_active ? 1 : 0.8 }}>
+                  <div style={{ maxWidth: '60%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>
                         {p.category}
                       </span>
                       <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>{p.id}</span>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: isLive ? '#10b981' : '#94a3b8' }}>
-                        {isLive ? '● LIVE' : '○ INACTIVE'}
+                      
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: isLive ? '#10b981' : (isFuture ? '#d97706' : '#ef4444') }}>
+                        {isLive ? '● LIVE' : (isFuture ? `⏳ SCHEDULED (${new Date(p.starts_at).toLocaleDateString()})` : '○ DEACTIVATED')}
                       </span>
+                      
                       <span style={{ fontSize: '10px', color: '#0369a1', backgroundColor: '#e0f2fe', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
                         {p.participation_mode === 'recurring' ? `${p.recurrence} (${p.current_cycle})` : 'One-Time'}
                       </span>
                     </div>
+
                     <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a' }}>{p.title_en}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                      Scope: {p.target_region_type} • {p.options?.length || 3} Options • Blackout: {blackouts.length} Seats
+                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                      Go-Live: <strong>{new Date(p.starts_at).toLocaleString()}</strong> • Scope: {p.target_region_type} • Blackout: {blackouts.length} Seats
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button
+                      onClick={() => handleShiftSchedule(p)}
+                      title="Shift drop date (e.g. from 5th to 20th)"
+                      style={{ background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      📅 Shift Date
+                    </button>
                     <button
                       onClick={() => handleToggleBlackout(p)}
                       style={{ background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
