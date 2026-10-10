@@ -15,7 +15,7 @@ interface TickerItem {
 
 export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: any; lang?: 'EN' | 'HI' }) {
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
-  const tickerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     async function fetchLiveTicker() {
@@ -23,11 +23,11 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
       try {
         const { data, error } = await supabase.rpc('get_poll_telemetry', { p_poll_id: activePoll.id });
         if (data && data.length > 0 && !error) {
-          const formatted: TickerItem[] = data.slice(0, 25).map((row: any) => {
+          const formatted: TickerItem[] = data.slice(0, 20).map((row: any) => {
             const optIndex = Number(row.leading_option || 0);
             const optText = activePoll.options?.[optIndex]
               ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
-              : 'Active Audit';
+              : 'Consensus Active';
             return {
               seat: row.constituency_name,
               verdict: optText
@@ -37,17 +37,16 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           return;
         }
       } catch (e) {
-        console.warn('Ticker telemetry fallback:', e);
+        console.warn('Ticker RPC notice:', e);
       }
 
-      // Qualitative verdicts ONLY — ZERO percentages
       setTickerItems([
         { seat: 'Machilipatnam', verdict: 'Advisory Audits' },
-        { seat: 'Darbhanga', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'Darbhanga', verdict: 'Strict Accountability' },
         { seat: 'Bangalore South', verdict: 'Infrastructure First' },
-        { seat: 'Hyderabad', verdict: 'Strict Mandatory Accountability' },
-        { seat: 'West Delhi', verdict: 'Excellent & Well Maintained' },
-        { seat: 'Araria', verdict: 'Strict Mandatory Accountability' },
+        { seat: 'Hyderabad', verdict: 'Strict Accountability' },
+        { seat: 'West Delhi', verdict: 'Excellent & Maintained' },
+        { seat: 'Araria', verdict: 'Strict Accountability' },
         { seat: 'Patna Sahib', verdict: 'Infrastructure First' }
       ]);
     }
@@ -55,7 +54,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
     fetchLiveTicker();
 
     const channel = supabase
-      .channel(`ticker_${activePoll?.id || 'live'}`)
+      .channel(`ticker_${activePoll?.id || 'default'}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
         fetchLiveTicker();
       })
@@ -72,11 +71,12 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
   return (
     <div
+      ref={containerRef}
       style={{
         width: '100%',
-        height: '32px',
+        height: '34px',
         backgroundColor: '#0f172a',
-        borderRadius: '8px',
+        borderRadius: '10px',
         overflow: 'hidden',
         position: 'relative',
         display: 'flex',
@@ -86,20 +86,21 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
       }}
     >
       <style>{`
-        @keyframes tickerSlide {
+        @keyframes normalizedTicker {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
-        .ticker-track {
+        .ticker-uniform-track {
           display: flex;
           white-space: nowrap;
-          animation: tickerSlide 28s linear infinite;
+          animation: normalizedTicker 18s linear infinite;
+          will-change: transform;
         }
-        .ticker-track:hover {
+        .ticker-uniform-track:hover {
           animation-play-state: paused;
         }
       `}</style>
-      <div ref={tickerRef} className="ticker-track">
+      <div className="ticker-uniform-track">
         {[...items, ...items].map((item, idx) => (
           <div
             key={idx}

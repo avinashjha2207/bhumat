@@ -9,7 +9,7 @@ interface DrishtiMapProps {
   options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
-const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9', '#f59e0b'];
+const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
 const BELOW_QUORUM_COLOR = '#cbd5e1';
 
 export default function DrishtiMap({
@@ -109,11 +109,11 @@ export default function DrishtiMap({
       .attr('d', (d: any) => pathGenerator(d))
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? '#047857' : '#475569';
+        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? '#064e3b' : '#334155';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? 2.5 : 0.8;
+        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? 3.5 : 0.8;
       })
       .style('fill', (d: any) => {
         const p = d.properties || {};
@@ -128,23 +128,34 @@ export default function DrishtiMap({
     if (activeFeature) {
       const centroid = pathGenerator.centroid(activeFeature);
       if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+        // High-Intensity Dual Radar Wave
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 16)
+          .attr('r', 18)
           .attr('fill', 'none')
           .attr('stroke', '#10b981')
-          .attr('stroke-width', 3)
+          .attr('stroke-width', 4)
           .attr('class', 'state-beacon-ring')
           .attr('pointer-events', 'none');
 
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 5.5)
-          .attr('fill', '#047857')
-          .attr('stroke', '#ffffff')
+          .attr('r', 28)
+          .attr('fill', 'none')
+          .attr('stroke', '#34d399')
           .attr('stroke-width', 2)
+          .attr('class', 'state-beacon-ring-outer')
+          .attr('pointer-events', 'none');
+
+        g.append('circle')
+          .attr('cx', centroid[0])
+          .attr('cy', centroid[1])
+          .attr('r', 6)
+          .attr('fill', '#065f46')
+          .attr('stroke', '#ffffff')
+          .attr('stroke-width', 2.5)
           .attr('pointer-events', 'none');
       }
     }
@@ -159,30 +170,49 @@ export default function DrishtiMap({
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <style>{`
         @keyframes stateBeaconPulse {
-          0% { r: 5px; opacity: 1; stroke-width: 3.5px; }
-          100% { r: 32px; opacity: 0; stroke-width: 0.5px; }
+          0% { r: 6px; opacity: 1; stroke-width: 4px; }
+          100% { r: 34px; opacity: 0; stroke-width: 0.5px; }
+        }
+        @keyframes stateBeaconOuterPulse {
+          0% { r: 12px; opacity: 0.8; stroke-width: 3px; }
+          100% { r: 44px; opacity: 0; stroke-width: 0.2px; }
         }
         .state-beacon-ring {
-          animation: stateBeaconPulse 1.8s infinite ease-out;
+          animation: stateBeaconPulse 1.6s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
         }
-        @keyframes stateSeatGlow {
-          0% { stroke: #047857; stroke-width: 2px; filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.4)); }
-          50% { stroke: #10b981; stroke-width: 4px; filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.9)); }
-          100% { stroke: #047857; stroke-width: 2px; filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.4)); }
+        .state-beacon-ring-outer {
+          animation: stateBeaconOuterPulse 1.6s infinite 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        @keyframes deepSeatPulse {
+          0% {
+            stroke: #047857;
+            stroke-width: 2.5px;
+            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5));
+          }
+          50% {
+            stroke: #10b981;
+            stroke-width: 5px;
+            filter: drop-shadow(0 0 16px rgba(16, 185, 129, 1)) drop-shadow(0 0 28px rgba(16, 185, 129, 0.6));
+          }
+          100% {
+            stroke: #047857;
+            stroke-width: 2.5px;
+            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5));
+          }
         }
         .user-state-glow {
-          animation: stateSeatGlow 2s infinite ease-in-out !important;
+          animation: deepSeatPulse 2s infinite ease-in-out !important;
           stroke: #10b981 !important;
           fill: #10b981 !important;
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard (ZERO PERCENTAGES) */}
+      {/* 3-Box Live Scorecard (Consistent Qualitative Indicators) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>National</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Live Lead</div>
+          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Consensus Lead</div>
         </div>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
@@ -192,7 +222,21 @@ export default function DrishtiMap({
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, marginTop: '2px' }}>● Verified Lead</div>
+          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, marginTop: '2px' }}>● Local Lead</div>
+        </div>
+      </div>
+
+      {/* Point 7: Heatmap Option Color Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', padding: '6px 8px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
+        {options.map((opt, idx) => (
+          <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: OPTION_PALETTE[idx % OPTION_PALETTE.length] }} />
+            <span>{opt.text_en.split('/')[0].slice(0, 14)}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: BELOW_QUORUM_COLOR }} />
+          <span>Pending Quorum</span>
         </div>
       </div>
 
