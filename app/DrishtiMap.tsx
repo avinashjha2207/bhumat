@@ -18,8 +18,8 @@ const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const RADAR_GREEN = '#10b981';
 
 export default function DrishtiMap({
-  selectedConstituencyName = 'Darbhanga',
-  selectedState = 'Bihar',
+  selectedConstituencyName = 'East Delhi',
+  selectedState = 'Delhi',
   pollId,
   userVotedOptionIdx = null,
   options = []
@@ -34,15 +34,7 @@ export default function DrishtiMap({
     ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
     : OPTION_PALETTE[0];
 
-  const [telemetry, setTelemetry] = useState<{
-    national: any;
-    states: Record<string, any>;
-    constituencies: Record<string, any>;
-  }>({
-    national: { total_votes: 0, leading_option: 0, leading_votes: 0, opt_breakdown: [0, 0, 0, 0] },
-    states: {},
-    constituencies: {}
-  });
+  const [rawVotes, setRawVotes] = useState<any[]>([]);
 
   useEffect(() => {
     fetch('/india_pc_2019_simplified.geojson')
@@ -60,27 +52,29 @@ export default function DrishtiMap({
       });
   }, []);
 
-  async function loadHierarchyTelemetry() {
+  async function loadVotesDirect() {
     if (!pollId) return;
     try {
-      const { data, error } = await supabase.rpc('get_live_consensus_hierarchy', {
-        p_poll_id: pollId
-      });
+      const { data, error } = await supabase
+        .from('votes')
+        .select('constituency_name, state_name, selected_option')
+        .eq('poll_id', pollId);
+
       if (data && !error) {
-        setTelemetry(data);
+        setRawVotes(data);
       }
     } catch (e) {
-      console.warn('Hierarchy fetch note:', e);
+      console.warn('Direct votes fetch notice:', e);
     }
   }
 
   useEffect(() => {
-    loadHierarchyTelemetry();
+    loadVotesDirect();
 
     const channel = supabase
-      .channel(`drishti_sync_${pollId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes', filter: `poll_id=eq.${pollId}` }, () => {
-        loadHierarchyTelemetry();
+      .channel(`drishti_direct_${pollId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `poll_id=eq.${pollId}` }, () => {
+        loadVotesDirect();
       })
       .subscribe();
 
@@ -92,6 +86,53 @@ export default function DrishtiMap({
   const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const activeTarget = clean(selectedConstituencyName);
   const activeStateKey = clean(selectedState);
+
+  // Strict Real-Time Mathematical Aggregation
+  const { nationalTally, stateTally, seatTally } = useMemo(() => {
+    const optCount = Math.max(options.length, 2);
+    const natBreakdown = new Array(optCount).fill(0);
+    const stBreakdown = new Array(optCount).fill(0);
+    const seatBreakdown = new Array(optCount).fill(0);
+
+    let natTotal = 0;
+    let stTotal = 0;
+    let seatTotal = 0;
+
+    rawVotes.forEach((v) => {
+      const opt = Number(v.selected_option || 0);
+      const cSeat = clean(v.constituency_name);
+      const cState = clean(v.state_name);
+
+      natTotal += 1;
+      if (opt < optCount) natBreakdown[opt] += 1;
+
+      if (cState === activeStateKey) {
+        stTotal += 1;
+        if (opt < optCount) stBreakdown[opt] += 1;
+      }
+
+      if (cSeat === activeTarget) {
+        seatTotal += 1;
+        if (opt < optCount) seatBreakdown[opt] += 1;
+      }
+    });
+
+    const resolveWinner = (arr: number[], total: number) => {
+      if (total === 0) return { idx: -1, isTie: false, votes: 0 };
+      const maxVotes = Math.max(...arr);
+      const winners = arr.map((v, i) => (v === maxVotes ? i : -1)).filter((i) => i !== -1);
+      if (winners.length > 1) {
+        return { idx: winners[0], isTie: true, votes: maxVotes };
+      }
+      return { idx: winners[0], isTie: false, votes: maxVotes };
+    };
+
+    return {
+      nationalTally: { total: natTotal, ...resolveWinner(natBreakdown, natTotal) },
+      stateTally: { total: stTotal, ...resolveWinner(stBreakdown, stTotal) },
+      seatTally: { total: seatTotal, ...resolveWinner(seatBreakdown, seatTotal) }
+    };
+  }, [rawVotes, activeStateKey, activeTarget, options]);
 
   const stateFeatures = useMemo(() => {
     if (!geoData) return [];
@@ -115,11 +156,9 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
-    // Citizen's home constituency takes the color of their chosen option
+    // User's home seat strictly adopts their chosen option's color
     if (isTargetMatch(name)) return userOptionColor;
-    const seatData = telemetry.constituencies[clean(name)];
-    if (!seatData || !seatData.is_fortified) return UNPOLLED_SEAT_COLOR;
-    return OPTION_PALETTE[seatData.leading_option % OPTION_PALETTE.length];
+    return UNPOLLED_SEAT_COLOR;
   };
 
   useEffect(() => {
@@ -161,7 +200,7 @@ export default function DrishtiMap({
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Radar is ALWAYS UNIFORM GREEN across the entire app
+    // Radar is ALWAYS UNIFORM GREEN
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -170,7 +209,6 @@ export default function DrishtiMap({
     if (activeFeature) {
       const centroid = pathGenerator.centroid(activeFeature);
       if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
-        // Inner Green Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
@@ -181,7 +219,6 @@ export default function DrishtiMap({
           .attr('class', 'state-calm-radar')
           .attr('pointer-events', 'none');
 
-        // Outer Green Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
@@ -192,7 +229,6 @@ export default function DrishtiMap({
           .attr('class', 'state-calm-radar-outer')
           .attr('pointer-events', 'none');
 
-        // Center Green Beacon Core
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
@@ -203,20 +239,24 @@ export default function DrishtiMap({
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, telemetry, userOptionColor]);
+  }, [stateFeatures, selectedConstituencyName, rawVotes, userOptionColor]);
 
-  // Read Live Database Telemetry Values
-  const seatRecord = telemetry.constituencies[activeTarget] || { total_votes: 0, is_fortified: false, leading_option: 0 };
-  const stateRecord = telemetry.states[activeStateKey] || { total_votes: 0, leading_option: 0 };
-  const nationalRecord = telemetry.national || { total_votes: 0, leading_option: 0 };
-
-  const getOptTitle = (idx: number) => {
-    return options[idx] ? options[idx].text_en.split('/')[0].slice(0, 14) : `Option ${idx + 1}`;
+  // Color & Verdict Formulation
+  const getVerdictDetails = (tally: { total: number; idx: number; isTie: boolean; votes: number }) => {
+    if (tally.total === 0) {
+      return { title: '0 Ballots', color: '#64748b' };
+    }
+    if (tally.isTie) {
+      return { title: '⚖️ Split (Tie)', color: '#64748b' };
+    }
+    const opt = options[tally.idx];
+    const name = opt ? opt.text_en.split('/')[0].trim() : `Option ${tally.idx + 1}`;
+    return { title: name, color: OPTION_PALETTE[tally.idx % OPTION_PALETTE.length] };
   };
 
-  const seatTotalVotes = Number(seatRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
-  const stateTotalVotes = Number(stateRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
-  const nationalTotalVotes = Number(nationalRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
+  const natVerdict = getVerdictDetails(nationalTally);
+  const stVerdict = getVerdictDetails(stateTally);
+  const seatVerdict = getVerdictDetails(seatTally);
 
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
@@ -256,35 +296,35 @@ export default function DrishtiMap({
         }
       `}</style>
 
-      {/* 3-Box Live Consensus Hierarchy Scorecard */}
+      {/* 3-Box Live Scorecard: STRICT OPTION-TIED COLORS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
-            {nationalTotalVotes > 0 ? getOptTitle(nationalRecord.leading_option || 0) : '0 Ballots'}
+          <div style={{ fontSize: '11px', fontWeight: 900, color: natVerdict.color, marginTop: '2px' }}>
+            {natVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-            {nationalTotalVotes.toLocaleString()} {nationalTotalVotes === 1 ? 'Vote' : 'Votes'}
+          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
+            {nationalTally.total} {nationalTally.total === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
-            {stateTotalVotes > 0 ? getOptTitle(stateRecord.leading_option || 0) : '0 Ballots'}
+          <div style={{ fontSize: '11px', fontWeight: 900, color: stVerdict.color, marginTop: '2px' }}>
+            {stVerdict.title}
           </div>
           <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
-            {stateTotalVotes.toLocaleString()} {stateTotalVotes === 1 ? 'Vote' : 'Votes'}
+            {stateTally.total} {stateTally.total === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: userOptionColor, marginTop: '2px' }}>
-            {seatTotalVotes > 0 ? getOptTitle(userVotedOptionIdx ?? seatRecord.leading_option) : '0 Ballots'}
+          <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '2px' }}>
+            {seatVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: seatRecord.is_fortified ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
-            {seatRecord.is_fortified ? '● Quorum Met' : `⏳ ${seatTotalVotes}/50 Ballots`}
+          <div style={{ fontSize: '9px', color: seatTally.total >= 50 ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
+            {seatTally.total >= 50 ? '● Quorum Met' : `⏳ ${seatTally.total}/50 Ballots`}
           </div>
         </div>
       </div>
