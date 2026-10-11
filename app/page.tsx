@@ -204,7 +204,6 @@ const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
-// Truth-in-data: No fake modulus math margins
 function resolveConstituencyDossier(seatName: string, stateName: string) {
   const clean = (seatName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   if (VERIFIED_SEAT_DOSSIERS[clean]) return VERIFIED_SEAT_DOSSIERS[clean];
@@ -277,7 +276,8 @@ export default function BhuMatApp() {
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
   const [polls, setPolls] = useState<Poll[]>([]);
-  const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
+  // flippedOverrides tracks whether user manually clicked "View Ballot" or "View Drishti"
+  const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
   const [selectedVotes, setSelectedVotes] = useState<Record<string, number>>({});
   const [votedCycleKeys, setVotedCycleKeys] = useState<string[]>([]);
   const [voteTimestamps, setVoteTimestamps] = useState<Record<string, string>>({});
@@ -454,7 +454,6 @@ export default function BhuMatApp() {
     const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
 
     if (votedCycleKeys.includes(cycleVoteKey)) {
-      setFlippedCards((prev) => ({ ...prev, [poll.id]: true }));
       return;
     }
 
@@ -496,8 +495,7 @@ export default function BhuMatApp() {
       safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
     } catch (e) {}
 
-    setFlippedCards((prev) => ({ ...prev, [poll.id]: true }));
-
+    // Send vote to Supabase
     await supabase.from('votes').insert([
       {
         poll_id: poll.id,
@@ -527,6 +525,8 @@ export default function BhuMatApp() {
 
   const inspectedKyc = resolveConstituencyDossier(inspectedSeatName, inspectedSeatState);
 
+  // STABLE FEED POSITIONING:
+  // Strict chronological order (starts_at DESC). Cards do NOT jump to the bottom upon voting!
   const liveAccessiblePolls = useMemo(() => {
     const now = new Date();
     const filtered = polls.filter((p) => {
@@ -542,15 +542,9 @@ export default function BhuMatApp() {
     });
 
     return filtered.sort((a, b) => {
-      const aCycleKey = `${a.id}___${a.participation_mode === 'recurring' ? getCurrentCycleId(a.recurrence) : 'lifetime'}`;
-      const bCycleKey = `${b.id}___${b.participation_mode === 'recurring' ? getCurrentCycleId(b.recurrence) : 'lifetime'}`;
-      const aVoted = votedCycleKeys.includes(aCycleKey) ? 1 : 0;
-      const bVoted = votedCycleKeys.includes(bCycleKey) ? 1 : 0;
-
-      if (aVoted !== bVoted) return aVoted - bVoted;
       return new Date(b.starts_at || 0).getTime() - new Date(a.starts_at || 0).getTime();
     });
-  }, [polls, pillarFilter, selectedSeat, votedCycleKeys]);
+  }, [polls, pillarFilter, selectedSeat]);
 
   const allFlattenedSeats = useMemo(() => {
     const list: Array<{ name: string; state: string }> = [];
@@ -790,7 +784,12 @@ export default function BhuMatApp() {
                     const isJanMat = poll.category === 'JanMat';
                     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                     const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
-                    const isFlipped = !!flippedCards[poll.id];
+
+                    // RULE: If voted, default view is State Drishti (flipped = true) UNLESS user manually toggled it
+                    const isFlipped = flippedOverrides[poll.id] !== undefined 
+                      ? flippedOverrides[poll.id] 
+                      : hasVotedThisCycle;
+
                     const isBlackedOut = poll.blackout_seats && poll.blackout_seats.includes(selectedSeat?.name || '');
                     const lokmatTimeAgo = getHumanizedTimeAgo(voteTimestamps[poll.id], lang);
 
@@ -885,8 +884,8 @@ export default function BhuMatApp() {
                                     <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                                       {lang === 'HI' ? 'नक्शा देखें ↗' : 'Explore Map ↗'}
                                     </button>
-                                    <button onClick={() => setFlippedCards((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
-                                      {lang === 'HI' ? 'राज्य ग्रिड ↺' : 'View State ↺'}
+                                    <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                      {lang === 'HI' ? 'दृष्टि नक्शा ↺' : 'View Drishti ↺'}
                                     </button>
                                   </>
                                 )}
@@ -901,7 +900,7 @@ export default function BhuMatApp() {
                                 <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
                                   ✓ {lang === 'HI' ? 'दृष्टि पल्स सक्रिय' : 'DRISHTI PULSE ACTIVE'}
                                 </span>
-                                <button onClick={() => setFlippedCards((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', fontSize: '11px', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer' }}>
+                                <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}>
                                   {lang === 'HI' ? 'मतपत्र देखें ↻' : 'View Ballot ↻'}
                                 </button>
                               </div>
