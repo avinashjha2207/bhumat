@@ -16,7 +16,7 @@ interface DrishtiMapProps {
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
-const TIE_COLOR = '#64748b';
+const TIE_COLOR = '#475569'; // Distinct Slate Balance
 const RADAR_GREEN = '#10b981';
 
 export default function DrishtiMap({
@@ -34,6 +34,8 @@ export default function DrishtiMap({
   const [loading, setLoading] = useState(true);
 
   const [tallies, setTallies] = useState<any[]>([]);
+  // Live Popping Pulses Queue: { [seatCleanName]: { color: string, expiresAt: number } }
+  const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
   useEffect(() => {
     fetch('/india_pc_2019_simplified.geojson')
@@ -70,8 +72,11 @@ export default function DrishtiMap({
   useEffect(() => {
     loadTallies();
 
-    const channel = supabase
-      .channel(`drishti_tally_live_${pollId}`)
+    if (!pollId) return;
+
+    // 1. Tally changes listener
+    const tallyChannel = supabase
+      .channel(`state_tally_stream_${pollId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${pollId}` },
@@ -81,8 +86,47 @@ export default function DrishtiMap({
       )
       .subscribe();
 
+    // 2. Real-time Live Ballots Popping Pulse Listener on ballot_box
+    const ballotChannel = supabase
+      .channel(`state_ballot_pulse_${pollId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ballot_box', filter: `poll_id=eq.${pollId}` },
+        (payload) => {
+          const newBallot = payload.new;
+          if (newBallot && newBallot.constituency_name) {
+            const cleanSeat = clean(newBallot.constituency_name);
+            const optColor = OPTION_PALETTE[Number(newBallot.selected_option || 0) % OPTION_PALETTE.length];
+            setLivePulses((prev) => ({
+              ...prev,
+              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3500 }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    // Pulse garbage collection timer
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setLivePulses((prev) => {
+        let changed = false;
+        const next: Record<string, { color: string; expiresAt: number }> = {};
+        Object.entries(prev).forEach(([key, val]) => {
+          if (val.expiresAt > now) {
+            next[key] = val;
+          } else {
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(tallyChannel);
+      supabase.removeChannel(ballotChannel);
+      clearInterval(interval);
     };
   }, [pollId]);
 
@@ -90,7 +134,7 @@ export default function DrishtiMap({
   const activeTarget = clean(selectedConstituencyName);
   const activeStateKey = clean(selectedState);
 
-  // Dynamic Living Ledger Aggregation (No Hard Quorum)
+  // Dynamic Consensus Aggregation
   const { nationalTally, stateTally, seatTally, seatMap, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
@@ -126,14 +170,13 @@ export default function DrishtiMap({
       }
     });
 
-    // Optimistic instantaneous reconciliation if network response has not arrived
+    // Optimistic fallback for the local voter
     if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
       if (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0) {
         targetSeatRecord = {
           total_votes: 1,
           leading_option: userVotedOptionIdx,
           is_tie: false,
-          is_fortified: false,
           [`opt_${userVotedOptionIdx}_votes`]: 1
         };
         sMap[activeTarget] = targetSeatRecord;
@@ -151,7 +194,6 @@ export default function DrishtiMap({
       return { idx: winners[0], isTie: winners.length > 1, votes: maxVotes };
     };
 
-    // Determine home seat color dynamically
     let homeColor = UNPOLLED_SEAT_COLOR;
     if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
       if (targetSeatRecord.is_tie) {
@@ -195,9 +237,15 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
+    const cleanName = clean(name);
+    // 1. Check if an active live pop pulse exists for this seat
+    if (livePulses[cleanName]) {
+      return livePulses[cleanName].color;
+    }
+
     if (isTargetMatch(name)) return resolvedHomeColor;
 
-    const row = seatMap[clean(name)];
+    const row = seatMap[cleanName];
     if (!row || Number(row.total_votes || 0) === 0) return UNPOLLED_SEAT_COLOR;
 
     if (row.is_tie) return TIE_COLOR;
@@ -205,15 +253,18 @@ export default function DrishtiMap({
   };
 
   const getSeatOpacity = (name: string) => {
-    const row = seatMap[clean(name)];
-    const total = isTargetMatch(name) 
-      ? Number(seatTally.total_votes || 1) 
+    const cleanName = clean(name);
+    if (livePulses[cleanName]) return 1.0;
+
+    const row = seatMap[cleanName];
+    const total = isTargetMatch(name)
+      ? Number(seatTally.total_votes || 1)
       : Number(row?.total_votes || 0);
 
     if (total === 0) return 1;
-    if (total < 10) return 0.78; // Early Trend softness
-    if (total < 50) return 0.90; // Developing
-    return 1.0; // Fortified
+    if (total < 10) return 0.82;
+    if (total < 50) return 0.92;
+    return 1.0;
   };
 
   useEffect(() => {
@@ -239,16 +290,23 @@ export default function DrishtiMap({
       .append('path')
       .attr('class', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? 'constituency user-seat-glow' : 'constituency';
+        const pName = p.PC_NAME || p.pc_name || p.NAME || '';
+        const isPulse = Boolean(livePulses[clean(pName)]);
+        if (isPulse) return 'constituency live-pop-shockwave';
+        return isTargetMatch(pName) ? 'constituency user-seat-glow' : 'constituency';
       })
       .attr('d', (d: any) => pathGenerator(d))
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? resolvedHomeColor : '#94a3b8';
+        const pName = p.PC_NAME || p.pc_name || p.NAME || '';
+        if (livePulses[clean(pName)]) return livePulses[clean(pName)].color;
+        return isTargetMatch(pName) ? resolvedHomeColor : '#94a3b8';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? 3.5 : 0.75;
+        const pName = p.PC_NAME || p.pc_name || p.NAME || '';
+        if (livePulses[clean(pName)]) return 3.5;
+        return isTargetMatch(pName) ? 3.0 : 0.75;
       })
       .style('fill', (d: any) => {
         const p = d.properties || {};
@@ -259,7 +317,29 @@ export default function DrishtiMap({
         return getSeatOpacity(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Uniform Green Radar Pulse on Active Seat
+    // Render ripple rings for pulsing seats
+    Object.keys(livePulses).forEach((pulsingSeatKey) => {
+      const feat = stateFeatures.find((f: any) => {
+        const p = f.properties || {};
+        return clean(p.PC_NAME || p.pc_name || p.NAME || '') === pulsingSeatKey;
+      });
+      if (feat) {
+        const centroid = pathGenerator.centroid(feat);
+        if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+          g.append('circle')
+            .attr('cx', centroid[0])
+            .attr('cy', centroid[1])
+            .attr('r', 10)
+            .attr('fill', 'none')
+            .attr('stroke', livePulses[pulsingSeatKey].color)
+            .attr('stroke-width', 3)
+            .attr('class', 'live-pop-shockwave-circle')
+            .attr('pointer-events', 'none');
+        }
+      }
+    });
+
+    // Radar pulse on user active home seat
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -274,18 +354,8 @@ export default function DrishtiMap({
           .attr('r', 16)
           .attr('fill', 'none')
           .attr('stroke', RADAR_GREEN)
-          .attr('stroke-width', 3)
+          .attr('stroke-width', 2.8)
           .attr('class', 'state-calm-radar')
-          .attr('pointer-events', 'none');
-
-        g.append('circle')
-          .attr('cx', centroid[0])
-          .attr('cy', centroid[1])
-          .attr('r', 28)
-          .attr('fill', 'none')
-          .attr('stroke', '#34d399')
-          .attr('stroke-width', 1.5)
-          .attr('class', 'state-calm-radar-outer')
           .attr('pointer-events', 'none');
 
         g.append('circle')
@@ -298,9 +368,8 @@ export default function DrishtiMap({
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, tallies, resolvedHomeColor]);
+  }, [stateFeatures, selectedConstituencyName, tallies, resolvedHomeColor, livePulses]);
 
-  // Verdict Resolution: Direct Reflection from First Ballot
   const getVerdictDetails = (total: number, idx: number, isTie: boolean) => {
     if (total === 0) return { title: '0 Ballots', color: '#64748b', trend: 'Awaiting Ballots' };
     if (isTie) return { title: '⚖️ Split Mat (Tie)', color: TIE_COLOR, trend: 'Evenly Split' };
@@ -332,21 +401,29 @@ export default function DrishtiMap({
       <style>{`
         @keyframes calmRadarWave {
           0% { r: 6px; opacity: 0.95; stroke-width: 3px; }
-          100% { r: 38px; opacity: 0; stroke-width: 0.2px; }
-        }
-        @keyframes calmRadarWaveOuter {
-          0% { r: 12px; opacity: 0.8; stroke-width: 2px; }
-          100% { r: 52px; opacity: 0; stroke-width: 0.1px; }
+          100% { r: 36px; opacity: 0; stroke-width: 0.2px; }
         }
         .state-calm-radar {
           animation: calmRadarWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .state-calm-radar-outer {
-          animation: calmRadarWaveOuter 3s infinite 0.75s cubic-bezier(0.4, 0, 0.2, 1);
+        @keyframes livePopShockwaveRing {
+          0% { r: 6px; opacity: 1; stroke-width: 4px; }
+          100% { r: 42px; opacity: 0; stroke-width: 0.5px; }
+        }
+        .live-pop-shockwave-circle {
+          animation: livePopShockwaveRing 1.8s infinite ease-out;
+        }
+        @keyframes livePopFade {
+          0% { filter: brightness(1.6); }
+          50% { filter: brightness(1.2); }
+          100% { filter: brightness(1); }
+        }
+        .live-pop-shockwave {
+          animation: livePopFade 3.5s ease-out forwards;
         }
         @keyframes calmSeatBreathing {
           0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
-          50% { stroke-width: 4.5px; filter: drop-shadow(0 0 16px ${resolvedHomeColor}cc); }
+          50% { stroke-width: 4px; filter: drop-shadow(0 0 14px ${resolvedHomeColor}cc); }
           100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
         }
         .user-seat-glow {
@@ -356,7 +433,7 @@ export default function DrishtiMap({
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard: Directly Reflects Vote from Ballot #1 */}
+      {/* 3-Box Live Scorecard: Distinct Split Mat Colors */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
@@ -397,7 +474,7 @@ export default function DrishtiMap({
             <span>{opt.text_en.split('/')[0].slice(0, 16)}</span>
           </div>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: TIE_COLOR }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: TIE_COLOR, flexShrink: 0 }} />
           <span>⚖️ Split (Tie)</span>
         </div>

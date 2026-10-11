@@ -40,7 +40,7 @@ interface PollExpandedViewProps {
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#cbd5e1';
-const TIE_COLOR = '#64748b';
+const TIE_COLOR = '#475569';
 const RADAR_GREEN = '#10b981';
 
 let CACHED_PREPROJECTED_SEATS: PreprojectedSeat[] | null = null;
@@ -56,6 +56,7 @@ export default function PollExpandedView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mapGroupRef = useRef<SVGGElement | null>(null);
+  const optionsSectionRef = useRef<HTMLDivElement | null>(null);
   const gridSectionRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,6 +79,8 @@ export default function PollExpandedView({
   } | null>(null);
 
   const [tallies, setTallies] = useState<any[]>([]);
+  // Live Popping Pulses Queue for Drishti Bharat
+  const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
   useEffect(() => {
     if (CACHED_PREPROJECTED_SEATS) {
@@ -117,7 +120,8 @@ export default function PollExpandedView({
   useEffect(() => {
     loadTallies();
 
-    const channel = supabase
+    // 1. Live Tally Changes
+    const tallyChannel = supabase
       .channel(`expanded_tallies_live_${poll.id}`)
       .on(
         'postgres_changes',
@@ -128,8 +132,46 @@ export default function PollExpandedView({
       )
       .subscribe();
 
+    // 2. Real-time Live Ballot Popping Pulse on Drishti Bharat
+    const ballotChannel = supabase
+      .channel(`expanded_ballot_pulse_${poll.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ballot_box', filter: `poll_id=eq.${poll.id}` },
+        (payload) => {
+          const newBallot = payload.new;
+          if (newBallot && newBallot.constituency_name) {
+            const cleanSeat = clean(newBallot.constituency_name);
+            const optColor = OPTION_PALETTE[Number(newBallot.selected_option || 0) % OPTION_PALETTE.length];
+            setLivePulses((prev) => ({
+              ...prev,
+              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3500 }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setLivePulses((prev) => {
+        let changed = false;
+        const next: Record<string, { color: string; expiresAt: number }> = {};
+        Object.entries(prev).forEach(([key, val]) => {
+          if (val.expiresAt > now) {
+            next[key] = val;
+          } else {
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(tallyChannel);
+      supabase.removeChannel(ballotChannel);
+      clearInterval(interval);
     };
   }, [poll.id]);
 
@@ -144,7 +186,6 @@ export default function PollExpandedView({
     return cId.includes(cleanUserSeat) || cName.includes(cleanUserSeat) || cleanUserSeat.includes(cName);
   };
 
-  // Dynamic Living Ledger Aggregation
   const { nationalStats, stateStats, seatStats, seatMap, stateTable, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(poll.options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
@@ -198,7 +239,6 @@ export default function PollExpandedView({
       }
     });
 
-    // Optimistic fallback for zero-delay voter reflection
     if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
       if (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0) {
         targetSeatRecord = {
@@ -215,7 +255,6 @@ export default function PollExpandedView({
       }
     }
 
-    // Determine home seat color
     let homeColor = UNPOLLED_SEAT_COLOR;
     if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
       if (targetSeatRecord.is_tie) {
@@ -228,7 +267,6 @@ export default function PollExpandedView({
       homeColor = OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length];
     }
 
-    // National Level
     const resolveBreakdown = (arr: number[], total: number) => {
       if (total === 0) return { title: '0 Ballots', color: '#64748b', pct: 0, isTie: false };
       const maxV = Math.max(...arr);
@@ -249,7 +287,6 @@ export default function PollExpandedView({
     const natVerdict = resolveBreakdown(natBreakdown, natTotal);
     const stVerdict = resolveBreakdown(stBreakdown, stTotal);
 
-    // Lok Sabha Level
     const localTotal = Number(targetSeatRecord?.total_votes || 0);
     let localVerdict: any;
 
@@ -284,8 +321,13 @@ export default function PollExpandedView({
   }, [tallies, seats, cleanUserState, cleanUserSeat, userVotedOptionIdx, poll.options, lang]);
 
   const getSeatColor = (seat: PreprojectedSeat) => {
+    const cleanSeatName = clean(seat.name);
+    if (livePulses[cleanSeatName]) {
+      return livePulses[cleanSeatName].color;
+    }
+
     if (isUserSeat(seat)) return resolvedHomeColor;
-    const row = seatMap[clean(seat.name)];
+    const row = seatMap[cleanSeatName];
     if (!row || Number(row.total_votes || 0) === 0) return UNPOLLED_SEAT_COLOR;
 
     if (row.is_tie) return TIE_COLOR;
@@ -293,14 +335,17 @@ export default function PollExpandedView({
   };
 
   const getSeatOpacity = (seat: PreprojectedSeat) => {
-    const row = seatMap[clean(seat.name)];
+    const cleanSeatName = clean(seat.name);
+    if (livePulses[cleanSeatName]) return 1.0;
+
+    const row = seatMap[cleanSeatName];
     const total = isUserSeat(seat)
       ? Number(seatStats.total || 1)
       : Number(row?.total_votes || 0);
 
     if (total === 0) return 1;
-    if (total < 10) return 0.78;
-    if (total < 50) return 0.90;
+    if (total < 10) return 0.82;
+    if (total < 50) return 0.92;
     return 1.0;
   };
 
@@ -325,11 +370,11 @@ export default function PollExpandedView({
     svg.call(zoomBehavior);
   }, [loading]);
 
-  // Guaranteed Instant Reset
+  // Guaranteed Instant Reset with Transition Interruption
   const resetZoom = () => {
     if (!svgRef.current || !mapGroupRef.current) return;
     const svg = d3.select(svgRef.current);
-    svg.interrupt(); // Stops any in-flight transitions immediately
+    svg.interrupt();
     svg.call(
       d3.zoom<SVGSVGElement, unknown>().transform as any,
       d3.zoomIdentity
@@ -354,12 +399,13 @@ export default function PollExpandedView({
     }
   }, [seats, cleanUserSeat]);
 
+  // Auto-scroll when 'Grid' button is clicked
   const handleToggleView = (mode: 'map' | 'grid') => {
     setViewMode(mode);
     if (mode === 'grid') {
       setTimeout(() => {
         gridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 60);
+      }, 50);
     }
   };
 
@@ -447,10 +493,10 @@ export default function PollExpandedView({
           stroke: ${resolvedHomeColor} !important;
           fill: ${resolvedHomeColor} !important;
         }
-        @keyframes pulseDot {
-          0% { transform: scale(0.85); opacity: 0.6; }
-          50% { transform: scale(1.25); opacity: 1; }
-          100% { transform: scale(0.85); opacity: 0.6; }
+        @keyframes liveDotPulseSlow {
+          0% { opacity: 0.35; transform: scale(0.92); }
+          50% { opacity: 1; transform: scale(1.15); }
+          100% { opacity: 0.35; transform: scale(0.92); }
         }
         .live-dot {
           width: 8px;
@@ -458,7 +504,7 @@ export default function PollExpandedView({
           border-radius: 50%;
           background-color: #ef4444;
           display: inline-block;
-          animation: pulseDot 1.8s infinite ease-in-out;
+          animation: liveDotPulseSlow 2.4s infinite ease-in-out;
         }
       `}</style>
 
@@ -549,10 +595,10 @@ export default function PollExpandedView({
         </div>
       </header>
 
-      <div style={{ width: '100%', maxWidth: '480px', marginTop: '4px' }}>
-        <TickerTape activePoll={poll} lang={lang} />
-      </div>
+      {/* Full Bleed Ticker */}
+      <TickerTape activePoll={poll} lang={lang} />
 
+      {/* Dedicated side margins (touch scroll friendly) */}
       <div style={{ maxWidth: '480px', width: '100%', padding: '12px 14px 80px 14px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
         
         {/* Question Header */}
@@ -564,35 +610,35 @@ export default function PollExpandedView({
             <span style={{ fontSize: '11px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706' }}>{poll.category} {lang === 'HI' ? 'प्रश्न' : 'Question'}</span>
           </div>
 
-          <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: '1.45' }}>
+          <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: '1.45', wordBreak: 'break-word' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
           </h1>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0 0 0', lineHeight: '1.5' }}>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0 0 0', lineHeight: '1.5', wordBreak: 'break-word' }}>
             {lang === 'EN' ? poll.title_hi : poll.title_en}
           </p>
         </div>
 
         {/* Option Distribution Bars */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div ref={optionsSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
               const stat = nationalStats.optBars[idx] || { pct: 0 };
               const color = OPTION_PALETTE[idx % OPTION_PALETTE.length];
               return (
                 <div key={opt.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
                       <span style={{ width: '10px', height: '10px', borderRadius: '3px', backgroundColor: color, marginTop: '4px', flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a' }}>
+                      <div style={{ wordBreak: 'break-word' }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', lineHeight: 1.35 }}>
                           {lang === 'EN' ? opt.text_en : opt.text_hi}
                         </div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px', lineHeight: 1.4 }}>
                           {lang === 'EN' ? opt.text_hi : opt.text_en}
                         </div>
                       </div>
                     </div>
-                    <span style={{ fontSize: '13px', fontWeight: 800, color, marginLeft: '8px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color, flexShrink: 0 }}>
                       {stat.pct}%
                     </span>
                   </div>
@@ -605,7 +651,7 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* Living Ledger 3-Box Scorecard (Reflects Instantly from Ballot #1) */}
+        {/* 3-Box Scorecard: Distinct Split Mat Colors */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
@@ -653,7 +699,7 @@ export default function PollExpandedView({
               overflow: 'hidden'
             }}
           >
-            {/* Viewport-Aware Search Bar & Instant Reset Button */}
+            {/* Search Bar with dedicated '✕ Clear' button */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <input
@@ -664,7 +710,7 @@ export default function PollExpandedView({
                   style={{
                     width: '100%',
                     boxSizing: 'border-box',
-                    padding: '10px 14px',
+                    padding: '10px 36px 10px 14px',
                     borderRadius: '10px',
                     border: '1px solid #cbd5e1',
                     fontSize: '12px',
@@ -673,6 +719,27 @@ export default function PollExpandedView({
                     fontWeight: 600
                   }}
                 />
+
+                {/* Clear '✕' Button */}
+                {searchQuery.trim() && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontWeight: 800
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
 
                 {filteredSearchMatches.length > 0 && (
                   <div
@@ -764,6 +831,7 @@ export default function PollExpandedView({
                     const leadOpt = poll.options[winIdx];
                     const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
                     const userMatched = isUserSeat(seat);
+                    const isPulse = Boolean(livePulses[clean(seat.name)]);
 
                     return (
                       <g key={`${seat.id}-${index}`}>
@@ -772,10 +840,10 @@ export default function PollExpandedView({
                           d={seat.d}
                           fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
                           fillOpacity={getSeatOpacity(seat)}
-                          stroke={isSearched ? '#e11d48' : userMatched ? resolvedHomeColor : '#94a3b8'}
-                          strokeWidth={isSearched ? 2.5 : userMatched ? 3.5 : 0.65}
-                          className={userMatched ? 'user-seat-glowing-national' : ''}
-                          style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease, fill-opacity 0.2s ease' }}
+                          stroke={isSearched ? '#e11d48' : isPulse ? livePulses[clean(seat.name)].color : userMatched ? resolvedHomeColor : '#94a3b8'}
+                          strokeWidth={isSearched ? 2.5 : isPulse ? 3.5 : userMatched ? 3.5 : 0.65}
+                          className={userMatched ? 'user-seat-glowing-national' : isPulse ? 'live-pop-shockwave' : ''}
+                          style={{ cursor: 'pointer', transition: 'fill 0.25s ease, stroke 0.25s ease' }}
                           onMouseMove={(e) => {
                             triggerTooltip({
                               name: seat.name,
