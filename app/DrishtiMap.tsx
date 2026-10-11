@@ -8,19 +8,19 @@ interface DrishtiMapProps {
   selectedConstituencyName?: string;
   selectedState?: string;
   pollId?: string;
-  cycleId?: string;
   userVotedOptionIdx?: number | null;
   options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
-const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
+// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
+const RADAR_GREEN = '#10b981';
 
 export default function DrishtiMap({
   selectedConstituencyName = 'Darbhanga',
   selectedState = 'Bihar',
   pollId,
-  cycleId,
   userVotedOptionIdx = null,
   options = []
 }: DrishtiMapProps) {
@@ -29,8 +29,8 @@ export default function DrishtiMap({
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Exact option color selected by user
-  const activeOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
+  // Exact option color chosen by the citizen
+  const userOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
     ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
     : OPTION_PALETTE[0];
 
@@ -64,8 +64,7 @@ export default function DrishtiMap({
     if (!pollId) return;
     try {
       const { data, error } = await supabase.rpc('get_live_consensus_hierarchy', {
-        p_poll_id: pollId,
-        p_cycle_id: cycleId || null
+        p_poll_id: pollId
       });
       if (data && !error) {
         setTelemetry(data);
@@ -88,7 +87,7 @@ export default function DrishtiMap({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [pollId, cycleId]);
+  }, [pollId]);
 
   const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const activeTarget = clean(selectedConstituencyName);
@@ -116,8 +115,8 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
-    // The user's home seat strictly adopts their chosen option's color
-    if (isTargetMatch(name)) return activeOptionColor;
+    // Citizen's home constituency takes the color of their chosen option
+    if (isTargetMatch(name)) return userOptionColor;
     const seatData = telemetry.constituencies[clean(name)];
     if (!seatData || !seatData.is_fortified) return UNPOLLED_SEAT_COLOR;
     return OPTION_PALETTE[seatData.leading_option % OPTION_PALETTE.length];
@@ -151,7 +150,7 @@ export default function DrishtiMap({
       .attr('d', (d: any) => pathGenerator(d))
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? activeOptionColor : '#94a3b8';
+        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? userOptionColor : '#94a3b8';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
@@ -162,7 +161,7 @@ export default function DrishtiMap({
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Centroid Radar Pulsing Beacon
+    // Radar is ALWAYS UNIFORM GREEN across the entire app
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -171,49 +170,53 @@ export default function DrishtiMap({
     if (activeFeature) {
       const centroid = pathGenerator.centroid(activeFeature);
       if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
-        // Inner Radar Ring
+        // Inner Green Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
           .attr('r', 16)
           .attr('fill', 'none')
-          .attr('stroke', activeOptionColor)
+          .attr('stroke', RADAR_GREEN)
           .attr('stroke-width', 3)
           .attr('class', 'state-calm-radar')
           .attr('pointer-events', 'none');
 
-        // Outer Radar Ring
+        // Outer Green Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
           .attr('r', 28)
           .attr('fill', 'none')
-          .attr('stroke', activeOptionColor)
+          .attr('stroke', '#34d399')
           .attr('stroke-width', 1.5)
           .attr('class', 'state-calm-radar-outer')
           .attr('pointer-events', 'none');
 
-        // Center Beacon Core
+        // Center Green Beacon Core
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
           .attr('r', 5.5)
-          .attr('fill', activeOptionColor)
+          .attr('fill', '#065f46')
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 2)
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, telemetry, activeOptionColor]);
+  }, [stateFeatures, selectedConstituencyName, telemetry, userOptionColor]);
 
-  // Read Telemetry Values Cleanly
+  // Read Live Database Telemetry Values
   const seatRecord = telemetry.constituencies[activeTarget] || { total_votes: 0, is_fortified: false, leading_option: 0 };
-  const stateRecord = telemetry.states[activeStateKey] || { total_votes: 0, leading_option: 0, fortified_seats: 0 };
+  const stateRecord = telemetry.states[activeStateKey] || { total_votes: 0, leading_option: 0 };
   const nationalRecord = telemetry.national || { total_votes: 0, leading_option: 0 };
 
   const getOptTitle = (idx: number) => {
     return options[idx] ? options[idx].text_en.split('/')[0].slice(0, 14) : `Option ${idx + 1}`;
   };
+
+  const seatTotalVotes = Number(seatRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
+  const stateTotalVotes = Number(stateRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
+  const nationalTotalVotes = Number(nationalRecord.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
 
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
@@ -235,21 +238,21 @@ export default function DrishtiMap({
         @keyframes calmSeatBreathing {
           0% {
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px ${activeOptionColor}66);
+            filter: drop-shadow(0 0 3px ${userOptionColor}66);
           }
           50% {
             stroke-width: 4.5px;
-            filter: drop-shadow(0 0 16px ${activeOptionColor}cc);
+            filter: drop-shadow(0 0 16px ${userOptionColor}cc);
           }
           100% {
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px ${activeOptionColor}66);
+            filter: drop-shadow(0 0 3px ${userOptionColor}66);
           }
         }
         .user-state-glow {
           animation: calmSeatBreathing 3s infinite ease-in-out !important;
-          stroke: ${activeOptionColor} !important;
-          fill: ${activeOptionColor} !important;
+          stroke: ${userOptionColor} !important;
+          fill: ${userOptionColor} !important;
         }
       `}</style>
 
@@ -258,35 +261,35 @@ export default function DrishtiMap({
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
-            {nationalRecord.total_votes > 0 ? getOptTitle(nationalRecord.leading_option) : '0 Ballots'}
+            {nationalTotalVotes > 0 ? getOptTitle(nationalRecord.leading_option || 0) : '0 Ballots'}
           </div>
           <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-            {Number(nationalRecord.total_votes).toLocaleString()} Votes
+            {nationalTotalVotes.toLocaleString()} {nationalTotalVotes === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
-            {stateRecord.total_votes > 0 ? getOptTitle(stateRecord.leading_option) : '0 Ballots'}
+            {stateTotalVotes > 0 ? getOptTitle(stateRecord.leading_option || 0) : '0 Ballots'}
           </div>
           <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
-            {Number(stateRecord.total_votes).toLocaleString()} Votes
+            {stateTotalVotes.toLocaleString()} {stateTotalVotes === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: activeOptionColor, marginTop: '2px' }}>
-            {seatRecord.total_votes > 0 ? getOptTitle(seatRecord.leading_option) : '1 Ballot Active'}
+          <div style={{ fontSize: '11px', fontWeight: 900, color: userOptionColor, marginTop: '2px' }}>
+            {seatTotalVotes > 0 ? getOptTitle(userVotedOptionIdx ?? seatRecord.leading_option) : '0 Ballots'}
           </div>
           <div style={{ fontSize: '9px', color: seatRecord.is_fortified ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
-            {seatRecord.is_fortified ? '● Quorum Met' : `⏳ ${seatRecord.total_votes}/50 Ballots`}
+            {seatRecord.is_fortified ? '● Quorum Met' : `⏳ ${seatTotalVotes}/50 Ballots`}
           </div>
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Standardized Legend */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', padding: '6px 8px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
         {options.map((opt, idx) => (
           <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>

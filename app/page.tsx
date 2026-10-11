@@ -11,7 +11,8 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST = 50;
-const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
+// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 
 interface Poll {
   id: string;
@@ -51,7 +52,7 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
   'gaya': {
     pcCode: '38-BI',
     mpName: 'Jitan Ram Manjhi',
-    party: 'Hindustani Awam Hamrocha (Secular) / NDA',
+    party: 'Hindustani Awam Morcha (Secular) / NDA',
     cases: 6,
     education: 'Graduate (B.A. Hons)',
     assets: '₹1.54 Crore',
@@ -284,7 +285,7 @@ export default function BhuMatApp() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
+    setTimeout(() => setToastMessage(''), 3500);
   };
 
   useEffect(() => {
@@ -453,7 +454,14 @@ export default function BhuMatApp() {
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
     const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
 
+    // Point 6: JanMat Already Voted Double-Tap Toast
     if (votedCycleKeys.includes(cycleVoteKey)) {
+      if (poll.participation_mode === 'recurring') {
+        const nextCycleDate = '1st November 2026';
+        showToast(lang === 'HI' ? `आप पहले ही मतदान कर चुके हैं। अगला चक्र: ${nextCycleDate}` : `You already voted. Next vote on ${nextCycleDate}.`);
+      } else {
+        showToast(lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं।' : 'You already voted.');
+      }
       return;
     }
 
@@ -569,6 +577,13 @@ export default function BhuMatApp() {
     return out;
   }, [seatSearchInput]);
 
+  // Instant Match Badge List for Seat Input
+  const quickSeatMatches = useMemo(() => {
+    if (!seatSearchInput.trim() || tentativeSeat) return [];
+    const q = seatSearchInput.toLowerCase().trim();
+    return allFlattenedSeats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 5);
+  }, [seatSearchInput, allFlattenedSeats, tentativeSeat]);
+
   const civicBadge = useMemo(() => {
     if (janmatAuditsCount >= 3 && lokmatPollsCount >= 3) {
       return { title: lang === 'HI' ? '🇮🇳 राष्ट्रीय नागरिक' : '🇮🇳 Rashtriya Nagrik', bg: '#fef3c7', text: '#b45309', border: '#fde68a' };
@@ -590,6 +605,7 @@ export default function BhuMatApp() {
         poll={expandedPoll}
         userSeatName={selectedSeat?.name}
         userState={selectedSeat?.state}
+        userVotedOptionIdx={selectedVotes[expandedPoll.id]}
         lang={lang}
         onBack={closeExpandedView}
       />
@@ -698,14 +714,34 @@ export default function BhuMatApp() {
                   {lang === 'HI' ? 'अपना गोपनीय मतपत्र अनलॉक करने के लिए अपने 543 लोकसभा निर्वाचन क्षेत्र का चयन करें:' : 'Select your Lok Sabha constituency to unlock your anonymous sovereign ballot:'}
                 </p>
 
+                {/* Search Box with Real-time Filtering */}
                 <input
                   type="text"
                   placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे दरभंगा, गया, गोरखपुर)...' : '🔍 Search seat or state (e.g. Darbhanga, Gaya, Gorakhpur)...'}
                   value={seatSearchInput}
                   onChange={(e) => setSeatSearchInput(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', marginBottom: '10px' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', marginBottom: '8px' }}
                 />
 
+                {/* Instant Live Badges for typed search */}
+                {quickSeatMatches.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {quickSeatMatches.map((m) => (
+                      <span
+                        key={m.name}
+                        onClick={() => {
+                          setTentativeSeat({ name: m.name, state: m.state });
+                          setSeatSearchInput(m.name);
+                        }}
+                        style={{ backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        📍 {m.name} ({m.state})
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* State-Grouped Select with Bold Banners */}
                 <select
                   value={tentativeSeat ? `${tentativeSeat.name}|||${tentativeSeat.state}` : ''}
                   onChange={(e) => {
@@ -717,9 +753,11 @@ export default function BhuMatApp() {
                 >
                   <option value="">{lang === 'HI' ? '-- 543 संसदीय क्षेत्रों में से चुनें --' : '-- Choose Parliamentary Seat (543) --'}</option>
                   {Object.entries(filteredDropdownSeats).map(([state, seats]) => (
-                    <optgroup key={state} label={`📍 ${state.toUpperCase()}`}>
+                    <optgroup key={state} label={`──────── 📍 ${state.toUpperCase()} ────────`}>
                       {seats.map((seat) => (
-                        <option key={seat} value={`${seat}|||${state}`}>{seat}</option>
+                        <option key={seat} value={`${seat}|||${state}`}>
+                          {seat} ({state})
+                        </option>
                       ))}
                     </optgroup>
                   ))}
@@ -783,7 +821,6 @@ export default function BhuMatApp() {
                     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                     const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
 
-                    // If voted, default view is State Drishti (flipped = true) UNLESS user manually toggled it
                     const isFlipped = flippedOverrides[poll.id] !== undefined 
                       ? flippedOverrides[poll.id] 
                       : hasVotedThisCycle;
@@ -798,7 +835,7 @@ export default function BhuMatApp() {
                           {/* Front: Ballot View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
-                              {/* UNIFIED TOP HEADER: Rotate Button aligned at top-right */}
+                              {/* TOP HEADER: Aligned rotate button at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className="red-dot-live" />
@@ -858,7 +895,6 @@ export default function BhuMatApp() {
                                   return (
                                     <button
                                       key={opt.id}
-                                      disabled={hasVotedThisCycle || isBlackedOut}
                                       onClick={() => handleCastVote(poll, idx)}
                                       style={{
                                         padding: '16px',
@@ -868,7 +904,7 @@ export default function BhuMatApp() {
                                           ? `2.5px solid ${optColor}` 
                                           : `1.5px solid ${optColor}`,
                                         textAlign: 'left',
-                                        cursor: hasVotedThisCycle ? 'default' : 'pointer',
+                                        cursor: 'pointer',
                                         transition: 'all 0.2s ease',
                                         boxShadow: `0 1px 3px ${optColor}22`
                                       }}
@@ -909,7 +945,7 @@ export default function BhuMatApp() {
                           {/* Back: Drishti State View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
-                              {/* UNIFIED TOP HEADER: Rotate Button aligned at top-right */}
+                              {/* TOP HEADER: Aligned rotate button at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                 <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
                                   ✓ {lang === 'HI' ? 'दृष्टि पल्स सक्रिय' : 'DRISHTI PULSE ACTIVE'}
@@ -926,13 +962,12 @@ export default function BhuMatApp() {
                                 selectedConstituencyName={selectedSeat?.name} 
                                 selectedState={selectedSeat?.state} 
                                 pollId={poll.id} 
-                                cycleId={poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime'}
                                 userVotedOptionIdx={selectedVotes[poll.id]}
                                 options={poll.options} 
                               />
                             </div>
 
-                            {/* CONSISTENT BUTTON SIZING: Equal height (46px) & prominent styling */}
+                            {/* Prominent equal-height buttons */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
                               <button 
                                 onClick={() => openExpandedView(poll)} 

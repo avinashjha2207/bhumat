@@ -31,12 +31,15 @@ interface PollExpandedViewProps {
   poll: Poll;
   userSeatName?: string;
   userState?: string;
+  userVotedOptionIdx?: number | null;
   lang: 'EN' | 'HI';
   onBack: () => void;
 }
 
-const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
+// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#cbd5e1';
+const RADAR_GREEN = '#10b981';
 
 let CACHED_PREPROJECTED_SEATS: PreprojectedSeat[] | null = null;
 
@@ -44,17 +47,31 @@ export default function PollExpandedView({
   poll,
   userSeatName = '',
   userState = '',
+  userVotedOptionIdx = null,
   lang,
   onBack
 }: PollExpandedViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const gridSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [seats, setSeats] = useState<PreprojectedSeat[]>(CACHED_PREPROJECTED_SEATS || []);
   const [loading, setLoading] = useState(!CACHED_PREPROJECTED_SEATS);
   const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
   const [searchQuery, setSearchQuery] = useState('');
   const [userBeaconCoords, setUserBeaconCoords] = useState<{ x: number; y: number } | null>(null);
+
+  // Mouse Floating Tooltip State (Hidden by default, moves with cursor)
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredSeat, setHoveredSeat] = useState<{
+    name: string;
+    state: string;
+    totalVotes: number;
+    leadingOpt: number;
+    leadingVotes: number;
+    isFortified: boolean;
+    votesTowardsQuorum: number;
+  } | null>(null);
 
   const [telemetry, setTelemetry] = useState<{
     national: any;
@@ -65,17 +82,6 @@ export default function PollExpandedView({
     states: {},
     constituencies: {}
   });
-
-  // Tooltip is NULL by default (NO default Dibrugarh box)
-  const [selectedSeatDetails, setSelectedSeatDetails] = useState<{
-    name: string;
-    state: string;
-    totalVotes: number;
-    leadingOpt: number;
-    leadingVotes: number;
-    isFortified: boolean;
-    votesTowardsQuorum: number;
-  } | null>(null);
 
   useEffect(() => {
     if (CACHED_PREPROJECTED_SEATS) {
@@ -137,8 +143,14 @@ export default function PollExpandedView({
 
   const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+  // Exact option color chosen by the citizen
+  const userOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
+    ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
+    : OPTION_PALETTE[0];
+
   const getSeatColor = (seat: PreprojectedSeat) => {
-    if (isUserSeat(seat)) return isJanMat ? '#059669' : '#d97706';
+    // User seat takes their voted option color
+    if (isUserSeat(seat)) return userOptionColor;
     const sData = telemetry.constituencies[clean(seat.name)];
     if (!sData || !sData.is_fortified) return UNPOLLED_SEAT_COLOR;
     return OPTION_PALETTE[sData.leading_option % OPTION_PALETTE.length];
@@ -195,6 +207,23 @@ export default function PollExpandedView({
     }
   }, [seats, cleanUserSeat]);
 
+  // Smooth Scroll on Grid Toggle
+  const handleToggleView = (mode: 'map' | 'grid') => {
+    setViewMode(mode);
+    if (mode === 'grid') {
+      setTimeout(() => {
+        gridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  };
+
+  // Instant Search Matches for Drishti Bharat Input
+  const filteredSearchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return seats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 6);
+  }, [searchQuery, seats]);
+
   return (
     <div
       suppressHydrationWarning
@@ -210,21 +239,21 @@ export default function PollExpandedView({
     >
       <style>{`
         @keyframes nationalCalmWave {
-          0% { r: 6px; opacity: 0.9; stroke-width: 3.5px; }
+          0% { r: 6px; opacity: 0.95; stroke-width: 3.5px; }
           100% { r: 40px; opacity: 0; stroke-width: 0.2px; }
         }
         .national-beacon-ring {
-          animation: nationalCalmWave 3.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+          animation: nationalCalmWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
         @keyframes nationalSeatGlow {
-          0% { stroke: #047857; stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5)); }
-          50% { stroke: #10b981; stroke-width: 5px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 1)); }
-          100% { stroke: #047857; stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.5)); }
+          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${userOptionColor}66); }
+          50% { stroke-width: 5px; filter: drop-shadow(0 0 16px ${userOptionColor}cc); }
+          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${userOptionColor}66); }
         }
         .user-seat-glowing-national {
-          animation: nationalSeatGlow 3.2s infinite ease-in-out !important;
-          stroke: #10b981 !important;
-          fill: #10b981 !important;
+          animation: nationalSeatGlow 3s infinite ease-in-out !important;
+          stroke: ${userOptionColor} !important;
+          fill: ${userOptionColor} !important;
         }
         @keyframes pulseDot {
           0% { transform: scale(0.85); opacity: 0.6; }
@@ -240,6 +269,47 @@ export default function PollExpandedView({
           animation: pulseDot 1.8s infinite ease-in-out;
         }
       `}</style>
+
+      {/* Floating Dynamic Tooltip that moves with the mouse */}
+      {hoveredSeat && cursorPos && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${cursorPos.x + 14}px`,
+            top: `${cursorPos.y + 14}px`,
+            pointerEvents: 'none',
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            color: '#ffffff',
+            padding: '8px 12px',
+            borderRadius: '10px',
+            fontSize: '11px',
+            zIndex: 100,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(6px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxSizing: 'border-box',
+            maxWidth: '240px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline' }}>
+            <span style={{ fontWeight: 800, fontSize: '12px', color: '#ffffff' }}>{hoveredSeat.name}</span>
+            <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>{hoveredSeat.state}</span>
+          </div>
+          
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
+            {hoveredSeat.totalVotes > 0 
+              ? `Leading: ${poll.options[hoveredSeat.leadingOpt]?.text_en?.split('/')[0] || 'Verdict'} (${hoveredSeat.leadingVotes.toLocaleString()})`
+              : '0 ballots cast'}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9.5px' }}>
+            <span style={{ color: '#6ee7b7' }}>Total: {hoveredSeat.totalVotes.toLocaleString()}</span>
+            <span style={{ color: hoveredSeat.isFortified ? '#34d399' : '#fcd34d' }}>
+              {hoveredSeat.isFortified ? '● Quorum Met' : `Pending (${hoveredSeat.votesTowardsQuorum}/50)`}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header
@@ -272,13 +342,13 @@ export default function PollExpandedView({
 
         <div style={{ display: 'flex', gap: '2px', backgroundColor: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
           <button
-            onClick={() => setViewMode('map')}
+            onClick={() => handleToggleView('map')}
             style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: viewMode === 'map' ? (isJanMat ? '#059669' : '#d97706') : 'transparent', color: viewMode === 'map' ? '#ffffff' : '#64748b', fontWeight: 800, fontSize: '11px', cursor: 'pointer' }}
           >
             {lang === 'HI' ? 'मानचित्र' : 'Map'}
           </button>
           <button
-            onClick={() => setViewMode('grid')}
+            onClick={() => handleToggleView('grid')}
             style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: viewMode === 'grid' ? (isJanMat ? '#059669' : '#d97706') : 'transparent', color: viewMode === 'grid' ? '#ffffff' : '#64748b', fontWeight: 800, fontSize: '11px', cursor: 'pointer' }}
           >
             {lang === 'HI' ? 'ग्रिड' : 'Grid'}
@@ -358,7 +428,7 @@ export default function PollExpandedView({
           </div>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userSeatName || 'Lok Sabha'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: isJanMat ? '#059669' : '#d97706', marginTop: '6px' }}>{localLeadText}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: userOptionColor, marginTop: '6px' }}>{localLeadText}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{localLeadPct}%</div>
             <div style={{ fontSize: '9.5px', color: '#475569', marginTop: '2px' }}>{Number(seatRecord.total_votes).toLocaleString()} {lang === 'HI' ? 'मत' : 'Votes'}</div>
           </div>
@@ -380,50 +450,7 @@ export default function PollExpandedView({
               overflow: 'hidden'
             }}
           >
-            {/* COMPACT FLOATING DIALOG: Only appears on explicit seat selection/hover */}
-            {selectedSeatDetails && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  pointerEvents: 'none',
-                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                  color: '#ffffff',
-                  padding: '8px 14px',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  zIndex: 40,
-                  boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
-                  backdropFilter: 'blur(6px)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  boxSizing: 'border-box',
-                  maxWidth: '320px',
-                  width: '90%'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontWeight: 800, fontSize: '12px', color: '#ffffff' }}>{selectedSeatDetails.name}</span>
-                  <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>{selectedSeatDetails.state}</span>
-                </div>
-                
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
-                  {selectedSeatDetails.totalVotes > 0 
-                    ? `Leading: ${poll.options[selectedSeatDetails.leadingOpt]?.text_en?.split('/')[0] || 'Verdict'} (${selectedSeatDetails.leadingVotes.toLocaleString()} Votes)`
-                    : '0 ballots cast in this seat'}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9.5px' }}>
-                  <span style={{ color: '#6ee7b7' }}>Total: {selectedSeatDetails.totalVotes.toLocaleString()}</span>
-                  <span style={{ color: selectedSeatDetails.isFortified ? '#34d399' : '#fcd34d' }}>
-                    {selectedSeatDetails.isFortified ? '● Quorum Met' : `Pending Quorum (${selectedSeatDetails.votesTowardsQuorum}/50)`}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div style={{ width: '100%', marginBottom: '12px', boxSizing: 'border-box' }}>
+            <div style={{ width: '100%', marginBottom: '12px', position: 'relative', boxSizing: 'border-box' }}>
               <input
                 type="text"
                 placeholder={lang === 'HI' ? '🔍 क्षेत्र या 543 सीटें खोजें...' : '🔍 Search region / 543 seats...'}
@@ -431,6 +458,35 @@ export default function PollExpandedView({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#f8fafc', outline: 'none', fontWeight: 600 }}
               />
+
+              {/* Instant Search Filter Dropdown */}
+              {filteredSearchMatches.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, overflow: 'hidden' }}>
+                  {filteredSearchMatches.map((s) => (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        setSearchQuery(s.name);
+                        const sData = telemetry.constituencies[clean(s.name)] || { total_votes: 0, leading_option: 0, leading_votes: 0, is_fortified: false, votes_towards_quorum: 0 };
+                        setHoveredSeat({
+                          name: s.name,
+                          state: s.state,
+                          totalVotes: Number(sData.total_votes || 0),
+                          leadingOpt: Number(sData.leading_option || 0),
+                          leadingVotes: Number(sData.leading_votes || 0),
+                          isFortified: Boolean(sData.is_fortified),
+                          votesTowardsQuorum: Number(sData.votes_towards_quorum || 0)
+                        });
+                        setCursorPos({ x: window.innerWidth / 2, y: 350 });
+                      }}
+                      style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
+                    >
+                      <span>{s.name}</span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>{s.state}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {loading ? (
@@ -442,6 +498,10 @@ export default function PollExpandedView({
                 ref={svgRef}
                 viewBox="0 0 800 950"
                 style={{ width: '100%', height: 'auto', display: 'block', backgroundColor: '#ffffff' }}
+                onMouseLeave={() => {
+                  setHoveredSeat(null);
+                  setCursorPos(null);
+                }}
               >
                 {seats.map((seat, index) => {
                   const sData = telemetry.constituencies[clean(seat.name)] || { total_votes: 0, leading_option: 0, leading_votes: 0, is_fortified: false, votes_towards_quorum: 0 };
@@ -454,36 +514,45 @@ export default function PollExpandedView({
                       id={`pc-${seat.id}`}
                       d={seat.d}
                       fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
-                      stroke={isSearched ? '#e11d48' : userMatched ? '#047857' : '#94a3b8'}
+                      stroke={isSearched ? '#e11d48' : userMatched ? userOptionColor : '#94a3b8'}
                       strokeWidth={isSearched ? 2.5 : userMatched ? 3.5 : 0.65}
                       className={userMatched ? 'user-seat-glowing-national' : ''}
                       style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease' }}
-                      onClick={() => setSelectedSeatDetails({
-                        name: seat.name,
-                        state: seat.state,
-                        totalVotes: Number(sData.total_votes || 0),
-                        leadingOpt: Number(sData.leading_option || 0),
-                        leadingVotes: Number(sData.leading_votes || 0),
-                        isFortified: Boolean(sData.is_fortified),
-                        votesTowardsQuorum: Number(sData.votes_towards_quorum || 0)
-                      })}
-                      onMouseEnter={() => setSelectedSeatDetails({
-                        name: seat.name,
-                        state: seat.state,
-                        totalVotes: Number(sData.total_votes || 0),
-                        leadingOpt: Number(sData.leading_option || 0),
-                        leadingVotes: Number(sData.leading_votes || 0),
-                        isFortified: Boolean(sData.is_fortified),
-                        votesTowardsQuorum: Number(sData.votes_towards_quorum || 0)
-                      })}
+                      onMouseMove={(e) => {
+                        setCursorPos({ x: e.clientX, y: e.clientY });
+                        setHoveredSeat({
+                          name: seat.name,
+                          state: seat.state,
+                          totalVotes: Number(sData.total_votes || 0),
+                          leadingOpt: Number(sData.leading_option || 0),
+                          leadingVotes: Number(sData.leading_votes || 0),
+                          isFortified: Boolean(sData.is_fortified),
+                          votesTowardsQuorum: Number(sData.votes_towards_quorum || 0)
+                        });
+                      }}
+                      onTouchStart={(e) => {
+                        const touch = e.touches[0];
+                        if (touch) {
+                          setCursorPos({ x: touch.clientX, y: touch.clientY });
+                        }
+                        setHoveredSeat({
+                          name: seat.name,
+                          state: seat.state,
+                          totalVotes: Number(sData.total_votes || 0),
+                          leadingOpt: Number(sData.leading_option || 0),
+                          leadingVotes: Number(sData.leading_votes || 0),
+                          isFortified: Boolean(sData.is_fortified),
+                          votesTowardsQuorum: Number(sData.votes_towards_quorum || 0)
+                        });
+                      }}
                     />
                   );
                 })}
 
                 {userBeaconCoords && (
                   <g pointerEvents="none">
-                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={18} fill="none" stroke={isJanMat ? '#059669' : '#d97706'} strokeWidth={3.5} className="national-beacon-ring" />
-                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={5.5} fill={isJanMat ? '#065f46' : '#92400e'} stroke="#ffffff" strokeWidth={2} />
+                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={18} fill="none" stroke={RADAR_GREEN} strokeWidth={3.5} className="national-beacon-ring" />
+                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={5.5} fill="#065f46" stroke="#ffffff" strokeWidth={2} />
                   </g>
                 )}
               </svg>
@@ -501,8 +570,8 @@ export default function PollExpandedView({
             </button>
           </div>
         ) : (
-          /* Grid View */
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
+          /* Grid View Section with Smooth Scroll Anchor */
+          <div ref={gridSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
             <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <div style={{ minWidth: '580px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', padding: '8px 10px', fontSize: '10px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
