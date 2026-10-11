@@ -29,8 +29,19 @@ interface Poll {
   options: { id: number; text_en: string; text_hi: string }[];
 }
 
-// Authentic Delimitation Commission Vidhan Sabha Mapping
 const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
+  'vizianagaram': {
+    pcCode: '03-AP',
+    mpName: 'Appalanaidu Kalisetti',
+    party: 'Telugu Desam Party (TDP) / NDA',
+    cases: 0,
+    education: 'Graduate (B.Sc., B.Ed.)',
+    assets: '₹2.85 Crore',
+    turnout: '81.05%',
+    margin: '2,49,351 Votes',
+    electors: '15,62,110 Electors',
+    vidhanSabhaSegments: ['Etcherla (12)', 'Rajam [SC] (13)', 'Bobbili (14)', 'Cheepurupalli (15)', 'Gajapathinagaram (16)', 'Nellimarla (17)', 'Vizianagaram (18)']
+  },
   'banka': {
     pcCode: '27-BI',
     mpName: 'Giridhari Yadav',
@@ -222,7 +233,6 @@ function resolveConstituencyDossier(seatName: string, stateName: string) {
   };
 }
 
-// Format Date as: 3-letter Day, DD 3-letter Month (e.g. "Wed, 14 Oct")
 function format3LetterDate(dateStr?: string): string {
   if (!dateStr) return 'TBA';
   const d = new Date(dateStr);
@@ -232,7 +242,6 @@ function format3LetterDate(dateStr?: string): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-// Format "Voting Since" (Only append year if >= 11 months old)
 function formatVotingSince(dateStr?: string): string {
   if (!dateStr) return '11 Oct 2026';
   const d = new Date(dateStr);
@@ -278,13 +287,14 @@ export default function BhuMatApp() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
 
-  const [inspectedSeatName, setInspectedSeatName] = useState('Banka');
-  const [inspectedSeatState, setInspectedSeatState] = useState('Bihar');
+  const [inspectedSeatName, setInspectedSeatName] = useState('Vizianagaram');
+  const [inspectedSeatState, setInspectedSeatState] = useState('Andhra Pradesh');
   const [isInspectingFromSearch, setIsInspectingFromSearch] = useState(false);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
   const [filterStatePill, setFilterStatePill] = useState<string>('ALL');
 
   const [polls, setPolls] = useState<Poll[]>([]);
+  const [cachedTalliesByPoll, setCachedTalliesByPoll] = useState<Record<string, any[]>>({});
   const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
 
   const [sessionBallotChoices, setSessionBallotChoices] = useState<Record<string, number>>({});
@@ -327,7 +337,18 @@ export default function BhuMatApp() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const openExpandedView = (poll: Poll) => {
+  const openExpandedView = async (poll: Poll) => {
+    // Pre-fetch tallies to ensure instant rendering (0ms lag)
+    try {
+      const { data } = await supabase
+        .from('constituency_tallies')
+        .select('*')
+        .eq('poll_id', poll.id);
+      if (data) {
+        setCachedTalliesByPoll((prev) => ({ ...prev, [poll.id]: data }));
+      }
+    } catch (e) {}
+
     window.history.pushState({ modal: 'expanded' }, '');
     setExpandedPoll(poll);
   };
@@ -515,7 +536,6 @@ export default function BhuMatApp() {
     return polls.filter((p) => p.is_active && (pillarFilter === 'ALL' || p.category === pillarFilter));
   }, [polls, pillarFilter]);
 
-  // Current Season Future Polls (Current Month: October 2026)
   const currentSeasonFuturePolls = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -524,7 +544,6 @@ export default function BhuMatApp() {
     return polls.filter((p) => {
       if (!p.starts_at) return false;
       const d = new Date(p.starts_at);
-      // Scheduled in current calendar month and year
       const isCurrentSeason = d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       return isCurrentSeason && d.getTime() > now.getTime();
     });
@@ -559,10 +578,18 @@ export default function BhuMatApp() {
     return out;
   }, [seatSearchInput]);
 
+  // Exact Prefix Prioritized Matching for "Nagpur", "Nagaon", etc.
   const quickSeatMatches = useMemo(() => {
     if (!seatSearchInput.trim() || tentativeSeat) return [];
     const q = seatSearchInput.toLowerCase().trim();
-    return allFlattenedSeats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 5);
+    return allFlattenedSeats
+      .filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(q) ? -1 : 1;
+        const bStarts = b.name.toLowerCase().startsWith(q) ? -1 : 1;
+        return aStarts - bStarts;
+      })
+      .slice(0, 5);
   }, [seatSearchInput, allFlattenedSeats, tentativeSeat]);
 
   const formatRecurrenceBadge = (recurrence?: string) => {
@@ -586,6 +613,7 @@ export default function BhuMatApp() {
         userVotedOptionIdx={sessionBallotChoices[expandedPoll.id] ?? null}
         lang={lang}
         onBack={closeExpandedView}
+        initialTallies={cachedTalliesByPoll[expandedPoll.id] || []}
       />
     );
   }
@@ -670,7 +698,7 @@ export default function BhuMatApp() {
       </header>
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 14px 100px 14px' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 14px 110px 14px' }}>
         {activeTab === 'vote' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {!isConfirmed ? (
@@ -804,6 +832,7 @@ export default function BhuMatApp() {
                             {lang === 'EN' ? poll.title_hi : poll.title_en}
                           </p>
 
+                          {/* Nested Card-Bound Ticker */}
                           <div style={{ margin: '4px 0 16px 0' }}>
                             <TickerTape activePoll={poll} lang={lang} />
                           </div>
@@ -963,7 +992,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 3: DOSSIER (Authentic Vidhan Sabha Segments) */}
+        {/* TAB 3: DOSSIER */}
         {activeTab === 'dossier' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {isInspectingFromSearch && (
@@ -1009,7 +1038,6 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Exact Delimitation Commission Assembly Segments */}
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Assembly Segments (Vidhan Sabha):</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
@@ -1024,10 +1052,9 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 4: SCHEDULE (Filtered by Current Active Season) */}
+        {/* TAB 4: SCHEDULE */}
         {activeTab === 'schedule' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Top Season Dialogue Box */}
             <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #0284c7', borderRadius: '20px', padding: '20px', boxShadow: '0 4px 12px rgba(2,132,199,0.06)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>
@@ -1052,7 +1079,6 @@ export default function BhuMatApp() {
               </div>
             </div>
 
-            {/* List of Future Scheduled Polls for Current Season */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '12px', fontWeight: 800, color: '#475569', margin: '4px 2px' }}>
                 Scheduled Drops This Season ({currentSeasonFuturePolls.length}):
@@ -1088,7 +1114,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 5: PROFILE (Referral Sharing, Inline Seat Change, Accurate Counters) */}
+        {/* TAB 5: PROFILE */}
         {activeTab === 'profile' && (
           <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
@@ -1102,7 +1128,6 @@ export default function BhuMatApp() {
                 </span>
               </div>
 
-              {/* DBG Wallet Card */}
               <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#94a3b8' }}>Civic Balance</div>
@@ -1111,7 +1136,6 @@ export default function BhuMatApp() {
                 <div style={{ fontSize: '11px', color: '#38bdf8' }}>Seat Change: {SEAT_CHANGE_COST_DBG} DBG</div>
               </div>
 
-              {/* Referral Widget */}
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px', marginTop: '14px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Your Sovereign Referral Code</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
@@ -1142,7 +1166,6 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Voting Since & Total Ballots Cast */}
               <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                   <span style={{ color: '#64748b' }}>Voting Since:</span>
@@ -1162,7 +1185,6 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Vote Counters */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '14px' }}>
                 <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
                   <div style={{ fontSize: '10px', fontWeight: 800, color: '#059669' }}>JanMat Audits</div>
@@ -1174,7 +1196,6 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Seat Change Button Directly in Profile */}
               <button
                 onClick={() => {
                   setIsConfirmed(false);
@@ -1200,27 +1221,43 @@ export default function BhuMatApp() {
         )}
       </main>
 
-      {/* Dock Navigation */}
-      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px', backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-around', zIndex: 50 }}>
-        <button onClick={() => setActiveTab('search')} style={{ background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-          <span style={{ fontSize: '18px' }}>🔍</span>
-          <span style={{ fontSize: '10px', fontWeight: 700 }}>Search</span>
+      {/* Dock Navigation with Mobile Safe-Area Label Visibility */}
+      <nav
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '64px',
+          backgroundColor: '#ffffff',
+          borderTop: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          zIndex: 50,
+          paddingBottom: 'env(safe-area-inset-bottom, 6px)',
+          boxSizing: 'border-box'
+        }}
+      >
+        <button onClick={() => setActiveTab('search')} style={{ background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+          <span style={{ fontSize: '18px', lineHeight: 1 }}>🔍</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Search</span>
         </button>
-        <button onClick={() => setActiveTab('dossier')} style={{ background: 'none', border: 'none', color: activeTab === 'dossier' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-          <span style={{ fontSize: '18px' }}>📋</span>
-          <span style={{ fontSize: '10px', fontWeight: 700 }}>Dossier</span>
+        <button onClick={() => setActiveTab('dossier')} style={{ background: 'none', border: 'none', color: activeTab === 'dossier' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+          <span style={{ fontSize: '18px', lineHeight: 1 }}>📋</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Dossier</span>
         </button>
-        <button onClick={() => setActiveTab('vote')} style={{ background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-          <span style={{ fontSize: '20px' }}>🗳️</span>
-          <span style={{ fontSize: '10px', fontWeight: 800 }}>Vote</span>
+        <button onClick={() => setActiveTab('vote')} style={{ background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+          <span style={{ fontSize: '19px', lineHeight: 1 }}>🗳️</span>
+          <span style={{ fontSize: '10px', fontWeight: 800, marginTop: '3px' }}>Vote</span>
         </button>
-        <button onClick={() => setActiveTab('schedule')} style={{ background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-          <span style={{ fontSize: '18px' }}>📅</span>
-          <span style={{ fontSize: '10px', fontWeight: 700 }}>Schedule</span>
+        <button onClick={() => setActiveTab('schedule')} style={{ background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+          <span style={{ fontSize: '18px', lineHeight: 1 }}>📅</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Schedule</span>
         </button>
-        <button onClick={() => setActiveTab('profile')} style={{ background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-          <span style={{ fontSize: '18px' }}>👤</span>
-          <span style={{ fontSize: '10px', fontWeight: 700 }}>Profile</span>
+        <button onClick={() => setActiveTab('profile')} style={{ background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
+          <span style={{ fontSize: '18px', lineHeight: 1 }}>👤</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Profile</span>
         </button>
       </nav>
     </div>

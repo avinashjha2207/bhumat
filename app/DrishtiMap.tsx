@@ -16,7 +16,7 @@ interface DrishtiMapProps {
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
-const TIE_COLOR = '#475569'; // Distinct Slate Balance
+const TIE_COLOR = '#475569';
 const RADAR_GREEN = '#10b981';
 
 export default function DrishtiMap({
@@ -34,7 +34,7 @@ export default function DrishtiMap({
   const [loading, setLoading] = useState(true);
 
   const [tallies, setTallies] = useState<any[]>([]);
-  // Live Popping Pulses Queue: { [seatCleanName]: { color: string, expiresAt: number } }
+  // Live Popping Pulses Queue: { [cleanSeat]: { color: string, expiresAt: number } }
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
   useEffect(() => {
@@ -74,7 +74,6 @@ export default function DrishtiMap({
 
     if (!pollId) return;
 
-    // 1. Tally changes listener
     const tallyChannel = supabase
       .channel(`state_tally_stream_${pollId}`)
       .on(
@@ -86,7 +85,6 @@ export default function DrishtiMap({
       )
       .subscribe();
 
-    // 2. Real-time Live Ballots Popping Pulse Listener on ballot_box
     const ballotChannel = supabase
       .channel(`state_ballot_pulse_${pollId}`)
       .on(
@@ -106,7 +104,6 @@ export default function DrishtiMap({
       )
       .subscribe();
 
-    // Pulse garbage collection timer
     const interval = setInterval(() => {
       const now = Date.now();
       setLivePulses((prev) => {
@@ -134,7 +131,6 @@ export default function DrishtiMap({
   const activeTarget = clean(selectedConstituencyName);
   const activeStateKey = clean(selectedState);
 
-  // Dynamic Consensus Aggregation
   const { nationalTally, stateTally, seatTally, seatMap, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
@@ -170,7 +166,6 @@ export default function DrishtiMap({
       }
     });
 
-    // Optimistic fallback for the local voter
     if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
       if (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0) {
         targetSeatRecord = {
@@ -238,11 +233,9 @@ export default function DrishtiMap({
 
   const getSeatFill = (name: string) => {
     const cleanName = clean(name);
-    // 1. Check if an active live pop pulse exists for this seat
     if (livePulses[cleanName]) {
       return livePulses[cleanName].color;
     }
-
     if (isTargetMatch(name)) return resolvedHomeColor;
 
     const row = seatMap[cleanName];
@@ -262,8 +255,8 @@ export default function DrishtiMap({
       : Number(row?.total_votes || 0);
 
     if (total === 0) return 1;
-    if (total < 10) return 0.82;
-    if (total < 50) return 0.92;
+    if (total < 10) return 0.85;
+    if (total < 50) return 0.94;
     return 1.0;
   };
 
@@ -308,16 +301,16 @@ export default function DrishtiMap({
         if (livePulses[clean(pName)]) return 3.5;
         return isTargetMatch(pName) ? 3.0 : 0.75;
       })
-      .style('fill', (d: any) => {
+      .attr('fill', (d: any) => {
         const p = d.properties || {};
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       })
-      .style('fill-opacity', (d: any) => {
+      .attr('fill-opacity', (d: any) => {
         const p = d.properties || {};
         return getSeatOpacity(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Render ripple rings for pulsing seats
+    // Ripple shockwave circles for live popping votes
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
       const feat = stateFeatures.find((f: any) => {
         const p = f.properties || {};
@@ -339,7 +332,7 @@ export default function DrishtiMap({
       }
     });
 
-    // Radar pulse on user active home seat
+    // Continuous Breathing Radar Pulse on Active Home Seat
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -375,7 +368,7 @@ export default function DrishtiMap({
     if (isTie) return { title: '⚖️ Split Mat (Tie)', color: TIE_COLOR, trend: 'Evenly Split' };
 
     const opt = options[idx];
-    const name = opt ? opt.text_en.split('/')[0].trim() : `Option ${idx + 1}`;
+    const name = opt ? opt.text_en.trim() : `Option ${idx + 1}`;
     const color = OPTION_PALETTE[idx % OPTION_PALETTE.length];
     const trend = total >= 20 ? 'Fortified' : 'Early Trend';
 
@@ -422,22 +415,20 @@ export default function DrishtiMap({
           animation: livePopFade 3.5s ease-out forwards;
         }
         @keyframes calmSeatBreathing {
-          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
-          50% { stroke-width: 4px; filter: drop-shadow(0 0 14px ${resolvedHomeColor}cc); }
-          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
+          0% { stroke-width: 2.2px; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
+          50% { stroke-width: 4.2px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95)); opacity: 1; }
+          100% { stroke-width: 2.2px; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
         }
         .user-seat-glow {
-          animation: calmSeatBreathing 3s infinite ease-in-out !important;
-          stroke: ${resolvedHomeColor} !important;
-          fill: ${resolvedHomeColor} !important;
+          animation: calmSeatBreathing 2.6s infinite ease-in-out !important;
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard: Distinct Split Mat Colors */}
+      {/* 3-Box Live Scorecard with No Abrupt Text Truncation */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: natVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: natVerdict.color, marginTop: '4px', lineHeight: 1.35, wordBreak: 'break-word' }}>
             {natVerdict.title}
           </div>
           <div style={{ fontSize: '9px', color: '#0f172a', fontWeight: 700, marginTop: '4px' }}>
@@ -447,7 +438,7 @@ export default function DrishtiMap({
 
         <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: stVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: stVerdict.color, marginTop: '4px', lineHeight: 1.35, wordBreak: 'break-word' }}>
             {stVerdict.title}
           </div>
           <div style={{ fontSize: '9px', color: '#0f172a', fontWeight: 700, marginTop: '4px' }}>
@@ -457,7 +448,7 @@ export default function DrishtiMap({
 
         <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '4px', lineHeight: 1.35, wordBreak: 'break-word' }}>
             {seatVerdict.title}
           </div>
           <div style={{ fontSize: '9px', color: '#0f172a', fontWeight: 800, marginTop: '4px' }}>
@@ -471,7 +462,7 @@ export default function DrishtiMap({
         {options.map((opt, idx) => (
           <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: OPTION_PALETTE[idx % OPTION_PALETTE.length], flexShrink: 0 }} />
-            <span>{opt.text_en.split('/')[0].slice(0, 16)}</span>
+            <span>{opt.text_en.length > 22 ? `${opt.text_en.slice(0, 20)}…` : opt.text_en}</span>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: TIE_COLOR }}>

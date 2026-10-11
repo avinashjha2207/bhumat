@@ -46,7 +46,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
               const trendTag = total >= 20 
                 ? (lang === 'HI' ? 'सत्यापित' : 'Fortified') 
-                : (lang === 'HI' ? 'आरंभिक रुझान' : 'Early Trend');
+                : (lang === 'HI' ? 'रुझान' : 'Early Trend');
 
               return {
                 seat: row.constituency_name,
@@ -113,22 +113,16 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   return (
     <div
       style={{
-        width: '100vw',
-        position: 'relative',
-        left: '50%',
-        right: '50%',
-        marginLeft: '-50vw',
-        marginRight: '-50vw',
+        width: '100%',
         height: '36px',
         backgroundColor: '#0f172a',
-        borderRadius: '0px',
-        borderTop: '1px solid #1e293b',
-        borderBottom: '1px solid #1e293b',
+        borderRadius: '8px',
+        border: '1px solid #1e293b',
         overflow: 'hidden',
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        boxSizing: 'border-box',
-        zIndex: 10
+        boxSizing: 'border-box'
       }}
     >
       <style>{`
@@ -160,13 +154,13 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
               alignItems: 'center',
               gap: '6px',
               fontSize: '11px',
-              padding: '0 20px',
+              padding: '0 16px',
               fontWeight: 600
             }}
           >
             <span style={{ color: isJanMat ? '#38bdf8' : '#fbbf24', fontWeight: 800 }}>📍 {item.seat}:</span>
             <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.verdict}</span>
-            <span style={{ color: '#475569', marginLeft: '12px' }}>•</span>
+            <span style={{ color: '#475569', marginLeft: '10px' }}>•</span>
           </div>
         ))}
       </div>

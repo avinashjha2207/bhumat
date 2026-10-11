@@ -36,6 +36,7 @@ interface PollExpandedViewProps {
   userVotedOptionIdx?: number | null;
   lang: 'EN' | 'HI';
   onBack: () => void;
+  initialTallies?: any[];
 }
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
@@ -51,12 +52,12 @@ export default function PollExpandedView({
   userState = '',
   userVotedOptionIdx = null,
   lang,
-  onBack
+  onBack,
+  initialTallies = []
 }: PollExpandedViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mapGroupRef = useRef<SVGGElement | null>(null);
-  const optionsSectionRef = useRef<HTMLDivElement | null>(null);
   const gridSectionRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,7 +79,8 @@ export default function PollExpandedView({
     isTie: boolean;
   } | null>(null);
 
-  const [tallies, setTallies] = useState<any[]>([]);
+  // Instantly hydrated tallies from parent state (0ms delay)
+  const [tallies, setTallies] = useState<any[]>(initialTallies);
   // Live Popping Pulses Queue for Drishti Bharat
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
@@ -120,7 +122,6 @@ export default function PollExpandedView({
   useEffect(() => {
     loadTallies();
 
-    // 1. Live Tally Changes
     const tallyChannel = supabase
       .channel(`expanded_tallies_live_${poll.id}`)
       .on(
@@ -132,7 +133,6 @@ export default function PollExpandedView({
       )
       .subscribe();
 
-    // 2. Real-time Live Ballot Popping Pulse on Drishti Bharat
     const ballotChannel = supabase
       .channel(`expanded_ballot_pulse_${poll.id}`)
       .on(
@@ -280,7 +280,7 @@ export default function PollExpandedView({
 
       const winIdx = topIndices[0];
       const opt = poll.options[winIdx];
-      const title = opt ? opt.text_en.split('/')[0].trim() : `Option ${winIdx + 1}`;
+      const title = opt ? opt.text_en.trim() : `Option ${winIdx + 1}`;
       return { title, color: OPTION_PALETTE[winIdx % OPTION_PALETTE.length], pct, isTie: false };
     };
 
@@ -298,7 +298,7 @@ export default function PollExpandedView({
       const localLeadIdx = Number(targetSeatRecord?.leading_option || 0);
       const localOpt = poll.options[localLeadIdx];
       localVerdict = {
-        title: localOpt ? localOpt.text_en.split('/')[0].trim() : `Option ${localLeadIdx + 1}`,
+        title: localOpt ? localOpt.text_en.trim() : `Option ${localLeadIdx + 1}`,
         color: OPTION_PALETTE[localLeadIdx % OPTION_PALETTE.length],
         pct: 100,
         total: localTotal
@@ -344,8 +344,8 @@ export default function PollExpandedView({
       : Number(row?.total_votes || 0);
 
     if (total === 0) return 1;
-    if (total < 10) return 0.82;
-    if (total < 50) return 0.92;
+    if (total < 10) return 0.85;
+    if (total < 50) return 0.94;
     return 1.0;
   };
 
@@ -370,7 +370,6 @@ export default function PollExpandedView({
     svg.call(zoomBehavior);
   }, [loading]);
 
-  // Guaranteed Instant Reset with Transition Interruption
   const resetZoom = () => {
     if (!svgRef.current || !mapGroupRef.current) return;
     const svg = d3.select(svgRef.current);
@@ -399,7 +398,6 @@ export default function PollExpandedView({
     }
   }, [seats, cleanUserSeat]);
 
-  // Auto-scroll when 'Grid' button is clicked
   const handleToggleView = (mode: 'map' | 'grid') => {
     setViewMode(mode);
     if (mode === 'grid') {
@@ -434,7 +432,14 @@ export default function PollExpandedView({
   const filteredSearchMatches = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase().trim();
-    return seats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 6);
+    return seats
+      .filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(q) ? -1 : 1;
+        const bStarts = b.name.toLowerCase().startsWith(q) ? -1 : 1;
+        return aStarts - bStarts;
+      })
+      .slice(0, 6);
   }, [searchQuery, seats]);
 
   const handleSelectSearchedSeat = (s: PreprojectedSeat) => {
@@ -453,7 +458,7 @@ export default function PollExpandedView({
       totalVotes: total,
       leadingOptText: isTie
         ? 'Split Mat (Tie)'
-        : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+        : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
       leadingOptColor: isTie
         ? TIE_COLOR
         : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
@@ -484,14 +489,12 @@ export default function PollExpandedView({
           animation: nationalCalmWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
         @keyframes nationalSeatGlow {
-          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
-          50% { stroke-width: 5px; filter: drop-shadow(0 0 16px ${resolvedHomeColor}cc); }
-          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
+          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
+          50% { stroke-width: 4.8px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95)); opacity: 1; }
+          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
         }
         .user-seat-glowing-national {
-          animation: nationalSeatGlow 3s infinite ease-in-out !important;
-          stroke: ${resolvedHomeColor} !important;
-          fill: ${resolvedHomeColor} !important;
+          animation: nationalSeatGlow 2.6s infinite ease-in-out !important;
         }
         @keyframes liveDotPulseSlow {
           0% { opacity: 0.35; transform: scale(0.92); }
@@ -505,6 +508,21 @@ export default function PollExpandedView({
           background-color: #ef4444;
           display: inline-block;
           animation: liveDotPulseSlow 2.4s infinite ease-in-out;
+        }
+        @keyframes nationalPopShockwaveRing {
+          0% { r: 6px; opacity: 1; stroke-width: 4px; }
+          100% { r: 42px; opacity: 0; stroke-width: 0.5px; }
+        }
+        .national-pop-circle {
+          animation: nationalPopShockwaveRing 1.8s infinite ease-out;
+        }
+        @keyframes nationalPopFade {
+          0% { filter: brightness(1.6); }
+          50% { filter: brightness(1.2); }
+          100% { filter: brightness(1); }
+        }
+        .national-live-pulse-path {
+          animation: nationalPopFade 3.5s ease-out forwards;
         }
       `}</style>
 
@@ -596,9 +614,10 @@ export default function PollExpandedView({
       </header>
 
       {/* Full Bleed Ticker */}
-      <TickerTape activePoll={poll} lang={lang} />
+      <div style={{ width: '100%', maxWidth: '480px', padding: '0 14px', boxSizing: 'border-box', marginTop: '4px' }}>
+        <TickerTape activePoll={poll} lang={lang} />
+      </div>
 
-      {/* Dedicated side margins (touch scroll friendly) */}
       <div style={{ maxWidth: '480px', width: '100%', padding: '12px 14px 80px 14px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
         
         {/* Question Header */}
@@ -619,7 +638,7 @@ export default function PollExpandedView({
         </div>
 
         {/* Option Distribution Bars */}
-        <div ref={optionsSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
               const stat = nationalStats.optBars[idx] || { pct: 0 };
@@ -651,18 +670,18 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* 3-Box Scorecard: Distinct Split Mat Colors */}
+        {/* 3-Box Scorecard */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px', lineHeight: 1.3 }}>{nationalStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{nationalStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{nationalStats.pct}%</div>
             <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>{nationalStats.total} {nationalStats.total === 1 ? 'Vote' : 'Votes'}</div>
           </div>
 
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userState || 'State'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px', lineHeight: 1.3 }}>{stateStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{stateStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
               {stateStats.total > 0 ? `${stateStats.pct}%` : '0%'}
             </div>
@@ -673,7 +692,7 @@ export default function PollExpandedView({
 
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userSeatName || 'Lok Sabha'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px', lineHeight: 1.3 }}>{seatStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{seatStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
               {seatStats.total > 0 ? `${seatStats.pct}%` : '0%'}
             </div>
@@ -699,7 +718,7 @@ export default function PollExpandedView({
               overflow: 'hidden'
             }}
           >
-            {/* Search Bar with dedicated '✕ Clear' button */}
+            {/* Search Bar with '✕ Clear' button */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <input
@@ -720,7 +739,6 @@ export default function PollExpandedView({
                   }}
                 />
 
-                {/* Clear '✕' Button */}
                 {searchQuery.trim() && (
                   <button
                     onClick={() => setSearchQuery('')}
@@ -790,7 +808,6 @@ export default function PollExpandedView({
                 )}
               </div>
 
-              {/* Single-Tap Guaranteed Instant Reset */}
               {currentZoomScale > 1.05 && (
                 <button
                   onClick={resetZoom}
@@ -842,7 +859,7 @@ export default function PollExpandedView({
                           fillOpacity={getSeatOpacity(seat)}
                           stroke={isSearched ? '#e11d48' : isPulse ? livePulses[clean(seat.name)].color : userMatched ? resolvedHomeColor : '#94a3b8'}
                           strokeWidth={isSearched ? 2.5 : isPulse ? 3.5 : userMatched ? 3.5 : 0.65}
-                          className={userMatched ? 'user-seat-glowing-national' : isPulse ? 'live-pop-shockwave' : ''}
+                          className={userMatched ? 'user-seat-glowing-national' : isPulse ? 'national-live-pulse-path' : ''}
                           style={{ cursor: 'pointer', transition: 'fill 0.25s ease, stroke 0.25s ease' }}
                           onMouseMove={(e) => {
                             triggerTooltip({
@@ -851,7 +868,7 @@ export default function PollExpandedView({
                               totalVotes: total,
                               leadingOptText: isTie
                                 ? 'Split Mat (Tie)'
-                                : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+                                : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
                               leadingOptColor: isTie
                                 ? TIE_COLOR
                                 : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
@@ -868,7 +885,7 @@ export default function PollExpandedView({
                                 totalVotes: total,
                                 leadingOptText: isTie
                                   ? 'Split Mat (Tie)'
-                                  : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+                                  : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
                                 leadingOptColor: isTie
                                   ? TIE_COLOR
                                   : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
@@ -880,6 +897,34 @@ export default function PollExpandedView({
                         />
                       </g>
                     );
+                  })}
+
+                  {/* Pulsing Shockwave Rings on Drishti Bharat */}
+                  {Object.keys(livePulses).map((pulseKey) => {
+                    const matchedSeat = seats.find((s) => clean(s.name) === pulseKey);
+                    if (!matchedSeat) return null;
+                    const el = svgRef.current?.querySelector(`#pc-${matchedSeat.id}`) as SVGGraphicsElement;
+                    if (!el?.getBBox) return null;
+                    try {
+                      const bbox = el.getBBox();
+                      const cx = bbox.x + bbox.width / 2;
+                      const cy = bbox.y + bbox.height / 2;
+                      return (
+                        <circle
+                          key={`pulse-${pulseKey}`}
+                          cx={cx}
+                          cy={cy}
+                          r={14}
+                          fill="none"
+                          stroke={livePulses[pulseKey].color}
+                          strokeWidth={3.5}
+                          className="national-pop-circle"
+                          pointerEvents="none"
+                        />
+                      );
+                    } catch (e) {
+                      return null;
+                    }
                   })}
 
                   {userBeaconCoords && (
@@ -930,7 +975,7 @@ export default function PollExpandedView({
                     } else {
                       const leadIdx = winners[0];
                       const leadOpt = poll.options[leadIdx];
-                      optText = leadOpt ? leadOpt.text_en.split('/')[0].trim() : `Option ${leadIdx + 1}`;
+                      optText = leadOpt ? leadOpt.text_en.trim() : `Option ${leadIdx + 1}`;
                       optColor = OPTION_PALETTE[leadIdx % OPTION_PALETTE.length];
                     }
                   }
@@ -940,8 +985,8 @@ export default function PollExpandedView({
                       <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
                       <span style={{ color: totalVotes > 0 ? '#0284c7' : '#94a3b8', fontWeight: 700 }}>{totalVotes.toLocaleString()}</span>
                       <span style={{ color: optColor, fontWeight: 800 }}>{optText}</span>
-                      <span style={{ color: optColor, fontWeight: 800, textAlign: 'right' }}>
-                        {totalVotes > 0 ? maxVotes.toLocaleString() : '0'}
+                      <span style={{ color: totalVotes > 0 ? optColor : '#94a3b8', fontWeight: 800, textAlign: 'right' }}>
+                        {totalVotes > 0 ? maxVotes.toLocaleString() : '-'}
                       </span>
                     </div>
                   );
