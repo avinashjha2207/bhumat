@@ -40,6 +40,7 @@ interface PollExpandedViewProps {
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#cbd5e1';
+const TIE_COLOR = '#64748b';
 const RADAR_GREEN = '#10b981';
 
 let CACHED_PREPROJECTED_SEATS: PreprojectedSeat[] | null = null;
@@ -73,7 +74,7 @@ export default function PollExpandedView({
     leadingOptText: string;
     leadingOptColor: string;
     leadingVotes: number;
-    isFortified: boolean;
+    isTie: boolean;
   } | null>(null);
 
   const [tallies, setTallies] = useState<any[]>([]);
@@ -117,7 +118,7 @@ export default function PollExpandedView({
     loadTallies();
 
     const channel = supabase
-      .channel(`expanded_tallies_${poll.id}`)
+      .channel(`expanded_tallies_live_${poll.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${poll.id}` },
@@ -143,6 +144,7 @@ export default function PollExpandedView({
     return cId.includes(cleanUserSeat) || cName.includes(cleanUserSeat) || cleanUserSeat.includes(cName);
   };
 
+  // Dynamic Living Ledger Aggregation
   const { nationalStats, stateStats, seatStats, seatMap, stateTable, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(poll.options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
@@ -152,13 +154,13 @@ export default function PollExpandedView({
     let stTotal = 0;
 
     const sMap: Record<string, any> = {};
-    const stateMap: Record<string, { total: number; breakdown: number[]; seatsFortified: number; totalSeats: number }> = {};
+    const stateMap: Record<string, { total: number; breakdown: number[]; totalSeats: number }> = {};
     let targetSeatRecord: any = null;
 
     seats.forEach((seat) => {
       const st = seat.state || 'Other';
       if (!stateMap[st]) {
-        stateMap[st] = { total: 0, breakdown: new Array(optCount).fill(0), seatsFortified: 0, totalSeats: 0 };
+        stateMap[st] = { total: 0, breakdown: new Array(optCount).fill(0), totalSeats: 0 };
       }
       stateMap[st].totalSeats += 1;
     });
@@ -183,103 +185,86 @@ export default function PollExpandedView({
       }
 
       if (cSeat === cleanUserSeat) {
-        targetSeatRecord = row;
+        targetSeatRecord = { ...row };
       }
 
       const stName = row.state_name || 'Other';
       if (!stateMap[stName]) {
-        stateMap[stName] = { total: 0, breakdown: new Array(optCount).fill(0), seatsFortified: 0, totalSeats: 0 };
+        stateMap[stName] = { total: 0, breakdown: new Array(optCount).fill(0), totalSeats: 0 };
       }
       stateMap[stName].total += rowTotal;
-      if (rowTotal >= 50) {
-        stateMap[stName].seatsFortified += 1;
-      }
       for (let i = 0; i < optCount; i++) {
         stateMap[stName].breakdown[i] += Number(row[`opt_${i}_votes`] || 0);
       }
     });
 
-    // 1. Strict priority to voter's active choice passed from session state
-    // 2. Fall back to targetSeatRecord leading option if available
-    let homeColor = UNPOLLED_SEAT_COLOR;
+    // Optimistic fallback for zero-delay voter reflection
     if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
+      if (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0) {
+        targetSeatRecord = {
+          total_votes: 1,
+          leading_option: userVotedOptionIdx,
+          is_tie: false,
+          [`opt_${userVotedOptionIdx}_votes`]: 1
+        };
+        sMap[cleanUserSeat] = targetSeatRecord;
+        if (natTotal === 0) natTotal = 1;
+        if (stTotal === 0) stTotal = 1;
+        natBreakdown[userVotedOptionIdx] = Math.max(natBreakdown[userVotedOptionIdx], 1);
+        stBreakdown[userVotedOptionIdx] = Math.max(stBreakdown[userVotedOptionIdx], 1);
+      }
+    }
+
+    // Determine home seat color
+    let homeColor = UNPOLLED_SEAT_COLOR;
+    if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
+      if (targetSeatRecord.is_tie) {
+        homeColor = TIE_COLOR;
+      } else {
+        const lead = Number(targetSeatRecord.leading_option || 0);
+        homeColor = OPTION_PALETTE[lead % OPTION_PALETTE.length];
+      }
+    } else if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
       homeColor = OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length];
-    } else if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
-      const leadIdx = Number(targetSeatRecord.leading_option || 0);
-      homeColor = OPTION_PALETTE[leadIdx % OPTION_PALETTE.length];
     }
 
     // National Level
-    const maxNatVotes = Math.max(...natBreakdown);
-    const natLeadIdx = natBreakdown.indexOf(maxNatVotes);
-    const natPct = natTotal > 0 ? Math.round((maxNatVotes / natTotal) * 100) : 0;
-    const natOpt = poll.options[natLeadIdx];
+    const resolveBreakdown = (arr: number[], total: number) => {
+      if (total === 0) return { title: '0 Ballots', color: '#64748b', pct: 0, isTie: false };
+      const maxV = Math.max(...arr);
+      const topIndices = arr.map((v, i) => (v === maxV ? i : -1)).filter((i) => i !== -1);
+      const isTie = topIndices.length > 1;
+      const pct = Math.round((maxV / total) * 100);
 
-    const natVerdict = {
-      title: natTotal > 0 && natOpt ? natOpt.text_en.split('/')[0].trim() : '0 Ballots',
-      color: natTotal > 0 ? OPTION_PALETTE[natLeadIdx % OPTION_PALETTE.length] : '#1e293b',
-      pct: natPct,
-      total: natTotal
+      if (isTie) {
+        return { title: lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)', color: TIE_COLOR, pct, isTie: true };
+      }
+
+      const winIdx = topIndices[0];
+      const opt = poll.options[winIdx];
+      const title = opt ? opt.text_en.split('/')[0].trim() : `Option ${winIdx + 1}`;
+      return { title, color: OPTION_PALETTE[winIdx % OPTION_PALETTE.length], pct, isTie: false };
     };
 
-    // State Level Quorum Gate
-    const userStateData = Object.entries(stateMap).find(([name]) => clean(name) === cleanUserState)?.[1];
-    const totalStateSeats = userStateData?.totalSeats || 1;
-    const fortifiedSeats = userStateData?.seatsFortified || 0;
-    const stateQuorumMet = fortifiedSeats >= Math.ceil(totalStateSeats * 0.5) && stTotal > 0;
+    const natVerdict = resolveBreakdown(natBreakdown, natTotal);
+    const stVerdict = resolveBreakdown(stBreakdown, stTotal);
 
-    let stateVerdict: any;
-    if (stTotal === 0) {
-      stateVerdict = { title: '0 Ballots', color: '#1e293b', pct: 0, total: 0, isQuorumMet: false };
-    } else if (!stateQuorumMet) {
-      stateVerdict = {
-        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Public Opinion',
-        color: '#1e293b',
-        pct: 0,
-        total: stTotal,
-        isQuorumMet: false,
-        fortified: fortifiedSeats,
-        needed: Math.ceil(totalStateSeats * 0.5)
-      };
-    } else {
-      const maxStVotes = Math.max(...stBreakdown);
-      const stLeadIdx = stBreakdown.indexOf(maxStVotes);
-      const stPct = Math.round((maxStVotes / stTotal) * 100);
-      const stOpt = poll.options[stLeadIdx];
-      stateVerdict = {
-        title: stOpt ? stOpt.text_en.split('/')[0].trim() : 'Option',
-        color: OPTION_PALETTE[stLeadIdx % OPTION_PALETTE.length],
-        pct: stPct,
-        total: stTotal,
-        isQuorumMet: true
-      };
-    }
-
-    // Lok Sabha Level Quorum Gate
-    const localTotal = Number(targetSeatRecord?.total_votes || (userVotedOptionIdx !== null ? 1 : 0));
-    const seatQuorumMet = localTotal >= 50;
+    // Lok Sabha Level
+    const localTotal = Number(targetSeatRecord?.total_votes || 0);
     let localVerdict: any;
 
     if (localTotal === 0) {
-      localVerdict = { title: '0 Ballots', color: '#1e293b', pct: 0, total: 0, isQuorumMet: false };
-    } else if (!seatQuorumMet) {
-      localVerdict = {
-        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Public Opinion',
-        color: '#1e293b',
-        pct: 0,
-        total: localTotal,
-        isQuorumMet: false,
-        needed: Math.max(50 - localTotal, 0)
-      };
+      localVerdict = { title: '0 Ballots', color: '#64748b', pct: 0, total: 0 };
+    } else if (targetSeatRecord?.is_tie) {
+      localVerdict = { title: lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)', color: TIE_COLOR, pct: 50, total: localTotal };
     } else {
       const localLeadIdx = Number(targetSeatRecord?.leading_option || 0);
       const localOpt = poll.options[localLeadIdx];
       localVerdict = {
-        title: localOpt ? localOpt.text_en.split('/')[0].trim() : 'Option',
+        title: localOpt ? localOpt.text_en.split('/')[0].trim() : `Option ${localLeadIdx + 1}`,
         color: OPTION_PALETTE[localLeadIdx % OPTION_PALETTE.length],
         pct: 100,
-        total: localTotal,
-        isQuorumMet: true
+        total: localTotal
       };
     }
 
@@ -289,8 +274,8 @@ export default function PollExpandedView({
     });
 
     return {
-      nationalStats: { optBars, ...natVerdict },
-      stateStats: stateVerdict,
+      nationalStats: { optBars, ...natVerdict, total: natTotal },
+      stateStats: { ...stVerdict, total: stTotal },
       seatStats: localVerdict,
       seatMap: sMap,
       stateTable: Object.entries(stateMap).sort((a, b) => b[1].total - a[1].total),
@@ -301,8 +286,22 @@ export default function PollExpandedView({
   const getSeatColor = (seat: PreprojectedSeat) => {
     if (isUserSeat(seat)) return resolvedHomeColor;
     const row = seatMap[clean(seat.name)];
-    if (!row || Number(row.total_votes || 0) < 50) return UNPOLLED_SEAT_COLOR;
+    if (!row || Number(row.total_votes || 0) === 0) return UNPOLLED_SEAT_COLOR;
+
+    if (row.is_tie) return TIE_COLOR;
     return OPTION_PALETTE[Number(row.leading_option || 0) % OPTION_PALETTE.length];
+  };
+
+  const getSeatOpacity = (seat: PreprojectedSeat) => {
+    const row = seatMap[clean(seat.name)];
+    const total = isUserSeat(seat)
+      ? Number(seatStats.total || 1)
+      : Number(row?.total_votes || 0);
+
+    if (total === 0) return 1;
+    if (total < 10) return 0.78;
+    if (total < 50) return 0.90;
+    return 1.0;
   };
 
   useEffect(() => {
@@ -326,10 +325,12 @@ export default function PollExpandedView({
     svg.call(zoomBehavior);
   }, [loading]);
 
+  // Guaranteed Instant Reset
   const resetZoom = () => {
     if (!svgRef.current || !mapGroupRef.current) return;
     const svg = d3.select(svgRef.current);
-    svg.transition().duration(400).call(
+    svg.interrupt(); // Stops any in-flight transitions immediately
+    svg.call(
       d3.zoom<SVGSVGElement, unknown>().transform as any,
       d3.zoomIdentity
     );
@@ -390,14 +391,13 @@ export default function PollExpandedView({
     return seats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 6);
   }, [searchQuery, seats]);
 
-  // Dismiss keyboard & focus constituency
   const handleSelectSearchedSeat = (s: PreprojectedSeat) => {
     (document.activeElement as HTMLElement)?.blur();
     setSearchQuery(s.name);
 
     const row = seatMap[clean(s.name)];
     const total = Number(row?.total_votes || 0);
-    const isFortified = total >= 50;
+    const isTie = Boolean(row?.is_tie);
     const winIdx = Number(row?.leading_option || 0);
     const leadOpt = poll.options[winIdx];
 
@@ -405,10 +405,14 @@ export default function PollExpandedView({
       name: s.name,
       state: s.state,
       totalVotes: total,
-      leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
-      leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+      leadingOptText: isTie
+        ? 'Split Mat (Tie)'
+        : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+      leadingOptColor: isTie
+        ? TIE_COLOR
+        : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
       leadingVotes: Number(row?.leading_votes || 0),
-      isFortified
+      isTie
     }, typeof window !== 'undefined' ? window.innerWidth / 2 : 200, 350);
   };
 
@@ -486,15 +490,15 @@ export default function PollExpandedView({
           </div>
           
           <div style={{ fontSize: '11px', fontWeight: 800, color: hoveredSeat.leadingOptColor, marginTop: '2px' }}>
-            {hoveredSeat.isFortified 
-              ? `Leading: ${hoveredSeat.leadingOptText} (${hoveredSeat.leadingVotes})` 
-              : `Pending Quorum (${hoveredSeat.totalVotes}/50)`}
+            {hoveredSeat.isTie
+              ? '⚖️ Split Mat (Tie)'
+              : hoveredSeat.totalVotes > 0 ? `Leading: ${hoveredSeat.leadingOptText} (${hoveredSeat.leadingVotes})` : 'Awaiting Ballots'}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9.5px' }}>
             <span style={{ color: '#6ee7b7' }}>Total: {hoveredSeat.totalVotes}</span>
-            <span style={{ color: hoveredSeat.isFortified ? '#34d399' : '#fcd34d' }}>
-              {hoveredSeat.isFortified ? '● Quorum Met' : `${Math.max(50 - hoveredSeat.totalVotes, 0)} Needed`}
+            <span style={{ color: hoveredSeat.totalVotes >= 20 ? '#34d399' : '#fcd34d' }}>
+              {hoveredSeat.totalVotes >= 20 ? '● Fortified' : '● Early Trend'}
             </span>
           </div>
         </div>
@@ -601,34 +605,34 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* 3-Box Scorecard */}
+        {/* Living Ledger 3-Box Scorecard (Reflects Instantly from Ballot #1) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px' }}>{nationalStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px', lineHeight: 1.3 }}>{nationalStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{nationalStats.pct}%</div>
             <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>{nationalStats.total} {nationalStats.total === 1 ? 'Vote' : 'Votes'}</div>
           </div>
 
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userState || 'State'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px' }}>{stateStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px', lineHeight: 1.3 }}>{stateStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
-              {stateStats.isQuorumMet ? `${stateStats.pct}%` : `${stateStats.total} ${lang === 'HI' ? 'मत' : 'Votes'}`}
+              {stateStats.total > 0 ? `${stateStats.pct}%` : '0%'}
             </div>
-            <div style={{ fontSize: '9.5px', color: stateStats.isQuorumMet ? '#059669' : '#0f172a', marginTop: '2px', fontWeight: 700 }}>
-              {stateStats.isQuorumMet ? '● Quorum Met' : `🔒 Quorum: ${stateStats.fortified || 0}/${stateStats.needed || 1} seats`}
+            <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>
+              {stateStats.total} {stateStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
 
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userSeatName || 'Lok Sabha'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px' }}>{seatStats.title}</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px', lineHeight: 1.3 }}>{seatStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
-              {seatStats.isQuorumMet ? `${seatStats.pct}%` : `${seatStats.total} ${lang === 'HI' ? 'मत' : 'Votes'}`}
+              {seatStats.total > 0 ? `${seatStats.pct}%` : '0%'}
             </div>
-            <div style={{ fontSize: '9.5px', color: seatStats.isQuorumMet ? '#059669' : '#0f172a', marginTop: '2px', fontWeight: 700 }}>
-              {seatStats.isQuorumMet ? '● Quorum Met' : `⏳ ${seatStats.needed || 50} more to unlock`}
+            <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>
+              {seatStats.total} {seatStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
         </div>
@@ -649,7 +653,7 @@ export default function PollExpandedView({
               overflow: 'hidden'
             }}
           >
-            {/* Viewport-Aware Search Bar & Elevated Auto-Dismiss Dropdown */}
+            {/* Viewport-Aware Search Bar & Instant Reset Button */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <input
@@ -670,7 +674,6 @@ export default function PollExpandedView({
                   }}
                 />
 
-                {/* Elevated Auto-Dismiss Search Dropdown */}
                 {filteredSearchMatches.length > 0 && (
                   <div
                     style={{
@@ -720,6 +723,7 @@ export default function PollExpandedView({
                 )}
               </div>
 
+              {/* Single-Tap Guaranteed Instant Reset */}
               {currentZoomScale > 1.05 && (
                 <button
                   onClick={resetZoom}
@@ -755,7 +759,7 @@ export default function PollExpandedView({
                   {seats.map((seat, index) => {
                     const row = seatMap[clean(seat.name)];
                     const total = Number(row?.total_votes || 0);
-                    const isFortified = total >= 50;
+                    const isTie = Boolean(row?.is_tie);
                     const winIdx = Number(row?.leading_option || 0);
                     const leadOpt = poll.options[winIdx];
                     const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
@@ -767,19 +771,24 @@ export default function PollExpandedView({
                           id={`pc-${seat.id}`}
                           d={seat.d}
                           fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
+                          fillOpacity={getSeatOpacity(seat)}
                           stroke={isSearched ? '#e11d48' : userMatched ? resolvedHomeColor : '#94a3b8'}
                           strokeWidth={isSearched ? 2.5 : userMatched ? 3.5 : 0.65}
                           className={userMatched ? 'user-seat-glowing-national' : ''}
-                          style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease' }}
+                          style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease, fill-opacity 0.2s ease' }}
                           onMouseMove={(e) => {
                             triggerTooltip({
                               name: seat.name,
                               state: seat.state,
                               totalVotes: total,
-                              leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
-                              leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+                              leadingOptText: isTie
+                                ? 'Split Mat (Tie)'
+                                : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+                              leadingOptColor: isTie
+                                ? TIE_COLOR
+                                : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
                               leadingVotes: Number(row?.leading_votes || 0),
-                              isFortified
+                              isTie
                             }, e.clientX, e.clientY);
                           }}
                           onTouchStart={(e) => {
@@ -789,10 +798,14 @@ export default function PollExpandedView({
                                 name: seat.name,
                                 state: seat.state,
                                 totalVotes: total,
-                                leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
-                                leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+                                leadingOptText: isTie
+                                  ? 'Split Mat (Tie)'
+                                  : leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Awaiting Ballots',
+                                leadingOptColor: isTie
+                                  ? TIE_COLOR
+                                  : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
                                 leadingVotes: Number(row?.leading_votes || 0),
-                                isFortified
+                                isTie
                               }, touch.clientX, touch.clientY);
                             }
                           }}
@@ -826,43 +839,42 @@ export default function PollExpandedView({
           <div ref={gridSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
             <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <div style={{ minWidth: '580px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', padding: '8px 10px', fontSize: '10px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.8fr 1.1fr', gap: '8px', padding: '8px 10px', fontSize: '10px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
                   <span>STATE / UT</span>
                   <span>TOTAL VOTES</span>
-                  <span>QUORUM MET</span>
-                  <span>STATE VERDICT</span>
-                  <span style={{ textAlign: 'right' }}>VERDICT VOTES</span>
+                  <span>STATE LEADING MAT</span>
+                  <span style={{ textAlign: 'right' }}>LEADING VOTES</span>
                 </div>
 
                 {stateTable.map(([stName, stData]) => {
                   const totalVotes = Number(stData.total || 0);
-                  const totalSeats = stData.totalSeats || 1;
-                  const fortifiedSeats = stData.seatsFortified || 0;
-                  const isStateFortified = fortifiedSeats >= Math.ceil(totalSeats * 0.5) && totalVotes > 0;
-
                   const maxVotes = Math.max(...stData.breakdown);
-                  const leadIdx = stData.breakdown.indexOf(maxVotes);
-                  const leadOpt = poll.options[leadIdx];
-                  const optText = isStateFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion';
+                  const winners = stData.breakdown.map((v, i) => (v === maxVotes && maxVotes > 0 ? i : -1)).filter((i) => i !== -1);
+                  const isTie = winners.length > 1;
+
+                  let optText = 'Awaiting Ballots';
+                  let optColor = '#64748b';
+
+                  if (totalVotes > 0) {
+                    if (isTie) {
+                      optText = '⚖️ Split Mat (Tie)';
+                      optColor = TIE_COLOR;
+                    } else {
+                      const leadIdx = winners[0];
+                      const leadOpt = poll.options[leadIdx];
+                      optText = leadOpt ? leadOpt.text_en.split('/')[0].trim() : `Option ${leadIdx + 1}`;
+                      optColor = OPTION_PALETTE[leadIdx % OPTION_PALETTE.length];
+                    }
+                  }
 
                   return (
-                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 10px', fontSize: '11px', marginTop: '6px' }}>
+                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.8fr 1.1fr', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 10px', fontSize: '11px', marginTop: '6px' }}>
                       <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
-                      <span style={{ color: poll.category === 'JanMat' ? '#059669' : '#d97706', fontWeight: 700 }}>{totalVotes.toLocaleString()}</span>
-                      <span style={{ color: isStateFortified ? '#059669' : '#0f172a', fontWeight: 700 }}>
-                        {fortifiedSeats} / {totalSeats} seats
+                      <span style={{ color: totalVotes > 0 ? '#0284c7' : '#94a3b8', fontWeight: 700 }}>{totalVotes.toLocaleString()}</span>
+                      <span style={{ color: optColor, fontWeight: 800 }}>{optText}</span>
+                      <span style={{ color: optColor, fontWeight: 800, textAlign: 'right' }}>
+                        {totalVotes > 0 ? maxVotes.toLocaleString() : '0'}
                       </span>
-
-                      {isStateFortified ? (
-                        <>
-                          <span style={{ color: '#0f172a', fontWeight: 800 }}>{optText}</span>
-                          <span style={{ color: '#059669', fontWeight: 800, textAlign: 'right' }}>{maxVotes.toLocaleString()}</span>
-                        </>
-                      ) : (
-                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#1e293b', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, textAlign: 'center' }}>
-                          🔒 Locked (Needs {Math.ceil(totalSeats * 0.5)} Seats Quorum)
-                        </span>
-                      )}
                     </div>
                   );
                 })}

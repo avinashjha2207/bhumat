@@ -27,31 +27,32 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           .eq('poll_id', activePoll.id);
 
         if (data && data.length > 0 && !error && isMounted) {
-          const list: TickerItem[] = data.map((row: any) => {
-            const total = Number(row.total_votes || 0);
-            const isFortified = Boolean(row.is_fortified) || total >= 50;
-
-            if (isFortified) {
+          const list: TickerItem[] = data
+            .filter((row: any) => Number(row.total_votes || 0) > 0)
+            .map((row: any) => {
+              const total = Number(row.total_votes || 0);
+              const isTie = Boolean(row.is_tie);
               const optIndex = Number(row.leading_option || 0);
-              const optText = activePoll.options?.[optIndex]
-                ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
-                : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
+
+              let statusText = '';
+              if (isTie) {
+                statusText = lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)';
+              } else {
+                const optObj = activePoll.options?.[optIndex];
+                statusText = optObj
+                  ? (lang === 'EN' ? optObj.text_en : optObj.text_hi).split('/')[0].trim()
+                  : `Option ${optIndex + 1}`;
+              }
+
+              const trendTag = total >= 20 
+                ? (lang === 'HI' ? 'सत्यापित' : 'Fortified') 
+                : (lang === 'HI' ? 'आरंभिक रुझान' : 'Early Trend');
 
               return {
                 seat: row.constituency_name,
-                verdict: `${optText} (${total.toLocaleString()} ${lang === 'HI' ? 'मत' : 'votes'}) • Quorum Met`
+                verdict: `${statusText} (${total} ${total === 1 ? (lang === 'HI' ? 'मत' : 'vote') : (lang === 'HI' ? 'मत' : 'votes')}) • ${trendTag}`
               };
-            } else {
-              // Below quorum: Never leak leading option, show ballots needed!
-              const needed = Math.max(50 - total, 0);
-              return {
-                seat: row.constituency_name,
-                verdict: lang === 'HI'
-                  ? `${total}/50 मत (${needed} मत परिणाम अनलॉक करने के लिए आवश्यक)`
-                  : `${total}/50 votes (${needed} needed to unlock consensus)`
-              };
-            }
-          });
+            });
 
           if (list.length > 0) {
             setTickerItems(list);
@@ -87,22 +88,22 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   const fallbackItems = isJanMat
     ? [
         {
-          seat: '543 Seats',
-          verdict: lang === 'HI' ? 'प्रत्येक संसदीय सीट पर 50 मतों से कोरम पूर्ण • संप्रभु नागरिक ऑडिट' : '50 Ballots to Fortify Constituency Quorum • Sovereign Civic Audit'
+          seat: 'Pan-Bharat',
+          verdict: lang === 'HI' ? 'गोपनीय मतपेटी • संप्रभु जनमत ग्रिड' : 'Cryptographic Secret Ballot • Sovereign Public Opinion'
         },
         {
-          seat: 'Pan-Bharat',
-          verdict: lang === 'HI' ? 'गोपनीय मतपेटी • सत्यापित सहमति ग्रिड' : 'Anonymous Secret Ballot • Verified Consensus Grid'
+          seat: '543 Seats',
+          verdict: lang === 'HI' ? 'प्रत्येक मत से जीवंत नक्शा • सार्वजनिक नागरिक ऑडिट' : 'Every Ballot Lights The Map • Live Civic Audit'
         }
       ]
     : [
         {
           seat: 'Pan-Bharat',
-          verdict: lang === 'HI' ? 'जनता की आवाज • महान सांस्कृतिक पल्स' : 'Voice of the People • The Great Cultural Pulse'
+          verdict: lang === 'HI' ? 'जनता की आवाज • महान सांस्कृतिक मत' : 'Voice of the People • The Great Cultural Mat'
         },
         {
           seat: '543 Seats',
-          verdict: lang === 'HI' ? 'अपने संसदीय क्षेत्र से जुड़ें • रियल-टाइम मत' : 'Share your take with your constituency • Real-time Mat'
+          verdict: lang === 'HI' ? 'अपने संसदीय क्षेत्र से जुड़ें • रियल-टाइम मत' : 'Connect with your constituency • Real-time Mat'
         }
       ];
 

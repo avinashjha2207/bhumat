@@ -30,6 +30,18 @@ interface Poll {
 }
 
 const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
+  'banka': {
+    pcCode: '27-BI',
+    mpName: 'Giridhari Yadav',
+    party: 'Janata Dal (United) / NDA',
+    cases: 0,
+    education: 'Post Graduate (M.A., LL.B.)',
+    assets: '₹4.12 Crore',
+    turnout: '54.48%',
+    margin: '1,03,844 Votes',
+    electors: '17,82,310 Electors',
+    vidhanSabhaSegments: ['Sultanganj (157)', 'Amarpur (159)', 'Dhoraiya [SC] (160)', 'Banka (161)', 'Katoria [ST] (162)', 'Belhar (163)']
+  },
   'buxar': {
     pcCode: '33-BI',
     mpName: 'Sudhakar Singh',
@@ -41,18 +53,6 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     margin: '30,091 Votes',
     electors: '18,72,110 Electors',
     vidhanSabhaSegments: ['Brahmpur (199)', 'Buxar (200)', 'Dumraon (201)', 'Rajpur (202)', 'Ramgarh (203)', 'Dinara (210)']
-  },
-  'gorakhpur': {
-    pcCode: '64-UP',
-    mpName: 'Ravi Kishan (Ravindra Shukla)',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 1,
-    education: 'Intermediate (12th Pass)',
-    assets: '₹34.5 Crore',
-    turnout: '54.98%',
-    margin: '1,03,526 Votes',
-    electors: '20,41,830 Electors',
-    vidhanSabhaSegments: ['Caimpiyarganj (320)', 'Pipraich (321)', 'Gorakhpur Urban (322)', 'Gorakhpur Rural (323)', 'Sahajanwa (324)']
   },
   'darbhanga': {
     pcCode: '14-BI',
@@ -77,13 +77,71 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     margin: '2,34,927 Votes',
     electors: '18,45,210 Electors',
     vidhanSabhaSegments: ['Gaighat (88)', 'Aurai (89)', 'Bochahan (91)', 'Sakra (92)', 'Kurhani (93)', 'Muzaffarpur (94)']
+  },
+  'nagpur': {
+    pcCode: '10-MH',
+    mpName: 'Nitin Jairam Gadkari',
+    party: 'Bharatiya Janata Party (BJP)',
+    cases: 0,
+    education: 'Post Graduate (M.Com, LL.B.)',
+    assets: '₹28.0 Crore',
+    turnout: '54.11%',
+    margin: '1,37,603 Votes',
+    electors: '22,23,550 Electors',
+    vidhanSabhaSegments: ['Nagpur South West (52)', 'Nagpur South (53)', 'Nagpur East (54)', 'Nagpur Central (55)', 'Nagpur West (56)', 'Nagpur North [SC] (57)']
+  },
+  'gorakhpur': {
+    pcCode: '64-UP',
+    mpName: 'Ravi Kishan (Ravindra Shukla)',
+    party: 'Bharatiya Janata Party (BJP)',
+    cases: 1,
+    education: 'Intermediate (12th Pass)',
+    assets: '₹34.5 Crore',
+    turnout: '54.98%',
+    margin: '1,03,526 Votes',
+    electors: '20,41,830 Electors',
+    vidhanSabhaSegments: ['Caimpiyarganj (320)', 'Pipraich (321)', 'Gorakhpur Urban (322)', 'Gorakhpur Rural (323)', 'Sahajanwa (324)']
   }
 };
 
+// Full 543 Parliamentary Constituency Directory across All 36 States & UTs
 const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
+  'Andaman and Nicobar Islands': ['Andaman and Nicobar Islands'],
+  'Andhra Pradesh': ['Amalapuram', 'Anakapalli', 'Anantapur', 'Araku', 'Bapatla', 'Chittoor', 'Eluru', 'Guntur', 'Hindupur', 'Kadapa', 'Kakinada', 'Kurnool', 'Machilipatnam', 'Nandyal', 'Narasaraopet', 'Narsapuram', 'Nellore', 'Ongole', 'Rajahmundry', 'Rajampet', 'Srikakulam', 'Tirupati', 'Vijayawada', 'Visakhapatnam', 'Vizianagaram'],
+  'Arunachal Pradesh': ['Arunachal East', 'Arunachal West'],
+  'Assam': ['Barpeta', 'Darrang-Udalguri', 'Dhubri', 'Dibrugarh', 'Diphu', 'Guwahati', 'Kaziranga', 'Kokrajhar', 'Lakhimpur', 'Nagaon', 'Silchar', 'Sonitpur'],
   'Bihar': ['Araria', 'Arrah', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Buxar', 'Darbhanga', 'Gaya', 'Gopalganj', 'Hajipur', 'Jahanabad', 'Jamui', 'Jhanjharpur', 'Karakat', 'Katihar', 'Khagaria', 'Kishanganj', 'Madhepura', 'Madhubani', 'Maharajganj', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Paschim Champaran', 'Pataliputra', 'Patna Sahib', 'Purnia', 'Purvi Champaran', 'Samastipur', 'Saran', 'Sasaram', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Ujiarpur', 'Vaishali', 'Valmiki Nagar'],
+  'Chandigarh': ['Chandigarh'],
+  'Chhattisgarh': ['Bastar', 'Bilaspur', 'Durg', 'Janjgir-Champa', 'Kanker', 'Korba', 'Mahasamund', 'Raigarh', 'Raipur', 'Rajnandgaon', 'Surguja'],
+  'Dadra and Nagar Haveli and Daman and Diu': ['Dadra and Nagar Haveli', 'Daman and Diu'],
   'Delhi': ['Chandni Chowk', 'East Delhi', 'New Delhi', 'North East Delhi', 'North West Delhi', 'South Delhi', 'West Delhi'],
-  'Uttar Pradesh': ['Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hamirpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Maharajganj', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi']
+  'Goa': ['North Goa', 'South Goa'],
+  'Gujarat': ['Ahmedabad East', 'Ahmedabad West', 'Amreli', 'Anand', 'Banaskantha', 'Bardoli', 'Bharuch', 'Bhavnagar', 'Chhota Udaipur', 'Dahod', 'Gandhinagar', 'Jamnagar', 'Junagadh', 'Kachchh', 'Kheda', 'Mehsana', 'Navsari', 'Panchmahal', 'Patan', 'Porbandar', 'Rajkot', 'Sabarkantha', 'Surat', 'Surendranagar', 'Vadodara', 'Valsad'],
+  'Haryana': ['Ambala', 'Bhiwani-Mahendragarh', 'Faridabad', 'Gurgaon', 'Hisar', 'Karnal', 'Kurukshetra', 'Rohtak', 'Sirsa', 'Sonipat'],
+  'Himachal Pradesh': ['Hamirpur', 'Kangra', 'Mandi', 'Shimla'],
+  'Jammu and Kashmir': ['Anantnag-Rajouri', 'Baramulla', 'Jammu', 'Srinagar', 'Udhampur'],
+  'Jharkhand': ['Chatra', 'Dhanbad', 'Dumka', 'Giridih', 'Godda', 'Hazaribagh', 'Jamshedpur', 'Khunti', 'Kodarma', 'Lohardaga', 'Palamu', 'Rajmahal', 'Ranchi', 'Singhbhum'],
+  'Karnataka': ['Bagalkot', 'Bangalore Central', 'Bangalore North', 'Bangalore Rural', 'Bangalore South', 'Belgaum', 'Bellary', 'Bidar', 'Bijapur', 'Chamarajanagar', 'Chikkballapur', 'Chikkodi', 'Chitradurga', 'Dakshina Kannada', 'Davanagere', 'Dharwad', 'Gulbarga', 'Hassan', 'Haveri', 'Kolar', 'Koppal', 'Mandya', 'Mysore', 'Raichur', 'Shimoga', 'Tumkur', 'Udupi Chikmagalur', 'Uttara Kannada'],
+  'Kerala': ['Alappuzha', 'Alathur', 'Attingal', 'Chalakudy', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod', 'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Mavelikkara', 'Palakkad', 'Pathanamthitta', 'Ponnani', 'Thiruvananthapuram', 'Thrissur', 'Vatakara', 'Wayanad'],
+  'Ladakh': ['Ladakh'],
+  'Lakshadweep': ['Lakshadweep'],
+  'Madhya Pradesh': ['Balaghat', 'Betul', 'Bhind', 'Bhopal', 'Chhindwara', 'Damoh', 'Dewas', 'Dhar', 'Guna', 'Gwalior', 'Hoshangabad', 'Indore', 'Jabalpur', 'Khajuraho', 'Khandwa', 'Khargone', 'Mandla', 'Mandsaur', 'Morena', 'Rajgarh', 'Ratlam', 'Rewa', 'Sagar', 'Satna', 'Shahdol', 'Sidhi', 'Tikamgarh', 'Ujjain', 'Vidisha'],
+  'Maharashtra': ['Ahmednagar', 'Akola', 'Amravati', 'Aurangabad', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim'],
+  'Manipur': ['Inner Manipur', 'Outer Manipur'],
+  'Meghalaya': ['Shillong', 'Tura'],
+  'Mizoram': ['Mizoram'],
+  'Nagaland': ['Nagaland'],
+  'Odisha': ['Aska', 'Balasore', 'Bargarh', 'Berhampur', 'Bhadrak', 'Bhubaneswar', 'Bolangir', 'Cuttack', 'Dhenkanal', 'Jagatsinghpur', 'Jajpur', 'Kalahandi', 'Kandhamal', 'Kendrapara', 'Keonjhar', 'Koraput', 'Mayurbhanj', 'Nabarangpur', 'Puri', 'Sambalpur', 'Sundargarh'],
+  'Puducherry': ['Puducherry'],
+  'Punjab': ['Amritsar', 'Anandpur Sahib', 'Bathinda', 'Faridkot', 'Fatehgarh Sahib', 'Firozpur', 'Gurdaspur', 'Hoshiarpur', 'Jalandhar', 'Khadoor Sahib', 'Ludhiana', 'Patiala', 'Sangrur'],
+  'Rajasthan': ['Ajmer', 'Alwar', 'Banswara', 'Barmer', 'Bharatpur', 'Bhilwara', 'Bikaner', 'Chittorgarh', 'Churu', 'Dausa', 'Ganganagar', 'Jaipur', 'Jaipur Rural', 'Jalore', 'Jhalawar-Baran', 'Jhunjhunu', 'Jodhpur', 'Karauli-Dholpur', 'Kota', 'Nagaur', 'Pali', 'Rajsamand', 'Sikar', 'Tonk-Sawai Madhopur', 'Udaipur'],
+  'Sikkim': ['Sikkim'],
+  'Tamil Nadu': ['Arakkonam', 'Arani', 'Chennai Central', 'Chennai North', 'Chennai South', 'Chidambaram', 'Coimbatore', 'Cuddalore', 'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kancheepuram', 'Kanniyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai', 'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pollachi', 'Ramanathapuram', 'Salem', 'Sivaganga', 'Sriperumbudur', 'Tenkasi', 'Thanjavur', 'Theni', 'Thiruvallur', 'Thoothukkudi', 'Tiruchirappalli', 'Tirunelveli', 'Tiruppur', 'Tiruvannamalai', 'Vellore', 'Viluppuram', 'Virudhunagar'],
+  'Telangana': ['Adilabad', 'Bhongir', 'Chevella', 'Hyderabad', 'Karimnagar', 'Khammam', 'Mahabubabad', 'Mahbubnagar', 'Medak', 'Nagarkurnool', 'Nalgonda', 'Nizamabad', 'Peddapalle', 'Secunderabad', 'Warangal', 'Zahirabad'],
+  'Tripura': ['Tripura East', 'Tripura West'],
+  'Uttar Pradesh': ['Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hamirpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Maharajganj', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi'],
+  'Uttarakhand': ['Almora', 'Garhwal', 'Haridwar', 'Nainital-Udhamsingh Nagar', 'Tehri Garhwal'],
+  'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
 function resolveConstituencyDossier(seatName: string, stateName: string) {
@@ -130,8 +188,6 @@ export default function BhuMatApp() {
   const [pillarFilter, setPillarFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
 
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
-  const [activeMicroNote, setActiveMicroNote] = useState<{ title: string; body: string } | null>(null);
-
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
 
   const [username] = useState('CitizenBharat');
@@ -144,11 +200,10 @@ export default function BhuMatApp() {
 
   const [selectedSeat, setSelectedSeat] = useState<{ name: string; state: string } | null>(null);
   const [tentativeSeat, setTentativeSeat] = useState<{ name: string; state: string } | null>(null);
-  const [selectedAssembly, setSelectedAssembly] = useState('');
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
 
-  const [inspectedSeatName, setInspectedSeatName] = useState('Buxar');
+  const [inspectedSeatName, setInspectedSeatName] = useState('Banka');
   const [inspectedSeatState, setInspectedSeatState] = useState('Bihar');
   const [isInspectingFromSearch, setIsInspectingFromSearch] = useState(false);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
@@ -157,7 +212,7 @@ export default function BhuMatApp() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
 
-  // Unified Session Ballot Choices Map (Synchronizes State and National views perfectly)
+  // Unified Session Ballot Choices Map (Synchronizes LokMat Choice, State, and National)
   const [sessionBallotChoices, setSessionBallotChoices] = useState<Record<string, number>>({});
   const [votedCycleKeys, setVotedCycleKeys] = useState<string[]>([]);
   const [voteTimestamps, setVoteTimestamps] = useState<Record<string, string>>({});
@@ -212,7 +267,8 @@ export default function BhuMatApp() {
       const savedState = safeStorage.getItem('bhumat_user_state');
       const savedCycles = safeStorage.getItem('bhumat_voted_cycles');
       const savedPoints = safeStorage.getItem('bhumat_points');
-      const savedLokmatChoices = safeStorage.getItem('bhumat_voted_polls');
+      const savedChoices = safeStorage.getItem('bhumat_voted_polls');
+      const savedTimestamps = safeStorage.getItem('bhumat_vote_timestamps');
 
       if (savedSeat && savedState) {
         setSelectedSeat({ name: savedSeat, state: savedState });
@@ -223,7 +279,8 @@ export default function BhuMatApp() {
 
       if (savedCycles) setVotedCycleKeys(JSON.parse(savedCycles));
       if (savedPoints) setBhumatPoints(Number(savedPoints));
-      if (savedLokmatChoices) setSessionBallotChoices(JSON.parse(savedLokmatChoices));
+      if (savedChoices) setSessionBallotChoices(JSON.parse(savedChoices));
+      if (savedTimestamps) setVoteTimestamps(JSON.parse(savedTimestamps));
     } catch (e) {}
   }, []);
 
@@ -266,6 +323,20 @@ export default function BhuMatApp() {
     const seatToConfirm = tentativeSeat || selectedSeat;
     if (!seatToConfirm) return;
 
+    if (isConfirmed && selectedSeat && selectedSeat.name !== seatToConfirm.name) {
+      if (bhumatPoints < SEAT_CHANGE_COST) {
+        alert(lang === 'HI' ? `सीट बदलने के लिए ${SEAT_CHANGE_COST} अंक चाहिए। आपके पास ${bhumatPoints} हैं।` : `Changing seat costs ${SEAT_CHANGE_COST} pts. You have ${bhumatPoints}.`);
+        return;
+      }
+      const newBal = bhumatPoints - SEAT_CHANGE_COST;
+      setBhumatPoints(newBal);
+      safeStorage.setItem('bhumat_points', String(newBal));
+
+      const nowIso = new Date().toISOString();
+      setLastSeatChangeTimestamp(nowIso);
+      safeStorage.setItem('bhumat_last_seat_change', nowIso);
+    }
+
     setSelectedSeat(seatToConfirm);
     setInspectedSeatName(seatToConfirm.name);
     setInspectedSeatState(seatToConfirm.state);
@@ -299,16 +370,31 @@ export default function BhuMatApp() {
     const updatedKeys = [...votedCycleKeys, cycleVoteKey];
     setVotedCycleKeys(updatedKeys);
 
-    // Save choice in session cache (synchronizes both views uniformly)
+    // Save choice in session cache (binds LokMat visual check and state map synchronously)
     const updatedChoices = { ...sessionBallotChoices, [poll.id]: optionIdx };
     setSessionBallotChoices(updatedChoices);
 
     const nowIso = new Date().toISOString();
-    setVoteTimestamps({ ...voteTimestamps, [poll.id]: nowIso });
-    setBhumatPoints((prev) => prev + 10);
+    const updatedTimestamps = { ...voteTimestamps, [poll.id]: nowIso };
+    setVoteTimestamps(updatedTimestamps);
+
+    const newPoints = bhumatPoints + 10;
+    setBhumatPoints(newPoints);
+
+    if (poll.category === 'JanMat') {
+      setJanmatAuditsCount((prev) => prev + 1);
+    } else {
+      setLokmatPollsCount((prev) => prev + 1);
+    }
+
+    // Flip card immediately on cast
+    setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
 
     try {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
+      safeStorage.setItem('bhumat_points', String(newPoints));
+      safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
+      // Save open choice to local storage for LokMat
       if (poll.category === 'LokMat') {
         safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedChoices));
       }
@@ -349,6 +435,17 @@ export default function BhuMatApp() {
     return list.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 40);
   }, [archiveSearchQuery, filterStatePill, allFlattenedSeats]);
 
+  const filteredDropdownSeats = useMemo(() => {
+    if (!seatSearchInput.trim()) return GROUPED_PARLIAMENTARY_SEATS;
+    const q = seatSearchInput.toLowerCase().trim();
+    const out: Record<string, string[]> = {};
+    Object.entries(GROUPED_PARLIAMENTARY_SEATS).forEach(([state, seats]) => {
+      const matched = seats.filter((s) => s.toLowerCase().includes(q) || state.toLowerCase().includes(q));
+      if (matched.length > 0) out[state] = matched;
+    });
+    return out;
+  }, [seatSearchInput]);
+
   const quickSeatMatches = useMemo(() => {
     if (!seatSearchInput.trim() || tentativeSeat) return [];
     const q = seatSearchInput.toLowerCase().trim();
@@ -382,7 +479,7 @@ export default function BhuMatApp() {
         .seat-beacon-glowing-dot { width: 7px; height: 7px; border-radius: 50%; background-color: #10b981; display: inline-block; animation: pulseBreathing 2.2s infinite ease-in-out; }
       `}</style>
 
-      {/* Toast Notification */}
+      {/* Floating Pointer-Attached Toast */}
       {toast && (
         <div style={{ position: 'fixed', left: `${toast.x}px`, top: `${toast.y}px`, transform: 'translate(-50%, -100%)', zIndex: 120, backgroundColor: '#0f172a', color: '#ffffff', padding: '8px 14px', borderRadius: '10px', fontSize: '11px', fontWeight: 700, pointerEvents: 'none' }}>
           {toast.msg}
@@ -417,28 +514,65 @@ export default function BhuMatApp() {
         {activeTab === 'vote' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {!isConfirmed ? (
-              <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '28px 20px' }}>
-                <h1 style={{ fontSize: '20px', fontWeight: 800 }}>Select Your Parliamentary Seat</h1>
+              <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '28px 20px', width: '100%', boxSizing: 'border-box' }}>
+                <span style={{ backgroundColor: '#fef3c7', color: '#d97706', fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>
+                  BHUMAT CITIZEN ENROLLMENT
+                </span>
+                <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '10px 0 4px 0' }}>Select Your Parliamentary Seat</h1>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>
+                  Select your Lok Sabha constituency across all 543 seats to unlock your sovereign ballot:
+                </p>
+
+                {/* Instant Live Search Input */}
                 <input
                   type="text"
-                  placeholder="🔍 Search seat (e.g. Buxar, Darbhanga)..."
+                  placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
                   value={seatSearchInput}
                   onChange={(e) => setSeatSearchInput(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', margin: '12px 0 8px 0' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', marginBottom: '8px' }}
                 />
-                {quickSeatMatches.map((m) => (
-                  <span
-                    key={m.name}
-                    onClick={() => { setTentativeSeat({ name: m.name, state: m.state }); setSeatSearchInput(m.name); }}
-                    style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'inline-block', margin: '2px' }}
-                  >
-                    📍 {m.name} ({m.state})
-                  </span>
-                ))}
+
+                {/* Live Pill Matches */}
+                {quickSeatMatches.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {quickSeatMatches.map((m) => (
+                      <span
+                        key={m.name}
+                        onClick={() => { setTentativeSeat({ name: m.name, state: m.state }); setSeatSearchInput(m.name); }}
+                        style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        📍 {m.name} ({m.state})
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Full Grouped Dropdown Selector */}
+                <select
+                  value={tentativeSeat ? `${tentativeSeat.name}|||${tentativeSeat.state}` : ''}
+                  onChange={(e) => {
+                    if (!e.target.value) return setTentativeSeat(null);
+                    const [name, state] = e.target.value.split('|||');
+                    setTentativeSeat({ name, state });
+                  }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #0284c7', fontSize: '13px', fontWeight: 700, marginBottom: '14px', backgroundColor: '#f0f9ff' }}
+                >
+                  <option value="">-- Choose Parliamentary Seat (543) --</option>
+                  {Object.entries(filteredDropdownSeats).map(([state, seats]) => (
+                    <optgroup key={state} label={`──────── 📍 ${state.toUpperCase()} ────────`}>
+                      {seats.map((seat) => (
+                        <option key={seat} value={`${seat}|||${state}`}>
+                          {seat} ({state})
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+
                 <button
                   disabled={!tentativeSeat}
                   onClick={handleConfirmSeat}
-                  style={{ width: '100%', padding: '14px', backgroundColor: tentativeSeat ? '#10b981' : '#cbd5e1', color: '#ffffff', fontWeight: 800, borderRadius: '12px', border: 'none', marginTop: '14px', cursor: tentativeSeat ? 'pointer' : 'not-allowed' }}
+                  style={{ width: '100%', padding: '14px', backgroundColor: tentativeSeat ? '#10b981' : '#cbd5e1', color: '#ffffff', fontWeight: 800, borderRadius: '12px', border: 'none', cursor: tentativeSeat ? 'pointer' : 'not-allowed' }}
                 >
                   Confirm & Enter {tentativeSeat?.name || ''}
                 </button>
@@ -466,6 +600,7 @@ export default function BhuMatApp() {
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                   const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
+                  const userChoiceIdx = sessionBallotChoices[poll.id];
 
                   return (
                     <div key={poll.id} style={{ perspective: '1000px', width: '100%' }}>
@@ -493,16 +628,36 @@ export default function BhuMatApp() {
                             <div style={{ marginBottom: '16px' }}><TickerTape activePoll={poll} lang={lang} /></div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                              {poll.options.map((opt, idx) => (
-                                <button
-                                  key={opt.id}
-                                  onClick={(e) => handleCastVote(poll, idx, e)}
-                                  style={{ padding: '16px', borderRadius: '14px', backgroundColor: '#ffffff', border: `1.5px solid ${OPTION_PALETTE[idx % OPTION_PALETTE.length]}`, textAlign: 'left', cursor: 'pointer' }}
-                                >
-                                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{lang === 'EN' ? opt.text_en : opt.text_hi}</div>
-                                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{lang === 'EN' ? opt.text_hi : opt.text_en}</div>
-                                </button>
-                              ))}
+                              {poll.options.map((opt, idx) => {
+                                const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                                const isUserChoice = userChoiceIdx === idx;
+                                const showChoiceTag = !isJanMat && isUserChoice && hasVotedThisCycle;
+
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    onClick={(e) => handleCastVote(poll, idx, e)}
+                                    style={{
+                                      padding: '16px',
+                                      borderRadius: '14px',
+                                      backgroundColor: showChoiceTag ? '#ecfdf5' : '#ffffff',
+                                      border: showChoiceTag ? `2.5px solid ${optColor}` : `1.5px solid ${optColor}`,
+                                      textAlign: 'left',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{lang === 'EN' ? opt.text_en : opt.text_hi}</div>
+                                      {showChoiceTag && (
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '6px' }}>
+                                          ✓ Your Vote
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{lang === 'EN' ? opt.text_hi : opt.text_en}</div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
 
@@ -534,6 +689,7 @@ export default function BhuMatApp() {
                               pollId={poll.id}
                               userVotedOptionIdx={sessionBallotChoices[poll.id] ?? null}
                               options={poll.options}
+                              optimisticLocalVote={hasVotedThisCycle}
                             />
                           </div>
 
@@ -552,7 +708,219 @@ export default function BhuMatApp() {
             )}
           </div>
         )}
+
+        {/* TAB 2: SEARCH ARCHIVE */}
+        {activeTab === 'search' && (
+          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '6px' }}>543 CONSTITUENCY ARCHIVE</span>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 4px 0' }}>Sovereign Public Opinion Index</h2>
+              <input
+                type="text"
+                placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
+                value={archiveSearchQuery}
+                onChange={(e) => setArchiveSearchQuery(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', margin: '10px 0' }}
+              />
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                {['ALL', 'Bihar', 'Maharashtra', 'Delhi', 'Uttar Pradesh', 'Karnataka'].map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setFilterStatePill(st)}
+                    style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', backgroundColor: filterStatePill === st ? '#0f172a' : '#f1f5f9', color: filterStatePill === st ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    {st === 'ALL' ? 'Pan-Bharat' : st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {searchResults.map((seat) => (
+                <div
+                  key={seat.name}
+                  onClick={() => {
+                    setInspectedSeatName(seat.name);
+                    setInspectedSeatState(seat.state);
+                    setIsInspectingFromSearch(true);
+                    setActiveTab('dossier');
+                  }}
+                  style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{seat.name}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>{seat.state} • Lok Sabha Seat</div>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>View Dossier ❯</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: DOSSIER */}
+        {activeTab === 'dossier' && (
+          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {isInspectingFromSearch && (
+              <button onClick={() => { setIsInspectingFromSearch(false); setActiveTab('search'); }} style={{ alignSelf: 'flex-start', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                ← Back to 543 Search Archive
+              </button>
+            )}
+
+            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>
+                  PARLIAMENTARY DOSSIER: {inspectedKyc.pcCode}
+                </span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>● 18th Lok Sabha Certified</span>
+              </div>
+
+              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '8px 0 2px 0' }}>{inspectedSeatName} Parliamentary Constituency</h2>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>{inspectedSeatState} State Jurisdiction</div>
+
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.mpName}</div>
+                <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>{inspectedKyc.party}</div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', fontSize: '11.5px' }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Winning Margin:</span>
+                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.margin}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Voter Turnout:</span>
+                    <div style={{ fontWeight: 800, color: '#059669' }}>{inspectedKyc.turnout}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Assets Declared:</span>
+                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.assets}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Criminal Cases:</span>
+                    <div style={{ fontWeight: 800, color: inspectedKyc.cases > 0 ? '#dc2626' : '#059669' }}>
+                      {inspectedKyc.cases} Listed
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Assembly Segments (Vidhan Sabha):</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {inspectedKyc.vidhanSabhaSegments.map((seg: string) => (
+                    <span key={seg} style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, color: '#334155' }}>
+                      {seg}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: SCHEDULE */}
+        {activeTab === 'schedule' && (
+          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>EDITORIAL TIMETABLE</span>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Public Opinion Drop Schedule</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ backgroundColor: '#ecfdf5', padding: '12px', borderRadius: '12px', border: '1px solid #a7f3d0' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>🌆 08:00 PM Daily</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#064e3b' }}>JanMat Audit</div>
+                </div>
+                <div style={{ backgroundColor: '#fffbeb', padding: '12px', borderRadius: '12px', border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#d97706' }}>🌅 08:00 AM Daily</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {polls.filter((p) => p.is_active).map((item) => (
+                <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: item.category === 'JanMat' ? '#059669' : '#d97706' }}>● LIVE IN BALLOT FEED</span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px' }}>{item.recurrence}</span>
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{item.title_en}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: PROFILE */}
+        {activeTab === 'profile' && (
+          <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: 800 }}>{username}</div>
+                  <div style={{ fontSize: '12px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Verified Sovereign Citizen</div>
+                </div>
+                <span style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>
+                  Verified Citizen
+                </span>
+              </div>
+
+              <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8' }}>Civic Karma Balance</div>
+                  <div style={{ fontSize: '24px', fontWeight: 900, color: '#f59e0b' }}>{bhumatPoints} pts</div>
+                </div>
+                <div style={{ fontSize: '11px', color: '#38bdf8' }}>Seat Change Fee: 50 pts</div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px' }}>
+                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#059669' }}>JanMat Audits</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#064e3b' }}>{janmatAuditsCount}</div>
+                </div>
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#d97706' }}>LokMat Polls</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#92400e' }}>{lokmatPollsCount}</div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span style={{ color: '#64748b' }}>Claimed Constituency:</span>
+                  <span style={{ fontWeight: 800 }}>{selectedSeat?.name || 'Unclaimed'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span style={{ color: '#64748b' }}>State Jurisdiction:</span>
+                  <span style={{ fontWeight: 800 }}>{selectedSeat?.state || 'Bharat'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Dock Navigation */}
+      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px', backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-around', zIndex: 50 }}>
+        <button onClick={() => setActiveTab('search')} style={{ background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+          <span style={{ fontSize: '18px' }}>🔍</span>
+          <span style={{ fontSize: '10px', fontWeight: 700 }}>Search</span>
+        </button>
+        <button onClick={() => setActiveTab('dossier')} style={{ background: 'none', border: 'none', color: activeTab === 'dossier' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+          <span style={{ fontSize: '18px' }}>📋</span>
+          <span style={{ fontSize: '10px', fontWeight: 700 }}>Dossier</span>
+        </button>
+        <button onClick={() => setActiveTab('vote')} style={{ background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+          <span style={{ fontSize: '20px' }}>🗳️</span>
+          <span style={{ fontSize: '10px', fontWeight: 800 }}>Vote</span>
+        </button>
+        <button onClick={() => setActiveTab('schedule')} style={{ background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+          <span style={{ fontSize: '18px' }}>📅</span>
+          <span style={{ fontSize: '10px', fontWeight: 700 }}>Schedule</span>
+        </button>
+        <button onClick={() => setActiveTab('profile')} style={{ background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+          <span style={{ fontSize: '18px' }}>👤</span>
+          <span style={{ fontSize: '10px', fontWeight: 700 }}>Profile</span>
+        </button>
+      </nav>
     </div>
   );
 }
