@@ -64,9 +64,9 @@ export default function AdminAuditPanel() {
   const [passcode, setPasscode] = useState('');
   const [activeAdminTab, setActiveAdminTab] = useState<'AUDIT' | 'CREATE_POLL'>('AUDIT');
 
-  // Polls & Selection
+  // Polls & Selection (Supports 'ALL' for platform-wide health)
   const [polls, setPolls] = useState<Poll[]>([]);
-  const [selectedPollId, setSelectedPollId] = useState<string>('');
+  const [selectedPollId, setSelectedPollId] = useState<string>('ALL');
 
   // Audit Ledger Counts
   const [ballotBoxRows, setBallotBoxRows] = useState<any[]>([]);
@@ -121,9 +121,6 @@ export default function AdminAuditPanel() {
 
     if (data && !error) {
       setPolls(data);
-      if (data.length > 0 && !selectedPollId) {
-        setSelectedPollId(data[0].id);
-      }
     }
   }
 
@@ -134,35 +131,30 @@ export default function AdminAuditPanel() {
   }, [isAuthenticated]);
 
   async function runComprehensiveAudit(pollId: string) {
-    if (!pollId) return;
     setLoading(true);
 
     try {
+      const isAll = pollId === 'ALL';
+
       // 1. Table 2: Blind Ballot Box
-      const { data: ballots, count: bCount } = await supabase
-        .from('ballot_box')
-        .select('*', { count: 'exact' })
-        .eq('poll_id', pollId)
-        .order('id', { ascending: false })
-        .limit(30);
+      let bQuery = supabase.from('ballot_box').select('*', { count: 'exact' });
+      if (!isAll) bQuery = bQuery.eq('poll_id', pollId);
+      const { data: ballots, count: bCount } = await bQuery.order('id', { ascending: false }).limit(35);
 
       setBallotBoxRows(ballots || []);
       setBallotBoxTotalCount(bCount || 0);
 
       // 2. Table 1: Participations (Gating)
-      const { count: pCount } = await supabase
-        .from('voter_participations')
-        .select('*', { count: 'exact', head: true })
-        .eq('poll_id', pollId);
+      let pQuery = supabase.from('voter_participations').select('*', { count: 'exact', head: true });
+      if (!isAll) pQuery = pQuery.eq('poll_id', pollId);
+      const { count: pCount } = await pQuery;
 
       setParticipationsCount(pCount || 0);
 
       // 3. Table 4: Pre-computed Matrix
-      const { data: tallies } = await supabase
-        .from('constituency_tallies')
-        .select('*')
-        .eq('poll_id', pollId)
-        .order('total_votes', { ascending: false });
+      let tQuery = supabase.from('constituency_tallies').select('*');
+      if (!isAll) tQuery = tQuery.eq('poll_id', pollId);
+      const { data: tallies } = await tQuery.order('total_votes', { ascending: false });
 
       setTalliesRows(tallies || []);
     } catch (e) {
@@ -173,7 +165,7 @@ export default function AdminAuditPanel() {
   }
 
   useEffect(() => {
-    if (isAuthenticated && selectedPollId) {
+    if (isAuthenticated) {
       runComprehensiveAudit(selectedPollId);
 
       const channel = supabase
@@ -191,6 +183,7 @@ export default function AdminAuditPanel() {
   }, [isAuthenticated, selectedPollId]);
 
   const selectedPoll = polls.find((p) => p.id === selectedPollId);
+  const isAllPollsSelected = selectedPollId === 'ALL';
   const isLedgerReconciled = ballotBoxTotalCount === participationsCount;
   const fortifiedSeatsCount = talliesRows.filter((r) => r.is_fortified || r.total_votes >= 50).length;
 
@@ -235,7 +228,7 @@ export default function AdminAuditPanel() {
       alert('Poll deleted permanently.');
       const updated = polls.filter((p) => p.id !== selectedPoll.id);
       setPolls(updated);
-      if (updated.length > 0) setSelectedPollId(updated[0].id);
+      setSelectedPollId('ALL');
     }
   };
 
@@ -278,7 +271,6 @@ export default function AdminAuditPanel() {
     }
   };
 
-  // Quick Seat Selection for Sandbox
   const handleSeatChange = (seat: string) => {
     setSimSeat(seat);
     if (QUICK_SEATS[seat]) {
@@ -286,13 +278,18 @@ export default function AdminAuditPanel() {
     }
   };
 
-  // Simulated Test Vote
   const handleSimulateBallot = async () => {
+    const targetPoll = isAllPollsSelected ? (polls[0]?.id || '') : selectedPollId;
+    if (!targetPoll) {
+      alert('No poll available for injection.');
+      return;
+    }
+
     setSimMessage('Casting simulated ballot...');
     const fakeToken = 'sim_' + Math.random().toString(36).substring(2, 10);
 
     const { data, error } = await supabase.rpc('cast_ballot_transaction', {
-      p_poll_id: selectedPollId,
+      p_poll_id: targetPoll,
       p_cycle_id: '2026-10',
       p_voter_token: fakeToken,
       p_state_name: simState,
@@ -309,18 +306,24 @@ export default function AdminAuditPanel() {
   };
 
   const handleResetPollVotes = async () => {
-    if (!confirm(`Reset all votes for poll ${selectedPollId}? This clears ballot_box and constituency_tallies for this poll.`)) return;
-
-    await supabase.from('ballot_box').delete().eq('poll_id', selectedPollId);
-    await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
-    await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
-    await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
-
-    alert('Poll votes reset to 0.');
+    if (isAllPollsSelected) {
+      if (!confirm('CAUTION: You have selected [ALL POLLS]. Reset all votes across the platform?')) return;
+      await supabase.from('ballot_box').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('voter_participations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('constituency_tallies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('poll_totals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      alert('All votes reset across the platform.');
+    } else {
+      if (!confirm(`Reset all votes for poll ${selectedPollId}?`)) return;
+      await supabase.from('ballot_box').delete().eq('poll_id', selectedPollId);
+      await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
+      await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
+      await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
+      alert('Poll votes reset to 0.');
+    }
     runComprehensiveAudit(selectedPollId);
   };
 
-  // Deploy New Poll
   const handleDeployNewPoll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitleEn.trim()) {
@@ -398,6 +401,8 @@ export default function AdminAuditPanel() {
   const matchingBlackoutSeats = blackoutSeatInput.trim()
     ? ALL_543_SEATS.filter((s) => s.toLowerCase().includes(blackoutSeatInput.toLowerCase().trim())).slice(0, 6)
     : [];
+
+  const activePollsCount = polls.filter((p) => p.is_active).length;
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
@@ -636,116 +641,155 @@ export default function AdminAuditPanel() {
         ) : (
           /* TAB 2: AUDIT & GOVERNANCE SUITE */
           <>
-            {/* Poll Governance Control Bar */}
-            <div style={{ backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '14px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '320px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 800 }}>Audit Target:</label>
-                  <select
-                    value={selectedPollId}
-                    onChange={(e) => setSelectedPollId(e.target.value)}
-                    style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1.5px solid #0284c7', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
-                  >
-                    {polls.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        [{p.is_active ? '🟢 LIVE' : '🔴 DEACTIVATED'}] [{p.category}] {p.title_en}
-                      </option>
-                    ))}
-                  </select>
+            {/* Poll Target & Governance Bar */}
+            <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Row 1: Dedicated Full-Width Dropdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+                    Audit Poll Target:
+                  </label>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: isAllPollsSelected ? '#0284c7' : '#059669' }}>
+                    {isAllPollsSelected ? `🌐 Platform Aggregate (${polls.length} Polls)` : `Target ID: ${selectedPollId}`}
+                  </span>
                 </div>
 
-                {/* Governance Controls */}
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    onClick={handleTogglePollStatus}
-                    style={{
-                      padding: '10px 16px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: selectedPoll?.is_active ? '#fef3c7' : '#ecfdf5',
-                      color: selectedPoll?.is_active ? '#b45309' : '#059669',
-                      fontWeight: 800,
-                      fontSize: '12px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {selectedPoll?.is_active ? '⏸ Pause / Deactivate Poll' : '▶ Reactivate Poll'}
-                  </button>
-
-                  <button
-                    onClick={handleDeletePoll}
-                    style={{ padding: '10px 16px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    🗑️ Delete Poll
-                  </button>
-
-                  <button onClick={handleResetPollVotes} style={{ padding: '10px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-                    Reset Votes
-                  </button>
-                  
-                  <button onClick={() => runComprehensiveAudit(selectedPollId)} style={{ padding: '10px 14px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-                    ↻
-                  </button>
-                </div>
+                <select
+                  value={selectedPollId}
+                  onChange={(e) => setSelectedPollId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '2px solid #0284c7',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    backgroundColor: isAllPollsSelected ? '#f0f9ff' : '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">🌐 [ALL POLLS] Cumulative Sovereign Health & Multi-Poll Activity</option>
+                  {polls.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [{p.is_active ? '🟢 LIVE' : '🔴 PAUSED'}] [{p.category}] {p.title_en} ({p.id})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* ECI 48-Hour Silence Period (Constituency Blackout Manager) */}
-              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    🏛️ Election Commission Compliance: 48-Hour Silence Blackout
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>
-                    Blacklisted constituencies cannot cast ballots or view leading trends during statutory silence windows.
-                  </span>
+              {/* Row 2: Separated Controls with No Overlap */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '4px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {!isAllPollsSelected ? (
+                    <>
+                      <button
+                        onClick={handleTogglePollStatus}
+                        style={{
+                          padding: '9px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: selectedPoll?.is_active ? '#fef3c7' : '#ecfdf5',
+                          color: selectedPoll?.is_active ? '#b45309' : '#059669',
+                          fontWeight: 800,
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {selectedPoll?.is_active ? '⏸ Pause / Deactivate Poll' : '▶ Reactivate Poll'}
+                      </button>
+
+                      <button
+                        onClick={handleDeletePoll}
+                        style={{ padding: '9px 16px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        🗑️ Delete Poll
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '6px 12px', borderRadius: '6px' }}>
+                        Active Polls: {activePollsCount} / {polls.length}
+                      </span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleResetPollVotes}
+                    style={{ padding: '9px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {isAllPollsSelected ? 'Reset All Votes' : 'Reset Votes'}
+                  </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
-                  <input
-                    type="text"
-                    placeholder="Search seat to blackout (e.g. Darbhanga, Banka, Nagpur)..."
-                    value={blackoutSeatInput}
-                    onChange={(e) => setBlackoutSeatInput(e.target.value)}
-                    style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600 }}
-                  />
-                  {matchingBlackoutSeats.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: '120px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, marginTop: '2px' }}>
-                      {matchingBlackoutSeats.map((s) => (
-                        <div
-                          key={s}
-                          onClick={() => handleAddBlackoutSeat(s)}
-                          style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
-                        >
-                          ⛔ Silence {s}
-                        </div>
+                <button
+                  onClick={() => runComprehensiveAudit(selectedPollId)}
+                  style={{ padding: '9px 16px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  ↻ Refresh Ledger
+                </button>
+              </div>
+
+              {/* Row 3: ECI Silence Blackout Section (When Specific Poll is Targeted) */}
+              {!isAllPollsSelected && (
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🏛️ Election Commission Compliance: 48-Hour Silence Blackout
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      Blacklisted constituencies cannot cast ballots or view leading trends during statutory silence windows.
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
+                    <input
+                      type="text"
+                      placeholder="Search seat to blackout (e.g. Darbhanga, Banka, Nagpur)..."
+                      value={blackoutSeatInput}
+                      onChange={(e) => setBlackoutSeatInput(e.target.value)}
+                      style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600 }}
+                    />
+                    {matchingBlackoutSeats.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: '120px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, marginTop: '2px' }}>
+                        {matchingBlackoutSeats.map((s) => (
+                          <div
+                            key={s}
+                            onClick={() => handleAddBlackoutSeat(s)}
+                            style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                          >
+                            ⛔ Silence {s}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleAddBlackoutSeat(blackoutSeatInput)}
+                      style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      Lock Seat
+                    </button>
+                  </div>
+
+                  {blackoutActionStatus && (
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626' }}>{blackoutActionStatus}</div>
+                  )}
+
+                  {selectedPoll?.blackout_seats && selectedPoll.blackout_seats.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', alignSelf: 'center' }}>Active Silence Seats:</span>
+                      {selectedPoll.blackout_seats.map((seat) => (
+                        <span key={seat} style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          ⛔ {seat}
+                          <button onClick={() => handleRemoveBlackoutSeat(seat)} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: 0, fontWeight: 900 }}>✕</button>
+                        </span>
                       ))}
                     </div>
                   )}
-                  <button
-                    onClick={() => handleAddBlackoutSeat(blackoutSeatInput)}
-                    style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    Lock Seat
-                  </button>
                 </div>
-
-                {blackoutActionStatus && (
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626' }}>{blackoutActionStatus}</div>
-                )}
-
-                {/* Active Blackouts Chips */}
-                {selectedPoll?.blackout_seats && selectedPoll.blackout_seats.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', alignSelf: 'center' }}>Active Silence Seats:</span>
-                    {selectedPoll.blackout_seats.map((seat) => (
-                      <span key={seat} style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        ⛔ {seat}
-                        <button onClick={() => handleRemoveBlackoutSeat(seat)} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: 0, fontWeight: 900 }}>✕</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Reconciliation Meters */}
@@ -753,13 +797,17 @@ export default function AdminAuditPanel() {
               <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 1: Participations (Gating)</div>
                 <div style={{ fontSize: '26px', fontWeight: 900, color: '#0f172a', marginTop: '6px' }}>{participationsCount}</div>
-                <div style={{ fontSize: '11px', color: '#059669', marginTop: '4px' }}>Unique voter tokens registered</div>
+                <div style={{ fontSize: '11px', color: '#059669', marginTop: '4px' }}>
+                  {isAllPollsSelected ? 'Unique platform tokens' : 'Unique voter tokens registered'}
+                </div>
               </div>
 
               <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 2: Blind Ballot Box</div>
                 <div style={{ fontSize: '26px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>{ballotBoxTotalCount}</div>
-                <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>Anonymous ballots cast</div>
+                <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>
+                  {isAllPollsSelected ? 'Total decoupled ballots' : 'Anonymous ballots cast'}
+                </div>
               </div>
 
               <div style={{ backgroundColor: isLedgerReconciled ? '#ecfdf5' : '#fef2f2', padding: '16px', borderRadius: '14px', border: `1.5px solid ${isLedgerReconciled ? '#a7f3d0' : '#fecaca'}` }}>
@@ -806,7 +854,11 @@ export default function AdminAuditPanel() {
                   onChange={(e) => setSimOption(Number(e.target.value))}
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 >
-                  {selectedPoll?.options?.map((opt: any, idx: number) => (
+                  {(selectedPoll?.options || [
+                    { id: 0, text_en: 'Option 1' },
+                    { id: 1, text_en: 'Option 2' },
+                    { id: 2, text_en: 'Option 3' }
+                  ]).map((opt: any, idx: number) => (
                     <option key={opt.id || idx} value={idx}>
                       Option {idx}: {opt.text_en}
                     </option>
@@ -862,7 +914,7 @@ export default function AdminAuditPanel() {
                       </tr>
                     ) : (
                       filteredTallies.map((row) => (
-                        <tr key={`${row.constituency_name}-${row.state_name}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <tr key={`${row.id || row.constituency_name}-${row.state_name}-${row.poll_id || ''}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '10px', fontWeight: 800 }}>{row.constituency_name}</td>
                           <td style={{ padding: '10px', color: '#64748b' }}>{row.state_name}</td>
                           <td style={{ padding: '10px', fontWeight: 900, color: '#0284c7' }}>{row.total_votes}</td>
