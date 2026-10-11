@@ -19,15 +19,18 @@ export default function AdminAuditPanel() {
   // Audit Data States
   const [ballotBoxRows, setBallotBoxRows] = useState<any[]>([]);
   const [participationsCount, setParticipationsCount] = useState<number>(0);
-  const [pollTotalsRecord, setPollTotalsRecord] = useState<any>(null);
+  const [ballotBoxTotalCount, setBallotBoxTotalCount] = useState<number>(0);
   const [talliesRows, setTalliesRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Simulation Form States
-  const [simSeat, setSimSeat] = useState('Darbhanga');
+  const [simSeat, setSimSeat] = useState('Muzaffarpur');
   const [simState, setSimState] = useState('Bihar');
-  const [simOption, setSimOption] = useState(0);
+  const [simOption, setSimOption] = useState(1);
   const [simMessage, setSimMessage] = useState('');
+
+  // Filter State in Table 4
+  const [tallyFilter, setTallyFilter] = useState<'ALL' | 'FORTIFIED' | 'ACTIVE'>('ALL');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,17 +65,18 @@ export default function AdminAuditPanel() {
     setLoading(true);
 
     try {
-      // 1. Fetch Ballot Box Rows (Table 2 - Anonymous Drops)
+      // 1. Fetch Ballot Box Rows & Exact Count (Table 2)
       const { data: ballots, count: bCount } = await supabase
         .from('ballot_box')
         .select('*', { count: 'exact' })
         .eq('poll_id', pollId)
         .order('cast_at', { ascending: false })
-        .limit(25);
+        .limit(30);
 
       setBallotBoxRows(ballots || []);
+      setBallotBoxTotalCount(bCount || 0);
 
-      // 2. Fetch Participations Count (Table 1 - Gating)
+      // 2. Fetch Participations Count (Table 1)
       const { count: pCount } = await supabase
         .from('voter_participations')
         .select('*', { count: 'exact', head: true })
@@ -80,16 +84,7 @@ export default function AdminAuditPanel() {
 
       setParticipationsCount(pCount || 0);
 
-      // 3. Fetch Independent Total Audit Counter
-      const { data: pTotal } = await supabase
-        .from('poll_totals')
-        .select('*')
-        .eq('poll_id', pollId)
-        .maybeSingle();
-
-      setPollTotalsRecord(pTotal || { total_votes: 0 });
-
-      // 4. Fetch Pre-computed Constituency Tallies
+      // 3. Fetch Pre-computed Constituency Tallies (Table 4)
       const { data: tallies } = await supabase
         .from('constituency_tallies')
         .select('*')
@@ -112,6 +107,7 @@ export default function AdminAuditPanel() {
         .channel(`admin_audit_stream_${selectedPollId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'ballot_box' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => runComprehensiveAudit(selectedPollId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_participations' }, () => runComprehensiveAudit(selectedPollId))
         .subscribe();
 
       return () => {
@@ -142,6 +138,19 @@ export default function AdminAuditPanel() {
     }
   };
 
+  // Reset Test Votes for Selected Poll
+  const handleResetPollVotes = async () => {
+    if (!confirm(`Are you sure you want to reset all test votes for poll ${selectedPollId}?`)) return;
+
+    await supabase.from('ballot_box').delete().eq('poll_id', selectedPollId);
+    await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
+    await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
+    await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
+
+    alert('Votes reset to 0.');
+    runComprehensiveAudit(selectedPollId);
+  };
+
   if (!isAuthenticated) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', fontFamily: 'system-ui' }}>
@@ -163,9 +172,13 @@ export default function AdminAuditPanel() {
   }
 
   const selectedPoll = polls.find((p) => p.id === selectedPollId);
-  const totalAuditCounter = Number(pollTotalsRecord?.total_votes || 0);
-  const totalBallotsRecorded = ballotBoxRows.length > 0 ? totalAuditCounter : 0;
-  const isLedgerReconciled = totalAuditCounter === participationsCount;
+  const isLedgerReconciled = ballotBoxTotalCount === participationsCount;
+
+  const filteredTallies = talliesRows.filter((r) => {
+    if (tallyFilter === 'FORTIFIED') return r.is_fortified || r.total_votes >= 50;
+    if (tallyFilter === 'ACTIVE') return r.total_votes > 0;
+    return true;
+  });
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
@@ -181,9 +194,14 @@ export default function AdminAuditPanel() {
               Live cryptographic inspection of unlinked ballots, independent totals, and pre-computed constituency tallies.
             </p>
           </div>
-          <button onClick={() => setIsAuthenticated(false)} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-            Lock Panel
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleResetPollVotes} style={{ padding: '8px 14px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              🗑️ Reset Poll Ballots
+            </button>
+            <button onClick={() => setIsAuthenticated(false)} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              Lock Panel
+            </button>
+          </div>
         </div>
 
         {/* Poll Selector */}
@@ -215,17 +233,17 @@ export default function AdminAuditPanel() {
 
           <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 2: Blind Ballot Box</div>
-            <div style={{ fontSize: '28px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>{totalAuditCounter}</div>
+            <div style={{ fontSize: '28px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>{ballotBoxTotalCount}</div>
             <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>Anonymous ballots cast</div>
           </div>
 
           <div style={{ backgroundColor: isLedgerReconciled ? '#ecfdf5' : '#fef2f2', padding: '18px', borderRadius: '14px', border: `1.5px solid ${isLedgerReconciled ? '#a7f3d0' : '#fecaca'}` }}>
             <div style={{ fontSize: '11px', color: isLedgerReconciled ? '#065f46' : '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Reconciliation Status</div>
             <div style={{ fontSize: '18px', fontWeight: 900, color: isLedgerReconciled ? '#059669' : '#dc2626', marginTop: '10px' }}>
-              {isLedgerReconciled ? '✓ 100% Matched' : '⚠ Discrepancy Found'}
+              {isLedgerReconciled ? '✓ 100% Reconciled' : '⚠ Discrepancy Found'}
             </div>
             <div style={{ fontSize: '11px', color: isLedgerReconciled ? '#047857' : '#b91c1c', marginTop: '4px' }}>
-              {isLedgerReconciled ? 'All ballots exactly equal voter tokens.' : 'Dropped packet detected between tables.'}
+              {isLedgerReconciled ? `${ballotBoxTotalCount}/${participationsCount} ballots perfectly matched.` : 'Discrepancy detected between tables.'}
             </div>
           </div>
         </div>
@@ -236,7 +254,7 @@ export default function AdminAuditPanel() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2fr auto', gap: '10px', alignItems: 'center' }}>
             <input
               type="text"
-              placeholder="Constituency (e.g. Darbhanga)"
+              placeholder="Constituency (e.g. Muzaffarpur)"
               value={simSeat}
               onChange={(e) => setSimSeat(e.target.value)}
               style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
@@ -275,9 +293,17 @@ export default function AdminAuditPanel() {
 
         {/* Pre-Computed Constituency Tallies Table */}
         <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>
-            📊 Table 4: Pre-computed Constituency Matrix (`constituency_tallies`)
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>
+              📊 Table 4: Pre-computed Constituency Matrix (`constituency_tallies`)
+            </h3>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={() => setTallyFilter('ALL')} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: tallyFilter === 'ALL' ? '#0f172a' : '#f1f5f9', color: tallyFilter === 'ALL' ? '#ffffff' : '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>All Seats</button>
+              <button onClick={() => setTallyFilter('ACTIVE')} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: tallyFilter === 'ACTIVE' ? '#0f172a' : '#f1f5f9', color: tallyFilter === 'ACTIVE' ? '#ffffff' : '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Active (&gt;0)</button>
+              <button onClick={() => setTallyFilter('FORTIFIED')} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: tallyFilter === 'FORTIFIED' ? '#0f172a' : '#f1f5f9', color: tallyFilter === 'FORTIFIED' ? '#ffffff' : '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Fortified (&ge;50)</button>
+            </div>
+          </div>
+
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
@@ -294,15 +320,15 @@ export default function AdminAuditPanel() {
                 </tr>
               </thead>
               <tbody>
-                {talliesRows.length === 0 ? (
+                {filteredTallies.length === 0 ? (
                   <tr>
                     <td colSpan={9} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
-                      No votes recorded in this poll yet.
+                      No votes matching current filter.
                     </td>
                   </tr>
                 ) : (
-                  talliesRows.map((row) => (
-                    <tr key={row.constituency_name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  filteredTallies.map((row) => (
+                    <tr key={`${row.constituency_name}-${row.state_name}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '10px', fontWeight: 800 }}>{row.constituency_name}</td>
                       <td style={{ padding: '10px', color: '#64748b' }}>{row.state_name}</td>
                       <td style={{ padding: '10px', fontWeight: 900, color: '#0284c7' }}>{row.total_votes}</td>
@@ -329,7 +355,7 @@ export default function AdminAuditPanel() {
         {/* Table 2: Raw Anonymous Blind Ballot Box Drops */}
         <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>
-            🔒 Table 2: Cryptographic Blind Ballot Box (`ballot_box`) — Recent 25 Ballots
+            🔒 Table 2: Cryptographic Blind Ballot Box (`ballot_box`) — Recent 30 Ballots
           </h3>
           <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 12px 0' }}>
             Verification proof: Notice zero voter token, zero IP, and zero user ID is stored. Complete deniability is enforced.

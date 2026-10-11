@@ -13,13 +13,13 @@ interface DrishtiMapProps {
   options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
-// 0: Orange, 1: Green, 2: Sky Blue, 3: Purple
+// Fixed 4-color palette: 0: Orange, 1: Green, 2: Sky Blue, 3: Purple
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const RADAR_GREEN = '#10b981';
 
 export default function DrishtiMap({
-  selectedConstituencyName = 'Darbhanga',
+  selectedConstituencyName = 'Muzaffarpur',
   selectedState = 'Bihar',
   pollId,
   cycleId = '2026-10',
@@ -123,10 +123,11 @@ export default function DrishtiMap({
       }
     });
 
-    // 1. Prioritize client's explicit vote choice if present
-    // 2. Otherwise derive directly from targetSeatRecord's database leader
-    // 3. If unpolled, use neutral slate
-    let homeColor = UNPOLLED_SEAT_COLOR;
+    // Determine home seat color:
+    // 1. If user explicitly voted an option, use that option's exact color.
+    // 2. Otherwise derive from targetSeatRecord's database leader.
+    // 3. Fallback to Option 0 (Orange) if record exists, or Emerald Green if early voter.
+    let homeColor = '#10b981';
 
     if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
       homeColor = OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length];
@@ -173,6 +174,7 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
+    // Voter's home seat is ALWAYS lit with their active choice color
     if (isTargetMatch(name)) return resolvedHomeColor;
     const row = seatMap[clean(name)];
     if (!row || Number(row.total_votes || 0) < 50) return UNPOLLED_SEAT_COLOR;
@@ -259,7 +261,7 @@ export default function DrishtiMap({
     }
   }, [stateFeatures, selectedConstituencyName, tallies, resolvedHomeColor]);
 
-  // Verdict calculation
+  // Neutral charcoal for unfortified status
   const getVerdictDetails = (total: number, idx: number, isTie: boolean, isFortified: boolean) => {
     if (total === 0) return { title: '0 Ballots', color: '#1e293b' };
     if (!isFortified) {
