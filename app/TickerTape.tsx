@@ -78,7 +78,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   useEffect(() => {
     if (trackRef.current) {
       const scrollW = trackRef.current.scrollWidth;
-      const speed = 32;
+      const speed = 28;
       setAnimDuration(Math.max(scrollW / 2 / speed, 14));
     }
   }, [tickerItems]);
@@ -113,16 +113,22 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   return (
     <div
       style={{
-        width: '100%',
-        height: '34px',
-        backgroundColor: '#0f172a',
-        borderRadius: '10px',
-        overflow: 'hidden',
+        width: '100vw',
         position: 'relative',
+        left: '50%',
+        right: '50%',
+        marginLeft: '-50vw',
+        marginRight: '-50vw',
+        height: '36px',
+        backgroundColor: '#0f172a',
+        borderRadius: '0px',
+        borderTop: '1px solid #1e293b',
+        borderBottom: '1px solid #1e293b',
+        overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         boxSizing: 'border-box',
-        border: '1px solid #1e293b'
+        zIndex: 10
       }}
     >
       <style>{`
@@ -154,7 +160,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
               alignItems: 'center',
               gap: '6px',
               fontSize: '11px',
-              padding: '0 16px',
+              padding: '0 20px',
               fontWeight: 600
             }}
           >
