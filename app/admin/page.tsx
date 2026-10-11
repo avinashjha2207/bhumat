@@ -191,21 +191,30 @@ export default function AdminAuditPanel() {
       text_hi: opt.text_hi || opt.text_en
     }));
 
-    const { data, error } = await supabase.from('polls').insert([
-      {
-        id: newPollId,
-        category: newCategory,
-        title_en: newTitleEn,
-        title_hi: newTitleHi || newTitleEn,
-        options: formattedOptions,
-        participation_mode: newRecurrence === 'lifetime' ? 'one_time' : 'recurring',
-        recurrence: newRecurrence,
-        current_cycle: '2026-10',
-        starts_at: new Date(newStartsAt).toISOString(),
-        is_active: true,
-        target_region_type: 'PAN_INDIA'
-      }
-    ]);
+    const payload: any = {
+      id: newPollId,
+      category: newCategory,
+      title_en: newTitleEn,
+      title_hi: newTitleHi || newTitleEn,
+      options: formattedOptions,
+      participation_mode: newRecurrence === 'lifetime' ? 'one_time' : 'recurring',
+      recurrence: newRecurrence,
+      current_cycle: '2026-10',
+      starts_at: new Date(newStartsAt).toISOString(),
+      is_active: true,
+      target_region_type: 'PAN_INDIA',
+      // Explicitly populate legacy NOT-NULL columns
+      option_0_en: formattedOptions[0]?.text_en || 'Option 1',
+      option_0_hi: formattedOptions[0]?.text_hi || 'विकल्प 1',
+      option_1_en: formattedOptions[1]?.text_en || 'Option 2',
+      option_1_hi: formattedOptions[1]?.text_hi || 'विकल्प 2',
+      option_2_en: formattedOptions[2]?.text_en || null,
+      option_2_hi: formattedOptions[2]?.text_hi || null,
+      option_3_en: formattedOptions[3]?.text_en || null,
+      option_3_hi: formattedOptions[3]?.text_hi || null
+    };
+
+    const { error } = await supabase.from('polls').insert([payload]);
 
     if (error) {
       setCreatePollStatus(`❌ Error deploying poll: ${error.message}`);
