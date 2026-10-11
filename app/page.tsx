@@ -29,6 +29,7 @@ interface Poll {
   options: { id: number; text_en: string; text_hi: string }[];
 }
 
+// Authentic Delimitation Commission Vidhan Sabha Mapping
 const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
   'banka': {
     pcCode: '27-BI',
@@ -49,10 +50,10 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     cases: 2,
     education: 'Graduate (B.A.)',
     assets: '₹8.4 Crore',
-    turnout: '57.2%',
+    turnout: '57.20%',
     margin: '30,091 Votes',
     electors: '18,72,110 Electors',
-    vidhanSabhaSegments: ['Brahmpur (199)', 'Buxar (200)', 'Dumraon (201)', 'Rajpur (202)', 'Ramgarh (203)', 'Dinara (210)']
+    vidhanSabhaSegments: ['Brahmpur (199)', 'Buxar (200)', 'Dumraon (201)', 'Rajpur [SC] (202)', 'Ramgarh (203)', 'Dinara (210)']
   },
   'darbhanga': {
     pcCode: '14-BI',
@@ -76,7 +77,31 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     turnout: '56.92%',
     margin: '2,34,927 Votes',
     electors: '18,45,210 Electors',
-    vidhanSabhaSegments: ['Gaighat (88)', 'Aurai (89)', 'Bochahan (91)', 'Sakra (92)', 'Kurhani (93)', 'Muzaffarpur (94)']
+    vidhanSabhaSegments: ['Gaighat (88)', 'Aurai (89)', 'Bochahan [SC] (91)', 'Sakra [SC] (92)', 'Kurhani (93)', 'Muzaffarpur (94)']
+  },
+  'munger': {
+    pcCode: '28-BI',
+    mpName: 'Rajiv Ranjan Singh (Lalan Singh)',
+    party: 'Janata Dal (United) / NDA',
+    cases: 1,
+    education: 'Graduate (B.A.)',
+    assets: '₹14.3 Crore',
+    turnout: '55.42%',
+    margin: '80,870 Votes',
+    electors: '18,94,220 Electors',
+    vidhanSabhaSegments: ['Tarapur (164)', 'Munger (165)', 'Jamalpur (166)', 'Suryagarha (167)', 'Lakhisarai (168)', 'Mokama (178)']
+  },
+  'sasaram': {
+    pcCode: '34-BI',
+    mpName: 'Manoj Kumar',
+    party: 'Indian National Congress (INC)',
+    cases: 0,
+    education: 'Post Graduate',
+    assets: '₹3.18 Crore',
+    turnout: '52.74%',
+    margin: '19,157 Votes',
+    electors: '17,99,240 Electors',
+    vidhanSabhaSegments: ['Mohania [SC] (204)', 'Bhabua (205)', 'Chainpur (206)', 'Chenari [SC] (207)', 'Sasaram (208)', 'Kargahar (209)']
   },
   'nagpur': {
     pcCode: '10-MH',
@@ -90,6 +115,18 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     electors: '22,23,550 Electors',
     vidhanSabhaSegments: ['Nagpur South West (52)', 'Nagpur South (53)', 'Nagpur East (54)', 'Nagpur Central (55)', 'Nagpur West (56)', 'Nagpur North [SC] (57)']
   },
+  'ramtek': {
+    pcCode: '09-MH',
+    mpName: 'Shyamkumar Barwe',
+    party: 'Indian National Congress (INC)',
+    cases: 0,
+    education: 'Graduate',
+    assets: '₹11.2 Crore',
+    turnout: '61.01%',
+    margin: '76,768 Votes',
+    electors: '20,49,110 Electors',
+    vidhanSabhaSegments: ['Katol (48)', 'Savner (49)', 'Hingna (50)', 'Umred [SC] (51)', 'Kamthi (58)', 'Ramtek (59)']
+  },
   'gorakhpur': {
     pcCode: '64-UP',
     mpName: 'Ravi Kishan (Ravindra Shukla)',
@@ -101,6 +138,30 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
     margin: '1,03,526 Votes',
     electors: '20,41,830 Electors',
     vidhanSabhaSegments: ['Caimpiyarganj (320)', 'Pipraich (321)', 'Gorakhpur Urban (322)', 'Gorakhpur Rural (323)', 'Sahajanwa (324)']
+  },
+  'varanasi': {
+    pcCode: '77-UP',
+    mpName: 'Narendra Modi',
+    party: 'Bharatiya Janata Party (BJP)',
+    cases: 0,
+    education: 'Post Graduate (M.A.)',
+    assets: '₹3.02 Crore',
+    turnout: '56.44%',
+    margin: '1,52,513 Votes',
+    electors: '19,97,578 Electors',
+    vidhanSabhaSegments: ['Rohaniya (387)', 'Varanasi North (388)', 'Varanasi South (389)', 'Varanasi Cantt. (390)', 'Sevapuri (391)']
+  },
+  'bangaloresouth': {
+    pcCode: '26-KA',
+    mpName: 'Tejasvi Surya',
+    party: 'Bharatiya Janata Party (BJP)',
+    cases: 0,
+    education: 'Academic Graduate (B.A. LL.B.)',
+    assets: '₹4.10 Crore',
+    turnout: '53.17%',
+    margin: '2,77,083 Votes',
+    electors: '23,41,200 Electors',
+    vidhanSabhaSegments: ['Govindraj Nagar (166)', 'Vijay Nagar (167)', 'Chickpet (170)', 'Basavanagudi (171)', 'Padmanaba Nagar (172)', 'B.T.M. Layout (173)', 'Jayanagar (174)', 'Bommanahalli (175)']
   }
 };
 
@@ -157,8 +218,32 @@ function resolveConstituencyDossier(seatName: string, stateName: string) {
     turnout: 'Official Record',
     margin: 'Declared Margin',
     electors: 'Electors Enrolled',
-    vidhanSabhaSegments: [`${seatName} Segment 1`, `${seatName} Segment 2`, `${seatName} Segment 3`]
+    vidhanSabhaSegments: [`${seatName} Vidhan Sabha Segment 1`, `${seatName} Vidhan Sabha Segment 2`, `${seatName} Vidhan Sabha Segment 3`]
   };
+}
+
+// Format Date as: 3-letter Day, DD 3-letter Month (e.g. "Wed, 14 Oct")
+function format3LetterDate(dateStr?: string): string {
+  if (!dateStr) return 'TBA';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'TBA';
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+// Format "Voting Since" (Only append year if >= 11 months old)
+function formatVotingSince(dateStr?: string): string {
+  if (!dateStr) return '11 Oct 2026';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '11 Oct 2026';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const now = new Date();
+  const diffMonths = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  if (diffMonths >= 11) {
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
 function getOrCreateVoterToken(): string {
@@ -186,7 +271,7 @@ export default function BhuMatApp() {
   const [lokmatPollsCount, setLokmatPollsCount] = useState(0);
   const [totalVotesCount, setTotalVotesCount] = useState(0);
   const [deviceHash, setDeviceHash] = useState<string>('');
-  const [votingSinceDate, setVotingSinceDate] = useState('11 Oct 2026');
+  const [votingSinceDate, setVotingSinceDate] = useState('2026-10-11');
 
   const [selectedSeat, setSelectedSeat] = useState<{ name: string; state: string } | null>(null);
   const [tentativeSeat, setTentativeSeat] = useState<{ name: string; state: string } | null>(null);
@@ -430,6 +515,21 @@ export default function BhuMatApp() {
     return polls.filter((p) => p.is_active && (pillarFilter === 'ALL' || p.category === pillarFilter));
   }, [polls, pillarFilter]);
 
+  // Current Season Future Polls (Current Month: October 2026)
+  const currentSeasonFuturePolls = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    return polls.filter((p) => {
+      if (!p.starts_at) return false;
+      const d = new Date(p.starts_at);
+      // Scheduled in current calendar month and year
+      const isCurrentSeason = d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      return isCurrentSeason && d.getTime() > now.getTime();
+    });
+  }, [polls]);
+
   const allFlattenedSeats = useMemo(() => {
     const list: Array<{ name: string; state: string }> = [];
     Object.entries(GROUPED_PARLIAMENTARY_SEATS).forEach(([state, seats]) => {
@@ -464,6 +564,16 @@ export default function BhuMatApp() {
     const q = seatSearchInput.toLowerCase().trim();
     return allFlattenedSeats.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 5);
   }, [seatSearchInput, allFlattenedSeats, tentativeSeat]);
+
+  const formatRecurrenceBadge = (recurrence?: string) => {
+    const r = (recurrence || 'monthly').toLowerCase();
+    if (r === 'lifetime' || r === 'one_time') return 'One-time';
+    if (r.includes('day')) return 'Daily';
+    if (r.includes('week')) return 'Weekly';
+    if (r.includes('quarter')) return 'Quarterly';
+    if (r.includes('year')) return 'Yearly';
+    return 'Monthly';
+  };
 
   if (!mounted) return null;
 
@@ -694,7 +804,6 @@ export default function BhuMatApp() {
                             {lang === 'EN' ? poll.title_hi : poll.title_en}
                           </p>
 
-                          {/* Full Screen Bleed Sentimeter Ticker */}
                           <div style={{ margin: '4px 0 16px 0' }}>
                             <TickerTape activePoll={poll} lang={lang} />
                           </div>
@@ -854,7 +963,7 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 3: DOSSIER */}
+        {/* TAB 3: DOSSIER (Authentic Vidhan Sabha Segments) */}
         {activeTab === 'dossier' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {isInspectingFromSearch && (
@@ -900,6 +1009,7 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
+              {/* Exact Delimitation Commission Assembly Segments */}
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Assembly Segments (Vidhan Sabha):</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
@@ -914,39 +1024,71 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 4: SCHEDULE */}
+        {/* TAB 4: SCHEDULE (Filtered by Current Active Season) */}
         {activeTab === 'schedule' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>EDITORIAL TIMETABLE</span>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 12px 0' }}>Public Opinion Drop Schedule</h2>
+            {/* Top Season Dialogue Box */}
+            <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #0284c7', borderRadius: '20px', padding: '20px', boxShadow: '0 4px 12px rgba(2,132,199,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>
+                  SEASON 10 • ACTIVE CYCLE
+                </span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>● 12 Sovereign Seasons / Year</span>
+              </div>
+              <h2 style={{ fontSize: '19px', fontWeight: 900, margin: '8px 0 4px 0', color: '#0f172a' }}>Ashwin Mat Cycle (October 2026)</h2>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 14px 0' }}>
+                Upcoming public opinion drops for the current month. Recurring polls unlock daily/weekly rhythms across all 543 seats.
+              </p>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div style={{ backgroundColor: '#ecfdf5', padding: '12px', borderRadius: '12px', border: '1px solid #a7f3d0' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>🌆 08:00 PM Daily</div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#064e3b' }}>JanMat Audit</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#064e3b' }}>JanMat Audit Drop</div>
                 </div>
                 <div style={{ backgroundColor: '#fffbeb', padding: '12px', borderRadius: '12px', border: '1px solid #fde68a' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#d97706' }}>🌅 08:00 AM Daily</div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#92400e' }}>LokMat Debate Drop</div>
                 </div>
               </div>
             </div>
 
+            {/* List of Future Scheduled Polls for Current Season */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {polls.filter((p) => p.is_active).map((item) => (
-                <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: item.category === 'JanMat' ? '#059669' : '#d97706' }}>● LIVE IN BALLOT FEED</span>
-                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px' }}>{item.recurrence === 'lifetime' ? 'One-time' : item.recurrence}</span>
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{item.title_en}</div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#475569', margin: '4px 2px' }}>
+                Scheduled Drops This Season ({currentSeasonFuturePolls.length}):
+              </div>
+
+              {currentSeasonFuturePolls.length === 0 ? (
+                <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                  All scheduled drops for this season are currently live in the ballot feed!
                 </div>
-              ))}
+              ) : (
+                currentSeasonFuturePolls.map((item) => (
+                  <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: item.category === 'JanMat' ? '#059669' : '#d97706' }}>
+                        ● {item.category}
+                      </span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '6px' }}>
+                          📅 {format3LetterDate(item.starts_at)}
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px' }}>
+                          {formatRecurrenceBadge(item.recurrence)}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.4 }}>
+                      {item.title_en}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB 5: PROFILE */}
+        {/* TAB 5: PROFILE (Referral Sharing, Inline Seat Change, Accurate Counters) */}
         {activeTab === 'profile' && (
           <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
@@ -960,6 +1102,7 @@ export default function BhuMatApp() {
                 </span>
               </div>
 
+              {/* DBG Wallet Card */}
               <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#94a3b8' }}>Civic Balance</div>
@@ -969,8 +1112,8 @@ export default function BhuMatApp() {
               </div>
 
               {/* Referral Widget */}
-              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px', marginTop: '12px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Your Referral Code</div>
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px', marginTop: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Your Sovereign Referral Code</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
                   <span style={{ fontSize: '16px', fontWeight: 900, color: '#0284c7', letterSpacing: '0.08em' }}>{referralCode}</span>
                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -985,7 +1128,7 @@ export default function BhuMatApp() {
                     </button>
                     <button
                       onClick={() => {
-                        const msg = `🇮🇳 Join me on BhuMat — Bharat's Sovereign Public Opinion Grid! Use my code *${referralCode}* to claim your first 100 DBG points:\nhttps://vote.bhumat.com?ref=${referralCode}`;
+                        const msg = `🇮🇳 Join me on BhuMat — Bharat's Sovereign Public Opinion Grid! Use my referral code *${referralCode}* to claim your first 100 DBG points:\nhttps://vote.bhumat.com?ref=${referralCode}`;
                         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
                       }}
                       style={{ padding: '6px 12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
@@ -999,23 +1142,17 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '12px' }}>
-                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '10px 6px', borderRadius: '12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>Total Votes</div>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{totalVotesCount}</div>
-                </div>
-                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '10px 6px', borderRadius: '12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#059669' }}>JanMat Audits</div>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#064e3b', marginTop: '2px' }}>{janmatAuditsCount}</div>
-                </div>
-                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '10px 6px', borderRadius: '12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#d97706' }}>LokMat Polls</div>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#92400e', marginTop: '2px' }}>{lokmatPollsCount}</div>
-                </div>
-              </div>
-
+              {/* Voting Since & Total Ballots Cast */}
               <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span style={{ color: '#64748b' }}>Voting Since:</span>
+                  <span style={{ fontWeight: 800 }}>{formatVotingSince(votingSinceDate)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span style={{ color: '#64748b' }}>Total Ballots Cast:</span>
+                  <span style={{ fontWeight: 900, color: '#0284c7' }}>{totalVotesCount} Ballots</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
                   <span style={{ color: '#64748b' }}>Claimed Constituency:</span>
                   <span style={{ fontWeight: 800 }}>{selectedSeat?.name || 'Unclaimed'}</span>
                 </div>
@@ -1023,20 +1160,40 @@ export default function BhuMatApp() {
                   <span style={{ color: '#64748b' }}>State Jurisdiction:</span>
                   <span style={{ fontWeight: 800 }}>{selectedSeat?.state || 'Bharat'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: '#64748b' }}>Voting Since:</span>
-                  <span style={{ fontWeight: 800 }}>{votingSinceDate}</span>
+              </div>
+
+              {/* Vote Counters */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '14px' }}>
+                <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#059669' }}>JanMat Audits</div>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#064e3b', marginTop: '2px' }}>{janmatAuditsCount}</div>
+                </div>
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#d97706' }}>LokMat Polls</div>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#92400e', marginTop: '2px' }}>{lokmatPollsCount}</div>
                 </div>
               </div>
 
+              {/* Seat Change Button Directly in Profile */}
               <button
                 onClick={() => {
                   setIsConfirmed(false);
                   setActiveTab('vote');
                 }}
-                style={{ width: '100%', marginTop: '14px', padding: '12px', borderRadius: '12px', border: '1.5px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                style={{
+                  width: '100%',
+                  marginTop: '16px',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #0284c7',
+                  backgroundColor: '#f0f9ff',
+                  color: '#0369a1',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
               >
-                Change Lok Sabha ({SEAT_CHANGE_COST_DBG} DBG)
+                🔄 Change Lok Sabha Constituency ({SEAT_CHANGE_COST_DBG} DBG)
               </button>
             </div>
           </div>
