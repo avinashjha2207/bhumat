@@ -16,7 +16,6 @@ interface Poll {
   title_en: string;
   title_hi: string;
   options: PollOption[];
-  current_cycle?: string;
   is_active?: boolean;
 }
 
@@ -61,7 +60,7 @@ export default function PollExpandedView({
   const [searchQuery, setSearchQuery] = useState('');
   const [userBeaconCoords, setUserBeaconCoords] = useState<{ x: number; y: number } | null>(null);
 
-  // Mouse Floating Tooltip State (Hidden by default, moves with cursor)
+  // Floating Dynamic Tooltip: Hidden by default, tracks pointer
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<{
     name: string;
@@ -73,7 +72,8 @@ export default function PollExpandedView({
     isFortified: boolean;
   } | null>(null);
 
-  const [rawVotes, setRawVotes] = useState<any[]>([]);
+  // Live tallies from the pre-aggregated constituency matrix
+  const [tallies, setTallies] = useState<any[]>([]);
 
   useEffect(() => {
     if (CACHED_PREPROJECTED_SEATS) {
@@ -95,29 +95,33 @@ export default function PollExpandedView({
       });
   }, []);
 
-  async function loadVotesDirect() {
+  async function loadTallies() {
     try {
       const { data, error } = await supabase
-        .from('votes')
-        .select('constituency_name, state_name, selected_option')
+        .from('constituency_tallies')
+        .select('*')
         .eq('poll_id', poll.id);
 
       if (data && !error) {
-        setRawVotes(data);
+        setTallies(data);
       }
     } catch (e) {
-      console.warn('PollExpanded direct fetch note:', e);
+      console.warn('PollExpanded tally fetch error:', e);
     }
   }
 
   useEffect(() => {
-    loadVotesDirect();
+    loadTallies();
 
     const channel = supabase
-      .channel(`expanded_direct_${poll.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `poll_id=eq.${poll.id}` }, () => {
-        loadVotesDirect();
-      })
+      .channel(`expanded_tallies_${poll.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${poll.id}` },
+        () => {
+          loadTallies();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -140,48 +144,72 @@ export default function PollExpandedView({
     ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
     : OPTION_PALETTE[0];
 
-  // Mathematical Aggregation
+  // Mathematical aggregation directly from constituency_tallies
   const { nationalStats, stateStats, seatStats, seatMap, stateTable } = useMemo(() => {
     const optCount = Math.max(poll.options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
     const stBreakdown = new Array(optCount).fill(0);
-    const localBreakdown = new Array(optCount).fill(0);
 
     let natTotal = 0;
     let stTotal = 0;
-    let localTotal = 0;
 
-    const sMap: Record<string, { total: number; breakdown: number[] }> = {};
+    const sMap: Record<string, any> = {};
     const stateMap: Record<string, { total: number; breakdown: number[]; seatsFortified: number; totalSeats: number }> = {};
+    let targetSeatRecord: any = null;
 
-    rawVotes.forEach((v) => {
-      const opt = Number(v.selected_option || 0);
-      const cSeat = clean(v.constituency_name);
-      const cState = clean(v.state_name);
+    tallies.forEach((row) => {
+      const cSeat = clean(row.constituency_name);
+      const cState = clean(row.state_name);
+      const rowTotal = Number(row.total_votes || 0);
 
-      natTotal += 1;
-      if (opt < optCount) natBreakdown[opt] += 1;
+      sMap[cSeat] = row;
+
+      natTotal += rowTotal;
+      for (let i = 0; i < optCount; i++) {
+        natBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
+      }
 
       if (cState === cleanUserState) {
-        stTotal += 1;
-        if (opt < optCount) stBreakdown[opt] += 1;
+        stTotal += rowTotal;
+        for (let i = 0; i < optCount; i++) {
+          stBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
+        }
       }
 
       if (cSeat === cleanUserSeat) {
-        localTotal += 1;
-        if (opt < optCount) localBreakdown[opt] += 1;
+        targetSeatRecord = row;
       }
 
-      if (!sMap[cSeat]) sMap[cSeat] = { total: 0, breakdown: new Array(optCount).fill(0) };
-      sMap[cSeat].total += 1;
-      if (opt < optCount) sMap[cSeat].breakdown[opt] += 1;
-
-      if (!stateMap[v.state_name || 'Other']) {
-        stateMap[v.state_name || 'Other'] = { total: 0, breakdown: new Array(optCount).fill(0), seatsFortified: 0, totalSeats: 0 };
+      const stName = row.state_name || 'Other';
+      if (!stateMap[stName]) {
+        stateMap[stName] = { total: 0, breakdown: new Array(optCount).fill(0), seatsFortified: 0, totalSeats: 0 };
       }
-      stateMap[v.state_name || 'Other'].total += 1;
-      if (opt < optCount) stateMap[v.state_name || 'Other'].breakdown[opt] += 1;
+      stateMap[stName].total += rowTotal;
+      if (Boolean(row.is_fortified) || rowTotal >= 50) {
+        stateMap[stName].seatsFortified += 1;
+      }
+      for (let i = 0; i < optCount; i++) {
+        stateMap[stName].breakdown[i] += Number(row[`opt_${i}_votes`] || 0);
+      }
     });
+
+    // Fallback if citizen voted locally but network record hasn't landed yet
+    if (userVotedOptionIdx !== null && (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0)) {
+      if (natTotal === 0) {
+        natTotal = 1;
+        natBreakdown[userVotedOptionIdx] = 1;
+      }
+      if (stTotal === 0) {
+        stTotal = 1;
+        stBreakdown[userVotedOptionIdx] = 1;
+      }
+      targetSeatRecord = {
+        total_votes: 1,
+        leading_option: userVotedOptionIdx,
+        is_tie: false,
+        is_fortified: false
+      };
+    }
 
     const resolveVerdict = (arr: number[], total: number) => {
       if (total === 0) return { title: '0 Ballots', color: '#64748b', pct: 0, votes: 0 };
@@ -205,22 +233,31 @@ export default function PollExpandedView({
       return { votes, pct };
     });
 
+    const localSeatTotal = Number(targetSeatRecord?.total_votes || 0);
+    const localLeadIdx = userVotedOptionIdx !== null ? userVotedOptionIdx : Number(targetSeatRecord?.leading_option || 0);
+    const localOpt = poll.options[localLeadIdx];
+    const localVerdict = {
+      title: localSeatTotal > 0 && localOpt ? localOpt.text_en.split('/')[0].trim() : '0 Ballots',
+      color: localSeatTotal > 0 ? OPTION_PALETTE[localLeadIdx % OPTION_PALETTE.length] : '#64748b',
+      pct: localSeatTotal > 0 ? 100 : 0,
+      total: localSeatTotal
+    };
+
     return {
       nationalStats: { total: natTotal, optBars, ...resolveVerdict(natBreakdown, natTotal) },
       stateStats: { total: stTotal, ...resolveVerdict(stBreakdown, stTotal) },
-      seatStats: { total: localTotal, ...resolveVerdict(localBreakdown, localTotal) },
+      seatStats: localVerdict,
       seatMap: sMap,
       stateTable: Object.entries(stateMap).sort((a, b) => b[1].total - a[1].total)
     };
-  }, [rawVotes, cleanUserState, cleanUserSeat, poll.options]);
+  }, [tallies, cleanUserState, cleanUserSeat, userVotedOptionIdx, poll.options]);
 
   const getSeatColor = (seat: PreprojectedSeat) => {
+    // User seat always glows with chosen option color
     if (isUserSeat(seat)) return userOptionColor;
-    const s = seatMap[clean(seat.name)];
-    if (!s || s.total < 50) return UNPOLLED_SEAT_COLOR;
-    const maxVotes = Math.max(...s.breakdown);
-    const winIdx = s.breakdown.indexOf(maxVotes);
-    return OPTION_PALETTE[winIdx % OPTION_PALETTE.length];
+    const row = seatMap[clean(seat.name)];
+    if (!row || Number(row.total_votes || 0) < 50) return UNPOLLED_SEAT_COLOR;
+    return OPTION_PALETTE[Number(row.leading_option || 0) % OPTION_PALETTE.length];
   };
 
   useEffect(() => {
@@ -245,7 +282,7 @@ export default function PollExpandedView({
     if (mode === 'grid') {
       setTimeout(() => {
         gridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 50);
+      }, 60);
     }
   };
 
@@ -301,7 +338,7 @@ export default function PollExpandedView({
         }
       `}</style>
 
-      {/* Floating Dynamic Tooltip */}
+      {/* Floating Dynamic Tooltip that moves with the mouse */}
       {hoveredSeat && cursorPos && (
         <div
           style={{
@@ -408,7 +445,7 @@ export default function PollExpandedView({
           </p>
         </div>
 
-        {/* Options Distribution Bars */}
+        {/* Options Distribution Bars: Standardized Option Palette */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
@@ -441,7 +478,7 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* 3-Column Scorecard */}
+        {/* 3-Column Scorecard: Live Option-Tied Color Verification */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
@@ -495,17 +532,18 @@ export default function PollExpandedView({
                       key={s.id}
                       onClick={() => {
                         setSearchQuery(s.name);
-                        const sData = seatMap[clean(s.name)];
-                        const maxVotes = sData ? Math.max(...sData.breakdown) : 0;
-                        const winIdx = sData && maxVotes > 0 ? sData.breakdown.indexOf(maxVotes) : 0;
+                        const row = seatMap[clean(s.name)];
+                        const total = Number(row?.total_votes || 0);
+                        const winIdx = Number(row?.leading_option || 0);
+                        const leadOpt = poll.options[winIdx];
                         setHoveredSeat({
                           name: s.name,
                           state: s.state,
-                          totalVotes: sData ? sData.total : 0,
-                          leadingOptText: poll.options[winIdx]?.text_en?.split('/')[0] || 'Option',
-                          leadingOptColor: OPTION_PALETTE[winIdx % OPTION_PALETTE.length],
-                          leadingVotes: maxVotes,
-                          isFortified: (sData ? sData.total : 0) >= 50
+                          totalVotes: total,
+                          leadingOptText: total > 0 && leadOpt ? leadOpt.text_en.split('/')[0].trim() : '0 ballots cast',
+                          leadingOptColor: total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
+                          leadingVotes: Number(row?.leading_votes || 0),
+                          isFortified: Boolean(row?.is_fortified) || total >= 50
                         });
                         setCursorPos({ x: typeof window !== 'undefined' ? window.innerWidth / 2 : 200, y: 350 });
                       }}
@@ -534,10 +572,10 @@ export default function PollExpandedView({
                 }}
               >
                 {seats.map((seat, index) => {
-                  const sData = seatMap[clean(seat.name)];
-                  const total = sData ? sData.total : 0;
-                  const maxVotes = sData && total > 0 ? Math.max(...sData.breakdown) : 0;
-                  const winIdx = sData && maxVotes > 0 ? sData.breakdown.indexOf(maxVotes) : 0;
+                  const row = seatMap[clean(seat.name)];
+                  const total = Number(row?.total_votes || 0);
+                  const winIdx = Number(row?.leading_option || 0);
+                  const leadOpt = poll.options[winIdx];
                   const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
                   const userMatched = isUserSeat(seat);
 
@@ -557,10 +595,10 @@ export default function PollExpandedView({
                           name: seat.name,
                           state: seat.state,
                           totalVotes: total,
-                          leadingOptText: poll.options[winIdx]?.text_en?.split('/')[0] || 'Verdict',
-                          leadingOptColor: OPTION_PALETTE[winIdx % OPTION_PALETTE.length],
-                          leadingVotes: maxVotes,
-                          isFortified: total >= 50
+                          leadingOptText: total > 0 && leadOpt ? leadOpt.text_en.split('/')[0].trim() : '0 ballots cast',
+                          leadingOptColor: total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
+                          leadingVotes: Number(row?.leading_votes || 0),
+                          isFortified: Boolean(row?.is_fortified) || total >= 50
                         });
                       }}
                       onTouchStart={(e) => {
@@ -572,10 +610,10 @@ export default function PollExpandedView({
                           name: seat.name,
                           state: seat.state,
                           totalVotes: total,
-                          leadingOptText: poll.options[winIdx]?.text_en?.split('/')[0] || 'Verdict',
-                          leadingOptColor: OPTION_PALETTE[winIdx % OPTION_PALETTE.length],
-                          leadingVotes: maxVotes,
-                          isFortified: total >= 50
+                          leadingOptText: total > 0 && leadOpt ? leadOpt.text_en.split('/')[0].trim() : '0 ballots cast',
+                          leadingOptColor: total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
+                          leadingVotes: Number(row?.leading_votes || 0),
+                          isFortified: Boolean(row?.is_fortified) || total >= 50
                         });
                       }}
                     />

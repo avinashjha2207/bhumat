@@ -11,6 +11,7 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST = 50;
+// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 
 interface Poll {
@@ -238,7 +239,7 @@ export default function BhuMatApp() {
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [pillarFilter, setPillarFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
 
-  // Floating Dynamic Pointer Toast State
+  // Floating Pointer-Attached Toast
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
 
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
@@ -498,10 +499,12 @@ export default function BhuMatApp() {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
       safeStorage.setItem('bhumat_points', String(newPoints));
       safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
-      safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
+      if (poll.category === 'LokMat') {
+        safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
+      }
     } catch (e) {}
 
-    // Atomic Database Transaction Call
+    // Atomic Database Transaction Call to ballot_box and constituency_tallies
     await supabase.rpc('cast_ballot_transaction', {
       p_poll_id: poll.id,
       p_cycle_id: dynamicCycle,
@@ -844,6 +847,7 @@ export default function BhuMatApp() {
                           {/* Front: Ballot View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
+                              {/* TOP HEADER: Aligned rotate button at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className="red-dot-live" />
