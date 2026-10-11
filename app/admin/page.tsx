@@ -187,15 +187,24 @@ export default function AdminAuditPanel() {
     const newPollId = `poll_${Math.random().toString(36).substring(2, 8)}`;
     const formattedOptions = newOptions.map((opt, idx) => ({
       id: idx,
-      text_en: opt.text_en,
-      text_hi: opt.text_hi || opt.text_en
+      text_en: opt.text_en.trim(),
+      text_hi: (opt.text_hi || opt.text_en).trim()
     }));
 
-    const payload: any = {
+    const opt0En = formattedOptions[0]?.text_en || 'Option 1';
+    const opt0Hi = formattedOptions[0]?.text_hi || 'विकल्प 1';
+    const opt1En = formattedOptions[1]?.text_en || 'Option 2';
+    const opt1Hi = formattedOptions[1]?.text_hi || 'विकल्प 2';
+    const opt2En = formattedOptions[2]?.text_en || '';
+    const opt2Hi = formattedOptions[2]?.text_hi || '';
+    const opt3En = formattedOptions[3]?.text_en || '';
+    const opt3Hi = formattedOptions[3]?.text_hi || '';
+
+    const payload = {
       id: newPollId,
       category: newCategory,
-      title_en: newTitleEn,
-      title_hi: newTitleHi || newTitleEn,
+      title_en: newTitleEn.trim(),
+      title_hi: (newTitleHi || newTitleEn).trim(),
       options: formattedOptions,
       participation_mode: newRecurrence === 'lifetime' ? 'one_time' : 'recurring',
       recurrence: newRecurrence,
@@ -203,15 +212,15 @@ export default function AdminAuditPanel() {
       starts_at: new Date(newStartsAt).toISOString(),
       is_active: true,
       target_region_type: 'PAN_INDIA',
-      // Explicitly populate legacy NOT-NULL columns
-      option_0_en: formattedOptions[0]?.text_en || 'Option 1',
-      option_0_hi: formattedOptions[0]?.text_hi || 'विकल्प 1',
-      option_1_en: formattedOptions[1]?.text_en || 'Option 2',
-      option_1_hi: formattedOptions[1]?.text_hi || 'विकल्प 2',
-      option_2_en: formattedOptions[2]?.text_en || null,
-      option_2_hi: formattedOptions[2]?.text_hi || null,
-      option_3_en: formattedOptions[3]?.text_en || null,
-      option_3_hi: formattedOptions[3]?.text_hi || null
+      // Explicit non-empty fallback strings for legacy columns
+      option_0_en: opt0En,
+      option_0_hi: opt0Hi,
+      option_1_en: opt1En,
+      option_1_hi: opt1Hi,
+      option_2_en: opt2En,
+      option_2_hi: opt2Hi,
+      option_3_en: opt3En,
+      option_3_hi: opt3Hi
     };
 
     const { error } = await supabase.from('polls').insert([payload]);
@@ -222,12 +231,12 @@ export default function AdminAuditPanel() {
       setCreatePollStatus(`✓ Poll Successfully Deployed! ID: ${newPollId}`);
       setNewTitleEn('');
       setNewTitleHi('');
-      fetchPolls();
+      await fetchPolls();
       setSelectedPollId(newPollId);
       setTimeout(() => {
         setActiveAdminTab('AUDIT');
         setCreatePollStatus('');
-      }, 1500);
+      }, 1400);
     }
   };
 
