@@ -23,31 +23,40 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
       try {
         const { data, error } = await supabase
           .from('constituency_tallies')
-          .select('constituency_name, leading_option, total_votes, is_tie')
-          .eq('poll_id', activePoll.id)
-          .gt('total_votes', 0)
-          .order('total_votes', { ascending: false })
-          .limit(20);
+          .select('*')
+          .eq('poll_id', activePoll.id);
 
         if (data && data.length > 0 && !error && isMounted) {
           const list: TickerItem[] = data.map((row: any) => {
-            if (row.is_tie) {
+            const total = Number(row.total_votes || 0);
+            const isFortified = Boolean(row.is_fortified) || total >= 50;
+
+            if (isFortified) {
+              const optIndex = Number(row.leading_option || 0);
+              const optText = activePoll.options?.[optIndex]
+                ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
+                : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
+
               return {
                 seat: row.constituency_name,
-                verdict: lang === 'HI' ? `⚖️ बराबरी (${row.total_votes} मत)` : `⚖️ Split Consensus (${row.total_votes} votes)`
+                verdict: `${optText} (${total.toLocaleString()} ${lang === 'HI' ? 'मत' : 'votes'}) • Quorum Met`
+              };
+            } else {
+              // Below quorum: Never leak leading option, show ballots needed!
+              const needed = Math.max(50 - total, 0);
+              return {
+                seat: row.constituency_name,
+                verdict: lang === 'HI'
+                  ? `${total}/50 मत (${needed} मत परिणाम अनलॉक करने के लिए आवश्यक)`
+                  : `${total}/50 votes (${needed} needed to unlock consensus)`
               };
             }
-            const optIndex = Number(row.leading_option || 0);
-            const optText = activePoll.options?.[optIndex]
-              ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
-              : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
-            return {
-              seat: row.constituency_name,
-              verdict: `${optText} (${Number(row.total_votes).toLocaleString()}${lang === 'HI' ? 'मत' : 'votes'})`
-            };
           });
-          setTickerItems(list);
-          return;
+
+          if (list.length > 0) {
+            setTickerItems(list);
+            return;
+          }
         }
       } catch (e) {
         console.warn('Ticker telemetry notice:', e);
@@ -60,16 +69,8 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
     fetchLiveTicker();
 
-    const channel = supabase
-      .channel(`ticker_tallies_${activePoll?.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${activePoll?.id}` }, () => {
-        fetchLiveTicker();
-      })
-      .subscribe();
-
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
     };
   }, [activePoll?.id, activePoll?.options, lang]);
 
@@ -83,7 +84,6 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
   const hasLiveVotes = tickerItems.length > 0;
 
-  // Bifurcated Ticker Lenses
   const fallbackItems = isJanMat
     ? [
         {

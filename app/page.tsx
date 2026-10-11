@@ -11,7 +11,6 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST = 50;
-// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 
 interface Poll {
@@ -417,6 +416,7 @@ export default function BhuMatApp() {
     };
   }, []);
 
+  // Point 2: Clear explanation of points mechanism (100 base, +10 on vote, -50 to migrate seat)
   const handleConfirmSeat = () => {
     const seatToConfirm = tentativeSeat || selectedSeat;
     if (!seatToConfirm) return;
@@ -447,20 +447,36 @@ export default function BhuMatApp() {
     } catch (e) {}
   };
 
+  // Point 7: Frequency-customized message generator
+  const getFrequencyRevoteMessage = (recurrence?: string) => {
+    const rec = (recurrence || 'monthly').toLowerCase();
+    if (rec.includes('day') || rec.includes('daily')) {
+      return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं। आप कल पुनः मतदान कर सकते हैं।' : 'You already voted. You can re-vote tomorrow.';
+    }
+    if (rec.includes('week')) {
+      return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं। आप अगले सप्ताह पुनः मतदान कर सकते हैं।' : 'You already voted. You can re-vote next week.';
+    }
+    if (rec.includes('month')) {
+      return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं। आप अगले महीने पुनः मतदान कर सकते हैं।' : 'You already voted. You can re-vote next month.';
+    }
+    if (rec.includes('quarter')) {
+      return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं। आप अगली तिमाही में पुनः मतदान कर सकते हैं।' : 'You already voted. You can re-vote next quarter.';
+    }
+    if (rec.includes('year') || rec.includes('annual')) {
+      return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं। आप अगले वर्ष पुनः मतदान कर सकते हैं।' : 'You already voted. You can re-vote next year.';
+    }
+    return lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं।' : 'You already voted.';
+  };
+
   const handleCastVote = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
 
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
     const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
 
-    // Pointer-Attached Toast on Double Tap
+    // Point 7: Dynamic Frequency Alert
     if (votedCycleKeys.includes(cycleVoteKey)) {
-      if (poll.participation_mode === 'recurring') {
-        const nextCycleDate = '1st November 2026';
-        showPointerToast(lang === 'HI' ? `आप पहले ही मतदान कर चुके हैं। अगला चक्र: ${nextCycleDate}` : `You already voted. Next vote on ${nextCycleDate}.`, e);
-      } else {
-        showPointerToast(lang === 'HI' ? 'आप पहले ही मतदान कर चुके हैं।' : 'You already voted.', e);
-      }
+      showPointerToast(getFrequencyRevoteMessage(poll.recurrence), e);
       return;
     }
 
@@ -502,7 +518,7 @@ export default function BhuMatApp() {
       if (poll.category === 'LokMat') {
         safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
       }
-    } catch (e) {}
+    } catch (err) {}
 
     // Atomic Database Transaction Call to ballot_box and constituency_tallies
     await supabase.rpc('cast_ballot_transaction', {
@@ -642,6 +658,19 @@ export default function BhuMatApp() {
           display: inline-block;
           animation: livePulseDot 1.6s infinite ease-in-out;
         }
+        @keyframes dimBrightBeacon {
+          0% { transform: scale(0.9); opacity: 0.4; filter: drop-shadow(0 0 1px #10b981); }
+          50% { transform: scale(1.3); opacity: 1; filter: drop-shadow(0 0 8px #10b981); }
+          100% { transform: scale(0.9); opacity: 0.4; filter: drop-shadow(0 0 1px #10b981); }
+        }
+        .seat-beacon-glowing-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background-color: #10b981;
+          display: inline-block;
+          animation: dimBrightBeacon 2.2s infinite ease-in-out;
+        }
         .mobile-dock-pad {
           padding-bottom: 96px;
         }
@@ -672,29 +701,24 @@ export default function BhuMatApp() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Point 1: Clean Header Layout (BhuMat, Snug Early Access, Glowing Dim/Bright Beacon Dot) */}
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BHUMAT</span>
-          <span style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BhuMat</span>
+          <span style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, letterSpacing: '0.04em', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {lang === 'HI' ? 'प्रारंभिक प्रवेश' : 'EARLY ACCESS'}
           </span>
+          {selectedSeat && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '999px', fontSize: '11px', maxWidth: '130px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span className="seat-beacon-glowing-dot" />
+              <span style={{ color: '#065f46', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedSeat.name}</span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {selectedSeat ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '999px', fontSize: '11px', maxWidth: '125px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', flexShrink: 0 }} />
-              <span style={{ color: '#065f46', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedSeat.name}</span>
-            </div>
-          ) : (
-            <div style={{ backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '999px', fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
-              {lang === 'HI' ? '○ असत्यापित' : '○ Unverified'}
-            </div>
-          )}
-
           <div
-            onClick={(e) => showPointerToast(lang === 'HI' ? '⚡ नागरिक अंक: 1 नागरिक = 1 मत। अंक केवल सीट परिवर्तन और सुविधाओं के लिए हैं।' : '⚡ Civic Karma: 1 Citizen = 1 Ballot. Points only unlock seat migrations & features.', e)}
+            onClick={(e) => showPointerToast(lang === 'HI' ? `⚡ नागरिक कर्म: ${bhumatPoints} अंक। प्रत्येक मतदान पर +10 अंक, सीट बदलने पर 50 अंक का शुल्क।` : `⚡ Civic Karma: ${bhumatPoints} pts. +10 pts per vote. Changing seat costs 50 pts.`, e)}
             style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', padding: '3px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: '#b45309', cursor: 'pointer' }}
           >
             ⚡ {bhumatPoints}
@@ -847,7 +871,6 @@ export default function BhuMatApp() {
                           {/* Front: Ballot View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
-                              {/* TOP HEADER: Aligned rotate button at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className="red-dot-live" />
@@ -936,15 +959,29 @@ export default function BhuMatApp() {
                               </div>
                             </div>
 
-                            {/* "Explore Full Drishti Map" Button */}
+                            {/* Point 3: Adjusted clean layout & text 'Explore Full Drishti ↗' */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
                               <span style={{ fontSize: '11px', color: '#94a3b8' }}>
                                 {isJanMat ? (lang === 'HI' ? '🔒 क्रिप्टोग्राफिक गुप्त मतपेटी' : '🔒 Cryptographic Secret Ballot') : (lang === 'HI' ? '🗳️ खुला जनमत पल्स' : '🗳️ Open Public Pulse')}
                               </span>
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 {hasVotedThisCycle && (
-                                  <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                                    {lang === 'HI' ? 'सम्पूर्ण दृष्टि नक्शा देखें ↗' : 'Explore Full Drishti Map ↗'}
+                                  <button
+                                    onClick={() => openExpandedView(poll)}
+                                    style={{
+                                      background: isJanMat ? '#ecfdf5' : '#fffbeb',
+                                      color: isJanMat ? '#059669' : '#d97706',
+                                      border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                                      padding: '8px 14px',
+                                      borderRadius: '8px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      whiteSpace: 'nowrap',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    {lang === 'HI' ? 'सम्पूर्ण दृष्टि ↗' : 'Explore Full Drishti ↗'}
                                   </button>
                                 )}
                               </div>
@@ -993,7 +1030,7 @@ export default function BhuMatApp() {
                                   justifyContent: 'center'
                                 }}
                               >
-                                {lang === 'HI' ? 'सम्पूर्ण दृष्टि नक्शा देखें (543 सीटें) 🔓' : 'Explore Full Drishti Map (543 Seats) 🔓'}
+                                {lang === 'HI' ? 'सम्पूर्ण दृष्टि (543 सीटें) 🔓' : 'Explore Full Drishti (543 Seats) 🔓'}
                               </button>
 
                               <button
