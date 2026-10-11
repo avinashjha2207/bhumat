@@ -13,8 +13,8 @@ const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
 const BELOW_QUORUM_COLOR = '#cbd5e1';
 
 export default function DrishtiMap({
-  selectedConstituencyName = 'Machilipatnam',
-  selectedState = 'Andhra Pradesh',
+  selectedConstituencyName = 'Gorakhpur',
+  selectedState = 'Uttar Pradesh',
   options = []
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -221,20 +221,20 @@ export default function DrishtiMap({
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>{leadOptionLabel(1)}</div>
-          <div style={{ fontSize: '9px', color: '#10b981', fontWeight: 800, marginTop: '2px' }}>● Local Lead</div>
+          <div style={{ fontSize: '9px', color: '#d97706', fontWeight: 800, marginTop: '2px' }}>⏳ Building Quorum</div>
         </div>
       </div>
 
-      {/* Heatmap Option Color Legend */}
+      {/* Compact Legend */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', padding: '6px 8px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
         {options.map((opt, idx) => (
           <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: OPTION_PALETTE[idx % OPTION_PALETTE.length] }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: OPTION_PALETTE[idx % OPTION_PALETTE.length], flexShrink: 0 }} />
             <span>{opt.text_en.split('/')[0].slice(0, 14)}</span>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: BELOW_QUORUM_COLOR }} />
+          <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: BELOW_QUORUM_COLOR, flexShrink: 0 }} />
           <span>Pending Quorum</span>
         </div>
       </div>
