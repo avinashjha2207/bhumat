@@ -204,26 +204,25 @@ const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
+// Truth-in-data: No fake modulus math margins
 function resolveConstituencyDossier(seatName: string, stateName: string) {
   const clean = (seatName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   if (VERIFIED_SEAT_DOSSIERS[clean]) return VERIFIED_SEAT_DOSSIERS[clean];
 
-  const seed = seatName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return {
-    pcCode: `${(seed % 543) + 1}-${(stateName || 'IN').slice(0, 2).toUpperCase()}`,
+    pcCode: `PC-${(stateName || 'IN').slice(0, 2).toUpperCase()}`,
     mpName: `Hon. Member of Parliament (${seatName})`,
-    party: 'Electoral Commission of India Certified',
-    cases: seed % 4 === 0 ? 1 : 0,
-    education: seed % 2 === 0 ? 'Post Graduate' : 'Graduate Professional',
-    assets: `₹${(2 + (seed % 18)).toFixed(2)} Crore`,
-    turnout: `${(54 + (seed % 24)).toFixed(2)}%`,
-    margin: `${(15000 + (seed % 180000)).toLocaleString()} Votes`,
-    electors: `${(14 + (seed % 8)).toFixed(1)} Lakh Electors`,
+    party: 'Electoral Commission of India Verified',
+    cases: 0,
+    education: 'Official Affidavit Record',
+    assets: 'Affidavit Filed',
+    turnout: 'Official Record',
+    margin: 'Declared Margin',
+    electors: 'Electors Enrolled',
     vidhanSabhaSegments: [
-      `${seatName} Vidhan Sabha (Segment 1)`,
-      `${seatName} Vidhan Sabha (Segment 2)`,
-      `${seatName} Vidhan Sabha (Segment 3)`,
-      `${seatName} Vidhan Sabha (Segment 4)`
+      `${seatName} Assembly Segment 1`,
+      `${seatName} Assembly Segment 2`,
+      `${seatName} Assembly Segment 3`
     ]
   };
 }
@@ -272,8 +271,8 @@ export default function BhuMatApp() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
 
-  const [inspectedSeatName, setInspectedSeatName] = useState('Gorakhpur');
-  const [inspectedSeatState, setInspectedSeatState] = useState('Uttar Pradesh');
+  const [inspectedSeatName, setInspectedSeatName] = useState('Gaya');
+  const [inspectedSeatState, setInspectedSeatState] = useState('Bihar');
   const [isInspectingFromSearch, setIsInspectingFromSearch] = useState(false);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
@@ -288,7 +287,6 @@ export default function BhuMatApp() {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // Popstate Listener: Native Mobile Back Gesture Closes Expanded View Gracefully
   useEffect(() => {
     const handlePopState = () => {
       setExpandedPoll(null);
@@ -390,7 +388,7 @@ export default function BhuMatApp() {
             target_seats: d.target_seats || [],
             blackout_seats: d.blackout_seats || [],
             starts_at: d.starts_at || new Date().toISOString(),
-            participation_mode: d.participation_mode || 'one_time',
+            participation_mode: d.participation_mode || 'recurring',
             current_cycle: d.current_cycle || '2026-10',
             recurrence: d.recurrence || 'monthly',
             is_active: d.is_active !== false,
@@ -495,9 +493,7 @@ export default function BhuMatApp() {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
       safeStorage.setItem('bhumat_points', String(newPoints));
       safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
-      if (poll.category === 'LokMat') {
-        safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
-      }
+      safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
     } catch (e) {}
 
     setFlippedCards((prev) => ({ ...prev, [poll.id]: true }));
@@ -580,16 +576,6 @@ export default function BhuMatApp() {
     });
     return out;
   }, [seatSearchInput]);
-
-  const upcomingScheduleList = useMemo(() => {
-    return [
-      { time: lang === 'HI' ? 'आज • 08:00 PM' : 'Today • 08:00 PM', category: 'JanMat', title: lang === 'HI' ? 'जिला नगर निगमों के लिए पेयजल शुद्धता मानक कानूनी जवाबदेही' : 'Statutory Drinking Water Purity Penalties for District Municipalities', cycle: 'Cycle 2026-10' },
-      { time: lang === 'HI' ? 'कल • 08:00 AM' : 'Tomorrow • 08:00 AM', category: 'LokMat', title: lang === 'HI' ? 'द ग्रेट इंडियन बिरयानी डिबेट: भारत की प्रामाणिक पाक विरासत' : 'The Great Indian Biryani Debate: Authentic Culinary Heritage', cycle: 'Weekly Drop' },
-      { time: lang === 'HI' ? 'कल • 08:00 PM' : 'Tomorrow • 08:00 PM', category: 'JanMat', title: lang === 'HI' ? 'यूनिफाइड स्टेट एंट्रेंस स्टैंडर्ड बनाम स्टेट बोर्ड स्वायत्तता' : 'Unified State Entrance Standards vs State Board Autonomy', cycle: 'Cycle 2026-10' },
-      { time: lang === 'HI' ? 'आगामी सोमवार • 08:00 AM' : 'Coming Monday • 08:00 AM', category: 'LokMat', title: lang === 'HI' ? 'रोजमर्रा की मोबिलिटी आइकॉन: रॉयल एनफील्ड बनाम आधुनिक ईवी' : 'Everyday Mobility Icon: Royal Enfield vs Electric Commuter Scooters', cycle: 'Weekly Drop' },
-      { time: lang === 'HI' ? 'अगले माह की शुरुआत' : 'Next Month Opening', category: 'JanMat', title: lang === 'HI' ? 'मासिक ऑडिट: मुख्य सड़कों और राष्ट्रीय राजमार्गों की स्थिति' : 'Monthly Re-audit: Primary Roads & Highway Maintenance Ratings', cycle: 'Cycle 2026-11' }
-    ];
-  }, [lang]);
 
   const civicBadge = useMemo(() => {
     if (janmatAuditsCount >= 3 && lokmatPollsCount >= 3) {
@@ -685,7 +671,7 @@ export default function BhuMatApp() {
           )}
 
           <div
-            onClick={() => showToast(lang === 'HI' ? '⚡ नागरिक अंक: 1 नागरिक = 1 मत। अंक केवल सीट परिवर्तन और सामुदायिक सुविधाओं के लिए हैं।' : '⚡ Civic Karma: 1 Citizen = 1 Ballot. Points only unlock seat migrations & features.')}
+            onClick={() => showToast(lang === 'HI' ? '⚡ नागरिक अंक: 1 नागरिक = 1 मत। अंक केवल सीट परिवर्तन और सुविधाओं के लिए हैं।' : '⚡ Civic Karma: 1 Citizen = 1 Ballot. Points only unlock seat migrations & features.')}
             style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', padding: '3px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: '#b45309', cursor: 'pointer' }}
           >
             ⚡ {bhumatPoints}
@@ -722,7 +708,7 @@ export default function BhuMatApp() {
 
                 <input
                   type="text"
-                  placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गोरखपुर, बेंगलुरु दक्षिण, वाराणसी)...' : '🔍 Search seat or state (e.g. Gorakhpur, Bangalore South, Varanasi)...'}
+                  placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गया, दरभंगा, गोरखपुर)...' : '🔍 Search seat or state (e.g. Gaya, Darbhanga, Gorakhpur)...'}
                   value={seatSearchInput}
                   onChange={(e) => setSeatSearchInput(e.target.value)}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', marginBottom: '10px' }}
@@ -780,7 +766,7 @@ export default function BhuMatApp() {
                   </button>
                 </div>
 
-                {/* Feed Pillar Tabs */}
+                {/* Feed Tabs */}
                 <div style={{ display: 'flex', gap: '6px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '4px', borderRadius: '12px', boxSizing: 'border-box' }}>
                   <button onClick={() => setPillarFilter('ALL')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'ALL' ? '#0f172a' : 'transparent', color: pillarFilter === 'ALL' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                     {lang === 'HI' ? 'सभी मतपत्र' : 'All Feeds'}
@@ -801,10 +787,10 @@ export default function BhuMatApp() {
                   </div>
                 ) : (
                   liveAccessiblePolls.map((poll) => {
-                    const isFlipped = !!flippedCards[poll.id];
                     const isJanMat = poll.category === 'JanMat';
                     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                     const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
+                    const isFlipped = !!flippedCards[poll.id];
                     const isBlackedOut = poll.blackout_seats && poll.blackout_seats.includes(selectedSeat?.name || '');
                     const lokmatTimeAgo = getHumanizedTimeAgo(voteTimestamps[poll.id], lang);
 
@@ -853,7 +839,7 @@ export default function BhuMatApp() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {poll.options.map((opt, idx) => {
                                   const isPicked = selectedVotes[poll.id] === idx;
-                                  const showChoice = !isJanMat && isPicked;
+                                  const showChoice = isPicked;
 
                                   return (
                                     <button
@@ -870,8 +856,15 @@ export default function BhuMatApp() {
                                         transition: 'border 0.2s ease'
                                       }}
                                     >
-                                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
-                                        {lang === 'EN' ? opt.text_en : opt.text_hi}
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                                          {lang === 'EN' ? opt.text_en : opt.text_hi}
+                                        </div>
+                                        {showChoice && (
+                                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '6px' }}>
+                                            {lang === 'HI' ? '✓ आपका मत' : '✓ Your Vote'}
+                                          </span>
+                                        )}
                                       </div>
                                       <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
                                         {lang === 'EN' ? opt.text_hi : opt.text_en}
@@ -913,7 +906,7 @@ export default function BhuMatApp() {
                                 </button>
                               </div>
 
-                              <DrishtiMap selectedConstituencyName={selectedSeat?.name} selectedState={selectedSeat?.state} options={poll.options} />
+                              <DrishtiMap selectedConstituencyName={selectedSeat?.name} selectedState={selectedSeat?.state} pollId={poll.id} options={poll.options} />
 
                               <button onClick={() => openExpandedView(poll)} style={{ width: '100%', padding: '10px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '10px', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
                                 {lang === 'HI' ? 'अखिल भारतीय दृष्टि नक्शा खोलें (543 सीटें) 🔓' : 'Explore Pan-Bharat Drishti (543 Seats) 🔓'}
@@ -973,7 +966,7 @@ export default function BhuMatApp() {
 
               <input
                 type="text"
-                placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गोरखपुर, गया, वाराणसी)...' : '🔍 Search seat or state (e.g. Gorakhpur, Gaya, Varanasi)...'}
+                placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गया, दरभंगा, गोरखपुर)...' : '🔍 Search seat or state (e.g. Gaya, Darbhanga, Gorakhpur)...'}
                 value={archiveSearchQuery}
                 onChange={(e) => setArchiveSearchQuery(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none' }}

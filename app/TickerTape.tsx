@@ -21,14 +21,14 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
       try {
         const { data, error } = await supabase.rpc('get_poll_telemetry', { p_poll_id: activePoll.id });
         if (data && data.length > 0 && !error && isMounted) {
-          const formatted: TickerItem[] = data.slice(0, 20).map((row: any) => {
+          const formatted: TickerItem[] = data.map((row: any) => {
             const optIndex = Number(row.leading_option || 0);
             const optText = activePoll.options?.[optIndex]
               ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
               : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
             return {
               seat: row.constituency_name,
-              verdict: optText
+              verdict: `${optText} (${Number(row.total_votes).toLocaleString()} votes)`
             };
           });
           setTickerItems(formatted);
@@ -38,16 +38,9 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
         console.warn('Ticker telemetry notice:', e);
       }
 
+      // Truth-in-data fallback: Zero fake votes or synthetic city claims
       if (isMounted) {
-        setTickerItems([
-          { seat: 'Gorakhpur', verdict: lang === 'HI' ? 'सख्त कानूनी जवाबदेही' : 'Strict Mandatory Accountability' },
-          { seat: 'Bangalore South', verdict: lang === 'HI' ? 'बुनियादी ढांचा पहले' : 'Infrastructure First' },
-          { seat: 'Gaya', verdict: lang === 'HI' ? 'सलाहकारी ऑडिट' : 'Advisory Audits' },
-          { seat: 'Varanasi', verdict: lang === 'HI' ? 'सख्त कानूनी जवाबदेही' : 'Strict Mandatory Accountability' },
-          { seat: 'Darbhanga', verdict: lang === 'HI' ? 'सख्त कानूनी जवाबदेही' : 'Strict Mandatory Accountability' },
-          { seat: 'Machilipatnam', verdict: lang === 'HI' ? 'सलाहकारी ऑडिट' : 'Advisory Audits' },
-          { seat: 'Amravati', verdict: lang === 'HI' ? 'बुनियादी ढांचा पहले' : 'Infrastructure First' }
-        ]);
+        setTickerItems([]);
       }
     }
 
@@ -56,7 +49,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
     return () => {
       isMounted = false;
     };
-  }, [activePoll?.id, lang]);
+  }, [activePoll?.id, activePoll?.options, lang]);
 
   useEffect(() => {
     if (trackRef.current) {
@@ -66,11 +59,19 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
     }
   }, [tickerItems]);
 
-  // Buffer items across small lengths so width always exceeds screen bounds
-  const rawList = tickerItems.length > 0 ? tickerItems : [
-    { seat: 'Pan-Bharat', verdict: lang === 'HI' ? 'सक्रिय जनमत' : 'Live Public Opinion' }
-  ];
-  const items = rawList.length < 5 ? [...rawList, ...rawList, ...rawList, ...rawList] : [...rawList, ...rawList];
+  const hasLiveVotes = tickerItems.length > 0;
+  const items = hasLiveVotes 
+    ? (tickerItems.length < 5 ? [...tickerItems, ...tickerItems, ...tickerItems, ...tickerItems] : [...tickerItems, ...tickerItems])
+    : [
+        {
+          seat: 'Pan-Bharat',
+          verdict: lang === 'HI' ? 'अपने निर्वाचन क्षेत्र में पहला सत्यापित मत दर्ज करें • लाइव जनमत' : 'Be the first in your constituency to cast a verified ballot • Live Sovereign Consensus'
+        },
+        {
+          seat: '543 Seats',
+          verdict: lang === 'HI' ? 'प्रत्येक संसदीय सीट पर 50 मतों से कोरम पूर्ण • निष्पक्ष ऑडिट' : '50 Ballots to Fortify Constituency Quorum • Verified Ledger'
+        }
+      ];
 
   return (
     <div
@@ -108,7 +109,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           animation: `steadyScrollLinear ${animDuration}s linear infinite`
         }}
       >
-        {items.map((item, idx) => (
+        {[...items, ...items].map((item, idx) => (
           <div
             key={idx}
             style={{
