@@ -16,6 +16,7 @@ interface Poll {
   title_en: string;
   title_hi: string;
   options: PollOption[];
+  current_cycle?: string;
   is_active?: boolean;
 }
 
@@ -300,7 +301,7 @@ export default function PollExpandedView({
         }
       `}</style>
 
-      {/* Floating Dynamic Tooltip that moves with the mouse */}
+      {/* Floating Dynamic Tooltip */}
       {hoveredSeat && cursorPos && (
         <div
           style={{
@@ -407,7 +408,7 @@ export default function PollExpandedView({
           </p>
         </div>
 
-        {/* Options Distribution Bars: Standardized Option Palette */}
+        {/* Options Distribution Bars */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
@@ -440,7 +441,7 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* 3-Column Scorecard: Live Option-Tied Color Verification */}
+        {/* 3-Column Scorecard */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
@@ -506,7 +507,7 @@ export default function PollExpandedView({
                           leadingVotes: maxVotes,
                           isFortified: (sData ? sData.total : 0) >= 50
                         });
-                        setCursorPos({ x: window.innerWidth / 2, y: 350 });
+                        setCursorPos({ x: typeof window !== 'undefined' ? window.innerWidth / 2 : 200, y: 350 });
                       }}
                       style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
                     >

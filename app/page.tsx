@@ -11,7 +11,6 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST = 50;
-// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 
 interface Poll {
@@ -270,7 +269,7 @@ export default function BhuMatApp() {
   const [voteTimestamps, setVoteTimestamps] = useState<Record<string, string>>({});
 
   const showPointerToast = (msg: string, e?: React.MouseEvent | React.TouchEvent) => {
-    let x = window.innerWidth / 2;
+    let x = typeof window !== 'undefined' ? window.innerWidth / 2 : 200;
     let y = 140;
 
     if (e) {
@@ -502,18 +501,15 @@ export default function BhuMatApp() {
       safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedVotes));
     } catch (e) {}
 
-    // Send vote to Supabase
-    await supabase.from('votes').insert([
-      {
-        poll_id: poll.id,
-        selected_option: optionIdx,
-        constituency_name: selectedSeat.name,
-        state_name: selectedSeat.state,
-        assembly_segment: selectedAssembly || null,
-        cycle_id: dynamicCycle,
-        device_hash: deviceHash || null
-      }
-    ]);
+    // Atomic Database Transaction Call
+    await supabase.rpc('cast_ballot_transaction', {
+      p_poll_id: poll.id,
+      p_cycle_id: dynamicCycle,
+      p_voter_token: deviceHash,
+      p_state_name: selectedSeat.state,
+      p_constituency_name: selectedSeat.name,
+      p_selected_option: optionIdx
+    });
   };
 
   const handleShareWhatsApp = (customMsg: string, fallbackUrl: string) => {
@@ -848,7 +844,6 @@ export default function BhuMatApp() {
                           {/* Front: Ballot View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
-                              {/* TOP HEADER: Aligned rotate button at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className="red-dot-live" />
@@ -894,7 +889,7 @@ export default function BhuMatApp() {
                                 <TickerTape activePoll={poll} lang={lang} />
                               </div>
 
-                              {/* Options: Native Palette Borders, JanMat Secret Ballot Bifurcation */}
+                              {/* Options: Native Palette Borders */}
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {poll.options.map((opt, idx) => {
                                   const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
@@ -937,7 +932,7 @@ export default function BhuMatApp() {
                               </div>
                             </div>
 
-                            {/* WIDER "Explore Full Drishti Map" BUTTON */}
+                            {/* "Explore Full Drishti Map" Button */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
                               <span style={{ fontSize: '11px', color: '#94a3b8' }}>
                                 {isJanMat ? (lang === 'HI' ? '🔒 क्रिप्टोग्राफिक गुप्त मतपेटी' : '🔒 Cryptographic Secret Ballot') : (lang === 'HI' ? '🗳️ खुला जनमत पल्स' : '🗳️ Open Public Pulse')}

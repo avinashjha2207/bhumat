@@ -8,11 +8,12 @@ interface DrishtiMapProps {
   selectedConstituencyName?: string;
   selectedState?: string;
   pollId?: string;
+  cycleId?: string;
   userVotedOptionIdx?: number | null;
   options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
-// 1st: Orange, 2nd: Green, 3rd: Sky Blue, 4th: Purple
+// Option Palette (Index 0: Orange, 1: Green, 2: Sky Blue, 3: Purple)
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const RADAR_GREEN = '#10b981';
@@ -21,6 +22,7 @@ export default function DrishtiMap({
   selectedConstituencyName = 'East Delhi',
   selectedState = 'Delhi',
   pollId,
+  cycleId = '2026-10',
   userVotedOptionIdx = null,
   options = []
 }: DrishtiMapProps) {
@@ -34,7 +36,7 @@ export default function DrishtiMap({
     ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
     : OPTION_PALETTE[0];
 
-  const [rawVotes, setRawVotes] = useState<any[]>([]);
+  const [tallies, setTallies] = useState<any[]>([]);
 
   useEffect(() => {
     fetch('/india_pc_2019_simplified.geojson')
@@ -52,29 +54,29 @@ export default function DrishtiMap({
       });
   }, []);
 
-  async function loadVotesDirect() {
+  async function loadTallies() {
     if (!pollId) return;
     try {
       const { data, error } = await supabase
-        .from('votes')
-        .select('constituency_name, state_name, selected_option')
+        .from('constituency_tallies')
+        .select('*')
         .eq('poll_id', pollId);
 
       if (data && !error) {
-        setRawVotes(data);
+        setTallies(data);
       }
     } catch (e) {
-      console.warn('Direct votes fetch notice:', e);
+      console.warn('Tallies fetch notice:', e);
     }
   }
 
   useEffect(() => {
-    loadVotesDirect();
+    loadTallies();
 
     const channel = supabase
-      .channel(`drishti_direct_${pollId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `poll_id=eq.${pollId}` }, () => {
-        loadVotesDirect();
+      .channel(`drishti_tallies_${pollId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${pollId}` }, () => {
+        loadTallies();
       })
       .subscribe();
 
@@ -88,32 +90,37 @@ export default function DrishtiMap({
   const activeStateKey = clean(selectedState);
 
   // Strict Real-Time Mathematical Aggregation
-  const { nationalTally, stateTally, seatTally } = useMemo(() => {
+  const { nationalTally, stateTally, seatTally, seatMap } = useMemo(() => {
     const optCount = Math.max(options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
     const stBreakdown = new Array(optCount).fill(0);
-    const seatBreakdown = new Array(optCount).fill(0);
 
     let natTotal = 0;
     let stTotal = 0;
-    let seatTotal = 0;
+    let currentSeatRow: any = null;
+    const sMap: Record<string, any> = {};
 
-    rawVotes.forEach((v) => {
-      const opt = Number(v.selected_option || 0);
-      const cSeat = clean(v.constituency_name);
-      const cState = clean(v.state_name);
+    tallies.forEach((row) => {
+      const cSeat = clean(row.constituency_name);
+      const cState = clean(row.state_name);
+      const rowTotal = Number(row.total_votes || 0);
 
-      natTotal += 1;
-      if (opt < optCount) natBreakdown[opt] += 1;
+      sMap[cSeat] = row;
+      natTotal += rowTotal;
+
+      for (let i = 0; i < optCount; i++) {
+        natBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
+      }
 
       if (cState === activeStateKey) {
-        stTotal += 1;
-        if (opt < optCount) stBreakdown[opt] += 1;
+        stTotal += rowTotal;
+        for (let i = 0; i < optCount; i++) {
+          stBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
+        }
       }
 
       if (cSeat === activeTarget) {
-        seatTotal += 1;
-        if (opt < optCount) seatBreakdown[opt] += 1;
+        currentSeatRow = row;
       }
     });
 
@@ -121,18 +128,16 @@ export default function DrishtiMap({
       if (total === 0) return { idx: -1, isTie: false, votes: 0 };
       const maxVotes = Math.max(...arr);
       const winners = arr.map((v, i) => (v === maxVotes ? i : -1)).filter((i) => i !== -1);
-      if (winners.length > 1) {
-        return { idx: winners[0], isTie: true, votes: maxVotes };
-      }
-      return { idx: winners[0], isTie: false, votes: maxVotes };
+      return { idx: winners[0], isTie: winners.length > 1, votes: maxVotes };
     };
 
     return {
       nationalTally: { total: natTotal, ...resolveWinner(natBreakdown, natTotal) },
       stateTally: { total: stTotal, ...resolveWinner(stBreakdown, stTotal) },
-      seatTally: { total: seatTotal, ...resolveWinner(seatBreakdown, seatTotal) }
+      seatTally: currentSeatRow || { total_votes: 0, leading_option: 0, is_fortified: false, is_tie: false },
+      seatMap: sMap
     };
-  }, [rawVotes, activeStateKey, activeTarget, options]);
+  }, [tallies, activeStateKey, activeTarget, options]);
 
   const stateFeatures = useMemo(() => {
     if (!geoData) return [];
@@ -156,9 +161,11 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
-    // User's home seat strictly adopts their chosen option's color
     if (isTargetMatch(name)) return userOptionColor;
-    return UNPOLLED_SEAT_COLOR;
+    const s = seatMap[clean(name)];
+    if (!s || s.total_votes < 50) return UNPOLLED_SEAT_COLOR;
+    if (s.is_tie) return '#64748b';
+    return OPTION_PALETTE[s.leading_option % OPTION_PALETTE.length];
   };
 
   useEffect(() => {
@@ -200,7 +207,7 @@ export default function DrishtiMap({
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
-    // Radar is ALWAYS UNIFORM GREEN
+    // Radar Beacon: Uniform Green across the platform
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -239,24 +246,28 @@ export default function DrishtiMap({
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, rawVotes, userOptionColor]);
+  }, [stateFeatures, selectedConstituencyName, tallies, userOptionColor]);
 
   // Color & Verdict Formulation
-  const getVerdictDetails = (tally: { total: number; idx: number; isTie: boolean; votes: number }) => {
-    if (tally.total === 0) {
+  const getVerdictDetails = (total: number, optIdx: number, isTie: boolean) => {
+    if (total === 0) {
       return { title: '0 Ballots', color: '#64748b' };
     }
-    if (tally.isTie) {
+    if (isTie) {
       return { title: '⚖️ Split (Tie)', color: '#64748b' };
     }
-    const opt = options[tally.idx];
-    const name = opt ? opt.text_en.split('/')[0].trim() : `Option ${tally.idx + 1}`;
-    return { title: name, color: OPTION_PALETTE[tally.idx % OPTION_PALETTE.length] };
+    const opt = options[optIdx];
+    const name = opt ? opt.text_en.split('/')[0].trim() : `Option ${optIdx + 1}`;
+    return { title: name, color: OPTION_PALETTE[optIdx % OPTION_PALETTE.length] };
   };
 
-  const natVerdict = getVerdictDetails(nationalTally);
-  const stVerdict = getVerdictDetails(stateTally);
-  const seatVerdict = getVerdictDetails(seatTally);
+  const natVerdict = getVerdictDetails(nationalTally.total, nationalTally.idx, nationalTally.isTie);
+  const stVerdict = getVerdictDetails(stateTally.total, stateTally.idx, stateTally.isTie);
+  const seatVerdict = getVerdictDetails(
+    Number(seatTally.total_votes || 0),
+    Number(seatTally.leading_option || 0),
+    Boolean(seatTally.is_tie)
+  );
 
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
@@ -323,8 +334,8 @@ export default function DrishtiMap({
           <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '2px' }}>
             {seatVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: seatTally.total >= 50 ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
-            {seatTally.total >= 50 ? '● Quorum Met' : `⏳ ${seatTally.total}/50 Ballots`}
+          <div style={{ fontSize: '9px', color: Number(seatTally.total_votes || 0) >= 50 ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
+            {Number(seatTally.total_votes || 0) >= 50 ? '● Quorum Met' : `⏳ ${seatTally.total_votes || 0}/50 Ballots`}
           </div>
         </div>
       </div>

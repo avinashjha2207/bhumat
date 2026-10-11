@@ -21,24 +21,33 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
     async function fetchLiveTicker() {
       if (!activePoll?.id) return;
       try {
-        const { data, error } = await supabase.rpc('get_live_consensus_hierarchy', {
-          p_poll_id: activePoll.id
-        });
-        if (data && data.constituencies && !error && isMounted) {
-          const list: TickerItem[] = Object.values(data.constituencies).map((row: any) => {
+        const { data, error } = await supabase
+          .from('constituency_tallies')
+          .select('constituency_name, leading_option, total_votes, is_tie')
+          .eq('poll_id', activePoll.id)
+          .gt('total_votes', 0)
+          .order('total_votes', { ascending: false })
+          .limit(20);
+
+        if (data && data.length > 0 && !error && isMounted) {
+          const list: TickerItem[] = data.map((row: any) => {
+            if (row.is_tie) {
+              return {
+                seat: row.constituency_name,
+                verdict: lang === 'HI' ? `⚖️ बराबरी (${row.total_votes} मत)` : `⚖️ Split Consensus (${row.total_votes} votes)`
+              };
+            }
             const optIndex = Number(row.leading_option || 0);
             const optText = activePoll.options?.[optIndex]
               ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
               : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
             return {
               seat: row.constituency_name,
-              verdict: `${optText} (${Number(row.total_votes).toLocaleString()} ${lang === 'HI' ? 'मत' : 'votes'})`
+              verdict: `${optText} (${Number(row.total_votes).toLocaleString()}${lang === 'HI' ? 'मत' : 'votes'})`
             };
           });
-          if (list.length > 0) {
-            setTickerItems(list);
-            return;
-          }
+          setTickerItems(list);
+          return;
         }
       } catch (e) {
         console.warn('Ticker telemetry notice:', e);
@@ -51,8 +60,16 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
 
     fetchLiveTicker();
 
+    const channel = supabase
+      .channel(`ticker_tallies_${activePoll?.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${activePoll?.id}` }, () => {
+        fetchLiveTicker();
+      })
+      .subscribe();
+
     return () => {
       isMounted = false;
+      supabase.removeChannel(channel);
     };
   }, [activePoll?.id, activePoll?.options, lang]);
 
