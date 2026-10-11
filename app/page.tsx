@@ -338,7 +338,6 @@ export default function BhuMatApp() {
   }, []);
 
   const openExpandedView = async (poll: Poll) => {
-    // Pre-fetch tallies to ensure instant rendering (0ms lag)
     try {
       const { data } = await supabase
         .from('constituency_tallies')
@@ -578,7 +577,6 @@ export default function BhuMatApp() {
     return out;
   }, [seatSearchInput]);
 
-  // Exact Prefix Prioritized Matching for "Nagpur", "Nagaon", etc.
   const quickSeatMatches = useMemo(() => {
     if (!seatSearchInput.trim() || tentativeSeat) return [];
     const q = seatSearchInput.toLowerCase().trim();
@@ -787,12 +785,16 @@ export default function BhuMatApp() {
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
                   const userChoiceIdx = sessionBallotChoices[poll.id];
 
+                  const optionCount = poll.options.length;
+                  const computedCardHeight = Math.max(590, 420 + optionCount * 62);
+
                   return (
-                    <div key={poll.id} style={{ perspective: '1200px', width: '100%' }}>
+                    <div key={poll.id} style={{ perspective: '1200px', width: '100%', minHeight: `${computedCardHeight}px` }}>
                       <div
                         style={{
                           position: 'relative',
                           width: '100%',
+                          minHeight: `${computedCardHeight}px`,
                           transition: 'transform 0.65s cubic-bezier(0.4, 0, 0.2, 1)',
                           transformStyle: 'preserve-3d',
                           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
@@ -801,6 +803,8 @@ export default function BhuMatApp() {
                         {/* Front: Ballot View */}
                         <div
                           style={{
+                            position: 'absolute',
+                            inset: 0,
                             backfaceVisibility: 'hidden',
                             backgroundColor: '#ffffff',
                             border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
@@ -808,75 +812,76 @@ export default function BhuMatApp() {
                             padding: '20px',
                             display: 'flex',
                             flexDirection: 'column',
-                            boxSizing: 'border-box',
-                            width: '100%'
+                            justifyContent: 'space-between',
+                            boxSizing: 'border-box'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span className="live-dot-animated" />
-                              <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em' }}>LIVE</span>
-                              <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>{poll.category}</span>
-                            </div>
-                            {hasVotedThisCycle && (
-                              <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
-                                View Drishti ↺
-                              </button>
-                            )}
-                          </div>
-
-                          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 6px 0', lineHeight: 1.45, wordBreak: 'break-word' }}>
-                            {lang === 'EN' ? poll.title_en : poll.title_hi}
-                          </h3>
-                          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px 0', lineHeight: 1.5, wordBreak: 'break-word' }}>
-                            {lang === 'EN' ? poll.title_hi : poll.title_en}
-                          </p>
-
-                          {/* Nested Card-Bound Ticker */}
-                          <div style={{ margin: '4px 0 16px 0' }}>
-                            <TickerTape activePoll={poll} lang={lang} />
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-                            {poll.options.map((opt, idx) => {
-                              const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
-                              const isUserChoice = userChoiceIdx === idx;
-                              const showChoiceTag = !isJanMat && isUserChoice && hasVotedThisCycle;
-
-                              return (
-                                <button
-                                  key={opt.id}
-                                  onClick={(e) => handleCastVote(poll, idx, e)}
-                                  style={{
-                                    padding: '14px 16px',
-                                    borderRadius: '14px',
-                                    backgroundColor: showChoiceTag ? '#ecfdf5' : '#ffffff',
-                                    border: showChoiceTag ? `2px solid ${optColor}` : `1.5px solid ${optColor}`,
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    width: '100%',
-                                    boxSizing: 'border-box',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4px'
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
-                                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', flex: 1, wordBreak: 'break-word', lineHeight: 1.35 }}>
-                                      {lang === 'EN' ? opt.text_en : opt.text_hi}
-                                    </div>
-                                    {showChoiceTag && (
-                                      <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                        ✓ Your Vote
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div style={{ fontSize: '11.5px', color: '#64748b', wordBreak: 'break-word', lineHeight: 1.4 }}>
-                                    {lang === 'EN' ? opt.text_hi : opt.text_en}
-                                  </div>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="live-dot-animated" />
+                                <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em' }}>LIVE</span>
+                                <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>{poll.category}</span>
+                              </div>
+                              {hasVotedThisCycle && (
+                                <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                  View Drishti ↺
                                 </button>
-                              );
-                            })}
+                              )}
+                            </div>
+
+                            <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 6px 0', lineHeight: 1.45, wordBreak: 'break-word' }}>
+                              {lang === 'EN' ? poll.title_en : poll.title_hi}
+                            </h3>
+                            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px 0', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                              {lang === 'EN' ? poll.title_hi : poll.title_en}
+                            </p>
+
+                            <div style={{ margin: '4px 0 14px 0' }}>
+                              <TickerTape activePoll={poll} lang={lang} />
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                              {poll.options.map((opt, idx) => {
+                                const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                                const isUserChoice = userChoiceIdx === idx;
+                                const showChoiceTag = !isJanMat && isUserChoice && hasVotedThisCycle;
+
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    onClick={(e) => handleCastVote(poll, idx, e)}
+                                    style={{
+                                      padding: '14px 16px',
+                                      borderRadius: '14px',
+                                      backgroundColor: showChoiceTag ? '#ecfdf5' : '#ffffff',
+                                      border: showChoiceTag ? `2px solid ${optColor}` : `1.5px solid ${optColor}`,
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      width: '100%',
+                                      boxSizing: 'border-box',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
+                                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', flex: 1, wordBreak: 'break-word', lineHeight: 1.35 }}>
+                                        {lang === 'EN' ? opt.text_en : opt.text_hi}
+                                      </div>
+                                      {showChoiceTag && (
+                                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                          ✓ Your Vote
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: '11.5px', color: '#64748b', wordBreak: 'break-word', lineHeight: 1.4 }}>
+                                      {lang === 'EN' ? opt.text_hi : opt.text_en}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
 
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
@@ -904,7 +909,7 @@ export default function BhuMatApp() {
                             flexDirection: 'column',
                             justifyContent: 'space-between',
                             boxSizing: 'border-box',
-                            overflowY: 'auto'
+                            overflow: 'hidden'
                           }}
                         >
                           <div>
@@ -927,8 +932,8 @@ export default function BhuMatApp() {
                             />
                           </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                            <button onClick={() => openExpandedView(poll)} style={{ width: '100%', height: '46px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '12px', color: isJanMat ? '#059669' : '#d97706', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                            <button onClick={() => openExpandedView(poll)} style={{ width: '100%', height: '44px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '12px', color: isJanMat ? '#059669' : '#d97706', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
                               Explore Full Drishti (543 Seats) 🔓
                             </button>
                           </div>
@@ -1221,7 +1226,7 @@ export default function BhuMatApp() {
         )}
       </main>
 
-      {/* Dock Navigation with Mobile Safe-Area Label Visibility */}
+      {/* Dock Navigation */}
       <nav
         style={{
           position: 'fixed',

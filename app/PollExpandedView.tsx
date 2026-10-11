@@ -79,9 +79,7 @@ export default function PollExpandedView({
     isTie: boolean;
   } | null>(null);
 
-  // Instantly hydrated tallies from parent state (0ms delay)
   const [tallies, setTallies] = useState<any[]>(initialTallies);
-  // Live Popping Pulses Queue for Drishti Bharat
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
   useEffect(() => {
@@ -127,9 +125,7 @@ export default function PollExpandedView({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${poll.id}` },
-        () => {
-          loadTallies();
-        }
+        () => loadTallies()
       )
       .subscribe();
 
@@ -145,7 +141,7 @@ export default function PollExpandedView({
             const optColor = OPTION_PALETTE[Number(newBallot.selected_option || 0) % OPTION_PALETTE.length];
             setLivePulses((prev) => ({
               ...prev,
-              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3500 }
+              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 }
             }));
           }
         }
@@ -166,7 +162,7 @@ export default function PollExpandedView({
         });
         return changed ? next : prev;
       });
-    }, 1000);
+    }, 800);
 
     return () => {
       supabase.removeChannel(tallyChannel);
@@ -509,24 +505,16 @@ export default function PollExpandedView({
           display: inline-block;
           animation: liveDotPulseSlow 2.4s infinite ease-in-out;
         }
-        @keyframes nationalPopShockwaveRing {
-          0% { r: 6px; opacity: 1; stroke-width: 4px; }
-          100% { r: 42px; opacity: 0; stroke-width: 0.5px; }
-        }
-        .national-pop-circle {
-          animation: nationalPopShockwaveRing 1.8s infinite ease-out;
-        }
-        @keyframes nationalPopFade {
-          0% { filter: brightness(1.6); }
-          50% { filter: brightness(1.2); }
+        @keyframes nationalLiveFlash {
+          0% { filter: brightness(1.75); }
+          50% { filter: brightness(1.35); }
           100% { filter: brightness(1); }
         }
         .national-live-pulse-path {
-          animation: nationalPopFade 3.5s ease-out forwards;
+          animation: nationalLiveFlash 3.8s ease-out forwards;
         }
       `}</style>
 
-      {/* Clamped Auto-Dismiss Tooltip */}
       {hoveredSeat && cursorPos && (
         <div
           style={{
@@ -613,7 +601,7 @@ export default function PollExpandedView({
         </div>
       </header>
 
-      {/* Full Bleed Ticker */}
+      {/* Ticker */}
       <div style={{ width: '100%', maxWidth: '480px', padding: '0 14px', boxSizing: 'border-box', marginTop: '4px' }}>
         <TickerTape activePoll={poll} lang={lang} />
       </div>
@@ -897,34 +885,6 @@ export default function PollExpandedView({
                         />
                       </g>
                     );
-                  })}
-
-                  {/* Pulsing Shockwave Rings on Drishti Bharat */}
-                  {Object.keys(livePulses).map((pulseKey) => {
-                    const matchedSeat = seats.find((s) => clean(s.name) === pulseKey);
-                    if (!matchedSeat) return null;
-                    const el = svgRef.current?.querySelector(`#pc-${matchedSeat.id}`) as SVGGraphicsElement;
-                    if (!el?.getBBox) return null;
-                    try {
-                      const bbox = el.getBBox();
-                      const cx = bbox.x + bbox.width / 2;
-                      const cy = bbox.y + bbox.height / 2;
-                      return (
-                        <circle
-                          key={`pulse-${pulseKey}`}
-                          cx={cx}
-                          cy={cy}
-                          r={14}
-                          fill="none"
-                          stroke={livePulses[pulseKey].color}
-                          strokeWidth={3.5}
-                          className="national-pop-circle"
-                          pointerEvents="none"
-                        />
-                      );
-                    } catch (e) {
-                      return null;
-                    }
                   })}
 
                   {userBeaconCoords && (

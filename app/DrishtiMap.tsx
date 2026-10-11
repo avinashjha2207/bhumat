@@ -34,7 +34,6 @@ export default function DrishtiMap({
   const [loading, setLoading] = useState(true);
 
   const [tallies, setTallies] = useState<any[]>([]);
-  // Live Popping Pulses Queue: { [cleanSeat]: { color: string, expiresAt: number } }
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
 
   useEffect(() => {
@@ -71,17 +70,14 @@ export default function DrishtiMap({
 
   useEffect(() => {
     loadTallies();
-
     if (!pollId) return;
 
     const tallyChannel = supabase
-      .channel(`state_tally_stream_${pollId}`)
+      .channel(`state_tallies_stream_${pollId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${pollId}` },
-        () => {
-          loadTallies();
-        }
+        () => loadTallies()
       )
       .subscribe();
 
@@ -97,7 +93,7 @@ export default function DrishtiMap({
             const optColor = OPTION_PALETTE[Number(newBallot.selected_option || 0) % OPTION_PALETTE.length];
             setLivePulses((prev) => ({
               ...prev,
-              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3500 }
+              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 }
             }));
           }
         }
@@ -118,7 +114,7 @@ export default function DrishtiMap({
         });
         return changed ? next : prev;
       });
-    }, 1000);
+    }, 800);
 
     return () => {
       supabase.removeChannel(tallyChannel);
@@ -314,7 +310,8 @@ export default function DrishtiMap({
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
       const feat = stateFeatures.find((f: any) => {
         const p = f.properties || {};
-        return clean(p.PC_NAME || p.pc_name || p.NAME || '') === pulsingSeatKey;
+        const pName = clean(p.PC_NAME || p.pc_name || p.NAME || '');
+        return pName === pulsingSeatKey || pName.includes(pulsingSeatKey) || pulsingSeatKey.includes(pName);
       });
       if (feat) {
         const centroid = pathGenerator.centroid(feat);
@@ -322,7 +319,7 @@ export default function DrishtiMap({
           g.append('circle')
             .attr('cx', centroid[0])
             .attr('cy', centroid[1])
-            .attr('r', 10)
+            .attr('r', 12)
             .attr('fill', 'none')
             .attr('stroke', livePulses[pulsingSeatKey].color)
             .attr('stroke-width', 3)
@@ -332,7 +329,7 @@ export default function DrishtiMap({
       }
     });
 
-    // Continuous Breathing Radar Pulse on Active Home Seat
+    // Radar pulse on active seat
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -407,24 +404,24 @@ export default function DrishtiMap({
           animation: livePopShockwaveRing 1.8s infinite ease-out;
         }
         @keyframes livePopFade {
-          0% { filter: brightness(1.6); }
-          50% { filter: brightness(1.2); }
+          0% { filter: brightness(1.7); }
+          50% { filter: brightness(1.3); }
           100% { filter: brightness(1); }
         }
         .live-pop-shockwave {
-          animation: livePopFade 3.5s ease-out forwards;
+          animation: livePopFade 3.8s ease-out forwards;
         }
-        @keyframes calmSeatBreathing {
-          0% { stroke-width: 2.2px; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
-          50% { stroke-width: 4.2px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95)); opacity: 1; }
-          100% { stroke-width: 2.2px; filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
+        @keyframes calmSeatBreathingGlow {
+          0% { stroke-width: 2.2px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4)); opacity: 0.85; }
+          50% { stroke-width: 4.4px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95)); opacity: 1; }
+          100% { stroke-width: 2.2px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4)); opacity: 0.85; }
         }
         .user-seat-glow {
-          animation: calmSeatBreathing 2.6s infinite ease-in-out !important;
+          animation: calmSeatBreathingGlow 2.6s infinite ease-in-out;
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard with No Abrupt Text Truncation */}
+      {/* 3-Box Live Scorecard */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
