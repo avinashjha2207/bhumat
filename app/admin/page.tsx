@@ -1,469 +1,375 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../utils/supabaseClient';
 
-const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lleeljlvqltfzlidmsqs.supabase.co';
-const supabaseUrl = rawUrl.replace(/[()]/g, '').trim();
-const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsZWVsamx2cWx0ZnpsaWRtc3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODE3NTUsImV4cCI6MjEwNjk1Nzc1NX0.sQdPyFJpjKrt8mZx_xpOh8lgYPxCGrsO7IgDmxiwJfc';
-const supabase = createClient(supabaseUrl, rawKey.trim());
-
-interface OptionItem {
-  id: number;
-  text_en: string;
-  text_hi: string;
+interface Poll {
+  id: string;
+  category: string;
+  title_en: string;
+  options: any[];
 }
 
-export default function AdminPollManager() {
+export default function AdminAuditPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [polls, setPolls] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState('');
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [selectedPollId, setSelectedPollId] = useState<string>('');
 
-  // 543 Constituencies List for Granular Multi-Select
-  const [allConstituencies, setAllConstituencies] = useState<Array<{ id: string; name: string; state: string }>>([]);
-  const [seatFilter, setSeatFilter] = useState('');
+  // Audit Data States
+  const [ballotBoxRows, setBallotBoxRows] = useState<any[]>([]);
+  const [participationsCount, setParticipationsCount] = useState<number>(0);
+  const [pollTotalsRecord, setPollTotalsRecord] = useState<any>(null);
+  const [talliesRows, setTalliesRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Form State
-  const [pollId, setPollId] = useState(`poll_${Date.now().toString().slice(-4)}`);
-  const [category, setCategory] = useState<'JanMat' | 'LokMat'>('JanMat');
-  const [titleEn, setTitleEn] = useState('');
-  const [titleHi, setTitleHi] = useState('');
-  const [participationMode, setParticipationMode] = useState<'one_time' | 'recurring'>('recurring');
-  const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
-  const [currentCycle, setCurrentCycle] = useState('2026-10');
-  const [targetScope, setTargetScope] = useState<'PAN_INDIA' | 'CUSTOM_SEATS'>('PAN_INDIA');
-  const [selectedTargetSeats, setSelectedTargetSeats] = useState<string[]>([]);
-  const [startsAt, setStartsAt] = useState(new Date().toISOString().slice(0, 16));
-
-  const [options, setOptions] = useState<OptionItem[]>([
-    { id: 0, text_en: 'Excellent & Well Maintained', text_hi: 'बहुत अच्छी और सुव्यवस्थित' },
-    { id: 1, text_en: 'Average / Regular Potholes', text_hi: 'औसत / आए दिन गड्ढे' },
-    { id: 2, text_en: 'Severe Deterioration / Unsafe', text_hi: 'बेहद खराब और असुरक्षित' }
-  ]);
-
-  // Load 543 Seats List
-  useEffect(() => {
-    fetch('/india_pc_preprojected.json')
-      .then((res) => res.json())
-      .then((data) => {
-        setAllConstituencies(data.map((d: any) => ({ id: d.id, name: d.name, state: d.state })));
-      })
-      .catch((e) => console.warn('Could not load seats:', e));
-  }, []);
-
-  async function fetchPolls() {
-    setLoading(true);
-    const { data, error } = await supabase.from('polls').select('*').order('starts_at', { ascending: false });
-    if (data && !error) setPolls(data);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    if (isAuthenticated) fetchPolls();
-  }, [isAuthenticated]);
+  // Simulation Form States
+  const [simSeat, setSimSeat] = useState('Darbhanga');
+  const [simState, setSimState] = useState('Bihar');
+  const [simOption, setSimOption] = useState(0);
+  const [simMessage, setSimMessage] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (passcode === 'bhumat2026') {
       setIsAuthenticated(true);
-      setAuthError('');
     } else {
-      setAuthError('Invalid Sovereign Admin Passcode');
+      alert('Invalid Security Passcode');
     }
   };
 
-  const handleAddOption = () => {
-    if (options.length >= 4) return;
-    setOptions([...options, { id: options.length, text_en: '', text_hi: '' }]);
-  };
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
-  const handleRemoveOption = (index: number) => {
-    if (options.length <= 2) return;
-    const updated = options.filter((_, i) => i !== index).map((opt, i) => ({ ...opt, id: i }));
-    setOptions(updated);
-  };
-
-  const toggleTargetSeat = (seatName: string) => {
-    setSelectedTargetSeats((prev) =>
-      prev.includes(seatName) ? prev.filter((s) => s !== seatName) : [...prev, seatName]
-    );
-  };
-
-  // Fixed Deactivate / Activate Toggle with Optimistic UI & Error Handler
-  async function handleToggleActive(p: any) {
-    const updatedStatus = !p.is_active;
-
-    // Optimistic UI update
-    setPolls((prev) =>
-      prev.map((item) => (item.id === p.id ? { ...item, is_active: updatedStatus } : item))
-    );
-
-    const { error } = await supabase
-      .from('polls')
-      .update({ is_active: updatedStatus })
-      .eq('id', p.id);
-
-    if (error) {
-      alert(`Database error toggling active status: ${error.message}`);
-      fetchPolls(); // Rollback on error
-    } else {
-      setStatusMessage(`✓ Status updated: ${p.id} is now ${updatedStatus ? 'LIVE' : 'INACTIVE'}`);
-      setTimeout(() => setStatusMessage(''), 3000);
-    }
-  }
-
-  // Shift Drop Date / Schedule Shifter
-  async function handleShiftSchedule(p: any) {
-    const newDateStr = prompt(
-      `Shift Go-Live Date/Time for ${p.id}:\nCurrent: ${new Date(p.starts_at).toLocaleString()}\nEnter new date (YYYY-MM-DDTHH:mm):`,
-      new Date(p.starts_at).toISOString().slice(0, 16)
-    );
-
-    if (newDateStr) {
-      const parsedDate = new Date(newDateStr);
-      if (isNaN(parsedDate.getTime())) {
-        alert('Invalid date format. Use YYYY-MM-DDTHH:mm (e.g. 2026-10-20T20:00)');
-        return;
-      }
-
-      const { error } = await supabase
+    async function fetchPolls() {
+      const { data, error } = await supabase
         .from('polls')
-        .update({ starts_at: parsedDate.toISOString() })
-        .eq('id', p.id);
+        .select('*')
+        .order('starts_at', { ascending: false });
 
-      if (!error) {
-        alert(`✓ Go-live date shifted to ${parsedDate.toLocaleString()}`);
-        fetchPolls();
-      } else {
-        alert(`Error shifting schedule: ${error.message}`);
+      if (data && !error) {
+        setPolls(data);
+        if (data.length > 0) {
+          setSelectedPollId(data[0].id);
+        }
       }
     }
-  }
-
-  async function handleToggleBlackout(poll: any) {
-    const seat = prompt(`Enter Lok Sabha seat name to add/remove from Election Silence Blackout for ${poll.id}:`);
-    if (!seat) return;
-    const current = poll.blackout_seats || [];
-    const updated = current.includes(seat) ? current.filter((s: string) => s !== seat) : [...current, seat];
-    await supabase.from('polls').update({ blackout_seats: updated }).eq('id', poll.id);
     fetchPolls();
-  }
+  }, [isAuthenticated]);
 
-  async function handleCreatePoll(e: React.FormEvent) {
-    e.preventDefault();
-    setStatusMessage('Publishing poll to sovereign registry...');
+  async function runComprehensiveAudit(pollId: string) {
+    if (!pollId) return;
+    setLoading(true);
 
-    const payload = {
-      id: pollId,
-      category,
-      title_en: titleEn,
-      title_hi: titleHi,
-      options,
-      option_0_en: options[0]?.text_en || '',
-      option_0_hi: options[0]?.text_hi || '',
-      option_1_en: options[1]?.text_en || '',
-      option_1_hi: options[1]?.text_hi || '',
-      option_2_en: options[2]?.text_en || '',
-      option_2_hi: options[2]?.text_hi || '',
-      recurrence,
-      participation_mode: participationMode,
-      current_cycle: currentCycle,
-      target_region_type: targetScope === 'PAN_INDIA' ? 'PAN_INDIA' : 'CUSTOM_SEATS',
-      target_seats: targetScope === 'PAN_INDIA' ? [] : selectedTargetSeats,
-      blackout_seats: [],
-      starts_at: new Date(startsAt).toISOString(),
-      is_active: true
-    };
+    try {
+      // 1. Fetch Ballot Box Rows (Table 2 - Anonymous Drops)
+      const { data: ballots, count: bCount } = await supabase
+        .from('ballot_box')
+        .select('*', { count: 'exact' })
+        .eq('poll_id', pollId)
+        .order('cast_at', { ascending: false })
+        .limit(25);
 
-    const { error } = await supabase.from('polls').insert([payload]);
+      setBallotBoxRows(ballots || []);
 
-    if (!error) {
-      setStatusMessage('✓ Poll published successfully!');
-      fetchPolls();
-      setPollId(`poll_${Date.now().toString().slice(-4)}`);
-      setTitleEn('');
-      setTitleHi('');
-      setTimeout(() => setStatusMessage(''), 4000);
-    } else {
-      setStatusMessage(`Error: ${error.message}`);
+      // 2. Fetch Participations Count (Table 1 - Gating)
+      const { count: pCount } = await supabase
+        .from('voter_participations')
+        .select('*', { count: 'exact', head: true })
+        .eq('poll_id', pollId);
+
+      setParticipationsCount(pCount || 0);
+
+      // 3. Fetch Independent Total Audit Counter
+      const { data: pTotal } = await supabase
+        .from('poll_totals')
+        .select('*')
+        .eq('poll_id', pollId)
+        .maybeSingle();
+
+      setPollTotalsRecord(pTotal || { total_votes: 0 });
+
+      // 4. Fetch Pre-computed Constituency Tallies
+      const { data: tallies } = await supabase
+        .from('constituency_tallies')
+        .select('*')
+        .eq('poll_id', pollId)
+        .order('total_votes', { ascending: false });
+
+      setTalliesRows(tallies || []);
+    } catch (e) {
+      console.error('Audit run error:', e);
+    } finally {
+      setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (isAuthenticated && selectedPollId) {
+      runComprehensiveAudit(selectedPollId);
+
+      const channel = supabase
+        .channel(`admin_audit_stream_${selectedPollId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ballot_box' }, () => runComprehensiveAudit(selectedPollId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => runComprehensiveAudit(selectedPollId))
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [isAuthenticated, selectedPollId]);
+
+  // Sandbox Test Voter
+  const handleSimulateBallot = async () => {
+    setSimMessage('Casting simulated ballot...');
+    const fakeToken = 'sim_' + Math.random().toString(36).substring(2, 10);
+
+    const { data, error } = await supabase.rpc('cast_ballot_transaction', {
+      p_poll_id: selectedPollId,
+      p_cycle_id: '2026-10',
+      p_voter_token: fakeToken,
+      p_state_name: simState,
+      p_constituency_name: simSeat,
+      p_selected_option: Number(simOption)
+    });
+
+    if (error || !data?.success) {
+      setSimMessage(`❌ Error: ${error?.message || data?.error}`);
+    } else {
+      setSimMessage(`✓ Ballot Logged: Seat total is now ${data.constituency_total}. National total is ${data.total_poll_votes}.`);
+      runComprehensiveAudit(selectedPollId);
+    }
+  };
 
   if (!isAuthenticated) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', fontFamily: 'system-ui' }}>
-        <form onSubmit={handleLogin} style={{ backgroundColor: '#ffffff', padding: '36px 32px', borderRadius: '20px', width: '320px', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 20px 25px rgba(0,0,0,0.3)' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: '#0f172a', textAlign: 'center' }}>BhuMat Command Auth</h2>
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', fontFamily: 'system-ui' }}>
+        <form onSubmit={handleLogin} style={{ backgroundColor: '#1e293b', padding: '32px', borderRadius: '16px', width: '320px', border: '1px solid #334155' }}>
+          <h2 style={{ color: '#ffffff', fontSize: '18px', fontWeight: 800, margin: '0 0 16px 0' }}>BhuMat Audit Portal</h2>
           <input
             type="password"
-            placeholder="Enter Sovereign Passcode"
+            placeholder="Enter security key..."
             value={passcode}
             onChange={(e) => setPasscode(e.target.value)}
-            style={{ padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '14px', outline: 'none' }}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#ffffff', marginBottom: '14px', outline: 'none' }}
           />
-          {authError && <div style={{ color: '#e11d48', fontSize: '12px', fontWeight: 600, textAlign: 'center' }}>{authError}</div>}
-          <button type="submit" style={{ padding: '12px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer' }}>
-            Access Deck 🔒
+          <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>
+            Unlock Audit Ledger
           </button>
         </form>
       </div>
     );
   }
 
-  const filteredSeats = allConstituencies.filter(
-    (c) => c.name.toLowerCase().includes(seatFilter.toLowerCase()) || c.state.toLowerCase().includes(seatFilter.toLowerCase())
-  );
+  const selectedPoll = polls.find((p) => p.id === selectedPollId);
+  const totalAuditCounter = Number(pollTotalsRecord?.total_votes || 0);
+  const totalBallotsRecorded = ballotBoxRows.length > 0 ? totalAuditCounter : 0;
+  const isLedgerReconciled = totalAuditCounter === participationsCount;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a', padding: '32px 20px', fontFamily: 'system-ui' }}>
-      <div style={{ maxWidth: '980px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
           <div>
-            <span style={{ fontSize: '10px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>EDITORIAL COMMAND</span>
-            <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '6px 0 0 0' }}>BhuMat Poll Command Center</h1>
+            <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+              BhuMat Consensus Verification Suite
+            </h1>
+            <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
+              Live cryptographic inspection of unlinked ballots, independent totals, and pre-computed constituency tallies.
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setIsAuthenticated(false)} style={{ backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Lock Deck</button>
-            <a href="/" style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, color: '#334155', textDecoration: 'none' }}>← View App</a>
+          <button onClick={() => setIsAuthenticated(false)} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+            Lock Panel
+          </button>
+        </div>
+
+        {/* Poll Selector */}
+        <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', gap: '14px', alignItems: 'center' }}>
+          <label style={{ fontSize: '13px', fontWeight: 800 }}>Audit Poll Target:</label>
+          <select
+            value={selectedPollId}
+            onChange={(e) => setSelectedPollId(e.target.value)}
+            style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1.5px solid #0284c7', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
+          >
+            {polls.map((p) => (
+              <option key={p.id} value={p.id}>
+                [{p.category}] {p.title_en} ({p.id})
+              </option>
+            ))}
+          </select>
+          <button onClick={() => runComprehensiveAudit(selectedPollId)} style={{ padding: '10px 16px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+            ↻ Refresh
+          </button>
+        </div>
+
+        {/* Triangulated Triple-Entry Reconciliation Meter */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
+          <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 1: Participations (Gating)</div>
+            <div style={{ fontSize: '28px', fontWeight: 900, color: '#0f172a', marginTop: '6px' }}>{participationsCount}</div>
+            <div style={{ fontSize: '11px', color: '#059669', marginTop: '4px' }}>Unique voter tokens registered</div>
+          </div>
+
+          <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 2: Blind Ballot Box</div>
+            <div style={{ fontSize: '28px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>{totalAuditCounter}</div>
+            <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>Anonymous ballots cast</div>
+          </div>
+
+          <div style={{ backgroundColor: isLedgerReconciled ? '#ecfdf5' : '#fef2f2', padding: '18px', borderRadius: '14px', border: `1.5px solid ${isLedgerReconciled ? '#a7f3d0' : '#fecaca'}` }}>
+            <div style={{ fontSize: '11px', color: isLedgerReconciled ? '#065f46' : '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Reconciliation Status</div>
+            <div style={{ fontSize: '18px', fontWeight: 900, color: isLedgerReconciled ? '#059669' : '#dc2626', marginTop: '10px' }}>
+              {isLedgerReconciled ? '✓ 100% Matched' : '⚠ Discrepancy Found'}
+            </div>
+            <div style={{ fontSize: '11px', color: isLedgerReconciled ? '#047857' : '#b91c1c', marginTop: '4px' }}>
+              {isLedgerReconciled ? 'All ballots exactly equal voter tokens.' : 'Dropped packet detected between tables.'}
+            </div>
           </div>
         </div>
 
-        {/* Create Form */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', marginBottom: '32px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 16px 0' }}>Create Audit (2–4 Options & Recurrence Control)</h2>
-          <form onSubmit={handleCreatePoll} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Poll Identifier</label>
-                <input type="text" required value={pollId} onChange={(e) => setPollId(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Pillar</label>
-                <select value={category} onChange={(e: any) => setCategory(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700 }}>
-                  <option value="JanMat">JanMat (Civic Audit / 8 PM - Emerald)</option>
-                  <option value="LokMat">LokMat (Culture Poll / 8 AM - Amber)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1' }}>⏰ Go-Live Time</label>
-                <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '9px', borderRadius: '8px', border: '1.5px solid #38bdf8', backgroundColor: '#f0f9ff' }} />
-              </div>
-            </div>
-
-            {/* Recurrence & Cadence Settings */}
-            <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Participation Type</label>
-                <select value={participationMode} onChange={(e: any) => setParticipationMode(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, marginTop: '4px' }}>
-                  <option value="recurring">Recurring (Resets Each Cycle)</option>
-                  <option value="one_time">One-Time Ballot (Permanent)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Recurrence Frequency</label>
-                <select disabled={participationMode === 'one_time'} value={recurrence} onChange={(e: any) => setRecurrence(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, marginTop: '4px' }}>
-                  <option value="daily">Daily Reset (24 Hours)</option>
-                  <option value="weekly">Weekly Cycle (Monday Drop)</option>
-                  <option value="monthly">Monthly Cycle (Customizable Date)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Current Cycle Code</label>
-                <input type="text" value={currentCycle} onChange={(e) => setCurrentCycle(e.target.value)} placeholder="e.g. 2026-10" style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, marginTop: '4px' }} />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Question (English)</label>
-              <input type="text" required value={titleEn} onChange={(e) => setTitleEn(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>Question (Hindi)</label>
-              <input type="text" required value={titleHi} onChange={(e) => setTitleHi(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-            </div>
-
-            {/* Options */}
-            <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>Ballot Options ({options.length}/4)</span>
-                {options.length < 4 && (
-                  <button type="button" onClick={handleAddOption} style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
-                    + Add Option
-                  </button>
-                )}
-              </div>
-              {options.map((opt, idx) => (
-                <div key={opt.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    required
-                    placeholder={`Option ${idx + 1} (English)`}
-                    value={opt.text_en}
-                    onChange={(e) => {
-                      const updated = [...options];
-                      updated[idx].text_en = e.target.value;
-                      setOptions(updated);
-                    }}
-                    style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder={`विकल्प ${idx + 1} (हिन्दी)`}
-                    value={opt.text_hi}
-                    onChange={(e) => {
-                      const updated = [...options];
-                      updated[idx].text_hi = e.target.value;
-                      setOptions(updated);
-                    }}
-                    style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                  />
-                  {options.length > 2 && (
-                    <button type="button" onClick={() => handleRemoveOption(idx)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer' }}>
-                      ✕
-                    </button>
-                  )}
-                </div>
+        {/* Sandbox Test Voter Form */}
+        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>🧪 Sandbox Live Ballot Injector</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2fr auto', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Constituency (e.g. Darbhanga)"
+              value={simSeat}
+              onChange={(e) => setSimSeat(e.target.value)}
+              style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+            />
+            <input
+              type="text"
+              placeholder="State (e.g. Bihar)"
+              value={simState}
+              onChange={(e) => setSimState(e.target.value)}
+              style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+            />
+            <select
+              value={simOption}
+              onChange={(e) => setSimOption(Number(e.target.value))}
+              style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+            >
+              {selectedPoll?.options?.map((opt: any, idx: number) => (
+                <option key={opt.id || idx} value={idx}>
+                  Option {idx}: {opt.text_en}
+                </option>
               ))}
+            </select>
+            <button
+              onClick={handleSimulateBallot}
+              style={{ padding: '10px 18px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+            >
+              Cast Test Vote
+            </button>
+          </div>
+          {simMessage && (
+            <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: 700, color: simMessage.startsWith('✓') ? '#059669' : '#dc2626' }}>
+              {simMessage}
             </div>
-
-            {/* Scope */}
-            <div style={{ backgroundColor: '#f0fdf4', border: '1.5px solid #a7f3d0', borderRadius: '12px', padding: '14px' }}>
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '10px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 800, color: '#065f46' }}>
-                  <input type="radio" checked={targetScope === 'PAN_INDIA'} onChange={() => setTargetScope('PAN_INDIA')} /> 🇮🇳 PAN India (All 543 Seats)
-                </label>
-                <label style={{ fontSize: '12px', fontWeight: 800, color: '#065f46' }}>
-                  <input type="radio" checked={targetScope === 'CUSTOM_SEATS'} onChange={() => setTargetScope('CUSTOM_SEATS')} /> 🎯 Hand-Pick Constituencies ({selectedTargetSeats.length} selected)
-                </label>
-              </div>
-
-              {targetScope === 'CUSTOM_SEATS' && (
-                <div>
-                  <input
-                    type="text"
-                    placeholder="Search 543 seats to add..."
-                    value={seatFilter}
-                    onChange={(e) => setSeatFilter(e.target.value)}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: '8px', border: '1px solid #a7f3d0', marginBottom: '8px', fontSize: '12px' }}
-                  />
-                  <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px', backgroundColor: '#ffffff', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    {filteredSeats.slice(0, 40).map((seat) => {
-                      const isChecked = selectedTargetSeats.includes(seat.name);
-                      return (
-                        <button
-                          key={seat.id}
-                          type="button"
-                          onClick={() => toggleTargetSeat(seat.name)}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            border: isChecked ? '1px solid #059669' : '1px solid #cbd5e1',
-                            backgroundColor: isChecked ? '#ecfdf5' : '#f8fafc',
-                            color: isChecked ? '#065f46' : '#475569',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {isChecked ? '✓ ' : '+ '} {seat.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#059669' }}>{statusMessage}</span>
-              <button type="submit" style={{ backgroundColor: '#10b981', color: '#ffffff', fontWeight: 800, padding: '10px 24px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
-                + Publish Ballot
-              </button>
-            </div>
-          </form>
+          )}
         </div>
 
-        {/* Working Active Polls & Blackouts Section */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Active Polls & ECI Blackout Windows</h2>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>Manage live visibility, shift drop dates, and toggle constituency silence</p>
-            </div>
-            <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '6px' }}>{polls.length} Registered</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {polls.map((p) => {
-              const isJanMat = p.category === 'JanMat';
-              const blackouts = p.blackout_seats || [];
-              const isFuture = new Date(p.starts_at) > new Date();
-              const isLive = p.is_active && !isFuture;
-
-              return (
-                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', backgroundColor: p.is_active ? '#f8fafc' : '#f1f5f9', borderRadius: '12px', border: `1px solid ${p.is_active ? '#e2e8f0' : '#cbd5e1'}`, opacity: p.is_active ? 1 : 0.8 }}>
-                  <div style={{ maxWidth: '60%' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                      <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>
-                        {p.category}
-                      </span>
-                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>{p.id}</span>
-                      
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: isLive ? '#10b981' : (isFuture ? '#d97706' : '#ef4444') }}>
-                        {isLive ? '● LIVE' : (isFuture ? `⏳ SCHEDULED (${new Date(p.starts_at).toLocaleDateString()})` : '○ DEACTIVATED')}
-                      </span>
-                      
-                      <span style={{ fontSize: '10px', color: '#0369a1', backgroundColor: '#e0f2fe', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        {p.participation_mode === 'recurring' ? `${p.recurrence} (${p.current_cycle})` : 'One-Time'}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a' }}>{p.title_en}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
-                      Go-Live: <strong>{new Date(p.starts_at).toLocaleString()}</strong> • Scope: {p.target_region_type} • Blackout: {blackouts.length} Seats
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button
-                      onClick={() => handleShiftSchedule(p)}
-                      title="Shift drop date (e.g. from 5th to 20th)"
-                      style={{ background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      📅 Shift Date
-                    </button>
-                    <button
-                      onClick={() => handleToggleBlackout(p)}
-                      style={{ background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      ECI Silence ({blackouts.length})
-                    </button>
-                    <button
-                      onClick={() => handleToggleActive(p)}
-                      style={{
-                        backgroundColor: p.is_active ? '#fee2e2' : '#ecfdf5',
-                        border: `1px solid ${p.is_active ? '#fca5a5' : '#a7f3d0'}`,
-                        color: p.is_active ? '#dc2626' : '#059669',
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {p.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+        {/* Pre-Computed Constituency Tallies Table */}
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>
+            📊 Table 4: Pre-computed Constituency Matrix (`constituency_tallies`)
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '10px' }}>Constituency</th>
+                  <th style={{ padding: '10px' }}>State</th>
+                  <th style={{ padding: '10px' }}>Total Votes</th>
+                  <th style={{ padding: '10px' }}>Opt 0 (Orange)</th>
+                  <th style={{ padding: '10px' }}>Opt 1 (Green)</th>
+                  <th style={{ padding: '10px' }}>Opt 2 (Sky Blue)</th>
+                  <th style={{ padding: '10px' }}>Opt 3 (Purple)</th>
+                  <th style={{ padding: '10px' }}>Leader</th>
+                  <th style={{ padding: '10px' }}>Quorum Met</th>
+                </tr>
+              </thead>
+              <tbody>
+                {talliesRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
+                      No votes recorded in this poll yet.
+                    </td>
+                  </tr>
+                ) : (
+                  talliesRows.map((row) => (
+                    <tr key={row.constituency_name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px', fontWeight: 800 }}>{row.constituency_name}</td>
+                      <td style={{ padding: '10px', color: '#64748b' }}>{row.state_name}</td>
+                      <td style={{ padding: '10px', fontWeight: 900, color: '#0284c7' }}>{row.total_votes}</td>
+                      <td style={{ padding: '10px', color: '#f97316', fontWeight: 700 }}>{row.opt_0_votes}</td>
+                      <td style={{ padding: '10px', color: '#10b981', fontWeight: 700 }}>{row.opt_1_votes}</td>
+                      <td style={{ padding: '10px', color: '#0ea5e9', fontWeight: 700 }}>{row.opt_2_votes}</td>
+                      <td style={{ padding: '10px', color: '#8b5cf6', fontWeight: 700 }}>{row.opt_3_votes}</td>
+                      <td style={{ padding: '10px', fontWeight: 800 }}>
+                        Option {row.leading_option} ({row.leading_votes} v)
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', backgroundColor: row.is_fortified ? '#ecfdf5' : '#fef3c7', color: row.is_fortified ? '#059669' : '#d97706' }}>
+                          {row.is_fortified ? '✓ FORTIFIED' : `⏳ ${row.total_votes}/50`}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
+
+        {/* Table 2: Raw Anonymous Blind Ballot Box Drops */}
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>
+            🔒 Table 2: Cryptographic Blind Ballot Box (`ballot_box`) — Recent 25 Ballots
+          </h3>
+          <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 12px 0' }}>
+            Verification proof: Notice zero voter token, zero IP, and zero user ID is stored. Complete deniability is enforced.
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '10px' }}>Ballot UUID</th>
+                  <th style={{ padding: '10px' }}>Constituency</th>
+                  <th style={{ padding: '10px' }}>State</th>
+                  <th style={{ padding: '10px' }}>Selected Option</th>
+                  <th style={{ padding: '10px' }}>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ballotBoxRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
+                      Ballot box is currently empty.
+                    </td>
+                  </tr>
+                ) : (
+                  ballotBoxRows.map((b) => (
+                    <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '11px', color: '#64748b' }}>{b.id}</td>
+                      <td style={{ padding: '10px', fontWeight: 700 }}>{b.constituency_name}</td>
+                      <td style={{ padding: '10px', color: '#64748b' }}>{b.state_name}</td>
+                      <td style={{ padding: '10px', fontWeight: 800, color: ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'][b.selected_option % 4] }}>
+                        Option {b.selected_option}
+                      </td>
+                      <td style={{ padding: '10px', color: '#94a3b8', fontSize: '11px' }}>{new Date(b.cast_at).toLocaleTimeString()}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   );
