@@ -12,6 +12,10 @@ interface Poll {
   recurrence?: string;
   current_cycle?: string;
   starts_at?: string;
+  is_active?: boolean;
+  target_region_type?: string;
+  target_seats?: string[];
+  blackout_seats?: string[];
   options: any[];
 }
 
@@ -31,6 +35,30 @@ const QUICK_SEATS: Record<string, string> = {
   'Bangalore South': 'Karnataka'
 };
 
+const ALL_543_SEATS: string[] = [
+  'Andaman and Nicobar Islands', 'Amalapuram', 'Anakapalli', 'Anantapur', 'Araku', 'Bapatla', 'Chittoor', 'Eluru', 'Guntur', 'Hindupur', 'Kadapa', 'Kakinada', 'Kurnool', 'Machilipatnam', 'Nandyal', 'Narasaraopet', 'Narsapuram', 'Nellore', 'Ongole', 'Rajahmundry', 'Rajampet', 'Srikakulam', 'Tirupati', 'Vijayawada', 'Visakhapatnam', 'Vizianagaram',
+  'Arunachal East', 'Arunachal West', 'Barpeta', 'Darrang-Udalguri', 'Dhubri', 'Dibrugarh', 'Diphu', 'Guwahati', 'Kaziranga', 'Kokrajhar', 'Lakhimpur', 'Nagaon', 'Silchar', 'Sonitpur',
+  'Araria', 'Arrah', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Buxar', 'Darbhanga', 'Gaya', 'Gopalganj', 'Hajipur', 'Jahanabad', 'Jamui', 'Jhanjharpur', 'Karakat', 'Katihar', 'Khagaria', 'Kishanganj', 'Madhepura', 'Madhubani', 'Maharajganj', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Paschim Champaran', 'Pataliputra', 'Patna Sahib', 'Purnia', 'Purvi Champaran', 'Samastipur', 'Saran', 'Sasaram', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Ujiarpur', 'Vaishali', 'Valmiki Nagar',
+  'Chandigarh', 'Bastar', 'Bilaspur', 'Durg', 'Janjgir-Champa', 'Kanker', 'Korba', 'Mahasamund', 'Raigarh', 'Raipur', 'Rajnandgaon', 'Surguja',
+  'Dadra and Nagar Haveli', 'Daman and Diu', 'Chandni Chowk', 'East Delhi', 'New Delhi', 'North East Delhi', 'North West Delhi', 'South Delhi', 'West Delhi', 'North Goa', 'South Goa',
+  'Ahmedabad East', 'Ahmedabad West', 'Amreli', 'Anand', 'Banaskantha', 'Bardoli', 'Bharuch', 'Bhavnagar', 'Chhota Udaipur', 'Dahod', 'Gandhinagar', 'Jamnagar', 'Junagadh', 'Kachchh', 'Kheda', 'Mehsana', 'Navsari', 'Panchmahal', 'Patan', 'Porbandar', 'Rajkot', 'Sabarkantha', 'Surat', 'Surendranagar', 'Vadodara', 'Valsad',
+  'Ambala', 'Bhiwani-Mahendragarh', 'Faridabad', 'Gurgaon', 'Hisar', 'Karnal', 'Kurukshetra', 'Rohtak', 'Sirsa', 'Sonipat', 'Hamirpur', 'Kangra', 'Mandi', 'Shimla',
+  'Anantnag-Rajouri', 'Baramulla', 'Jammu', 'Srinagar', 'Udhampur', 'Chatra', 'Dhanbad', 'Dumka', 'Giridih', 'Godda', 'Hazaribagh', 'Jamshedpur', 'Khunti', 'Kodarma', 'Lohardaga', 'Palamu', 'Rajmahal', 'Ranchi', 'Singhbhum',
+  'Bagalkot', 'Bangalore Central', 'Bangalore North', 'Bangalore Rural', 'Bangalore South', 'Belgaum', 'Bellary', 'Bidar', 'Bijapur', 'Chamarajanagar', 'Chikkballapur', 'Chikkodi', 'Chitradurga', 'Dakshina Kannada', 'Davanagere', 'Dharwad', 'Gulbarga', 'Hassan', 'Haveri', 'Kolar', 'Koppal', 'Mandya', 'Mysore', 'Raichur', 'Shimoga', 'Tumkur', 'Udupi Chikmagalur', 'Uttara Kannada',
+  'Alappuzha', 'Alathur', 'Attingal', 'Chalakudy', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod', 'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Mavelikkara', 'Palakkad', 'Pathanamthitta', 'Ponnani', 'Thiruvananthapuram', 'Thrissur', 'Vatakara', 'Wayanad', 'Ladakh', 'Lakshadweep',
+  'Balaghat', 'Betul', 'Bhind', 'Bhopal', 'Chhindwara', 'Damoh', 'Dewas', 'Dhar', 'Guna', 'Gwalior', 'Hoshangabad', 'Indore', 'Jabalpur', 'Khajuraho', 'Khandwa', 'Khargone', 'Mandla', 'Mandsaur', 'Morena', 'Rajgarh', 'Ratlam', 'Rewa', 'Sagar', 'Satna', 'Shahdol', 'Sidhi', 'Tikamgarh', 'Ujjain', 'Vidisha',
+  'Ahmednagar', 'Akola', 'Amravati', 'Aurangabad', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim',
+  'Inner Manipur', 'Outer Manipur', 'Shillong', 'Tura', 'Mizoram', 'Nagaland',
+  'Aska', 'Balasore', 'Bargarh', 'Berhampur', 'Bhadrak', 'Bhubaneswar', 'Bolangir', 'Cuttack', 'Dhenkanal', 'Jagatsinghpur', 'Jajpur', 'Kalahandi', 'Kandhamal', 'Kendrapara', 'Keonjhar', 'Koraput', 'Mayurbhanj', 'Nabarangpur', 'Puri', 'Sambalpur', 'Sundargarh', 'Puducherry',
+  'Amritsar', 'Anandpur Sahib', 'Bathinda', 'Faridkot', 'Fatehgarh Sahib', 'Firozpur', 'Gurdaspur', 'Hoshiarpur', 'Jalandhar', 'Khadoor Sahib', 'Ludhiana', 'Patiala', 'Sangrur',
+  'Ajmer', 'Alwar', 'Banswara', 'Barmer', 'Bharatpur', 'Bhilwara', 'Bikaner', 'Chittorgarh', 'Churu', 'Dausa', 'Ganganagar', 'Jaipur', 'Jaipur Rural', 'Jalore', 'Jhalawar-Baran', 'Jhunjhunu', 'Jodhpur', 'Karauli-Dholpur', 'Kota', 'Nagaur', 'Pali', 'Rajsamand', 'Sikar', 'Tonk-Sawai Madhopur', 'Udaipur', 'Sikkim',
+  'Arakkonam', 'Arani', 'Chennai Central', 'Chennai North', 'Chennai South', 'Chidambaram', 'Coimbatore', 'Cuddalore', 'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kancheepuram', 'Kanniyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai', 'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pollachi', 'Ramanathapuram', 'Salem', 'Sivaganga', 'Sriperumbudur', 'Tenkasi', 'Thanjavur', 'Theni', 'Thiruvallur', 'Thoothukkudi', 'Tiruchirappalli', 'Tirunelveli', 'Tiruppur', 'Tiruvannamalai', 'Vellore', 'Viluppuram', 'Virudhunagar',
+  'Adilabad', 'Bhongir', 'Chevella', 'Hyderabad', 'Karimnagar', 'Khammam', 'Mahabubabad', 'Mahbubnagar', 'Medak', 'Nagarkurnool', 'Nalgonda', 'Nizamabad', 'Peddapalle', 'Secunderabad', 'Warangal', 'Zahirabad', 'Tripura East', 'Tripura West',
+  'Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hamirpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Maharajganj', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi',
+  'Almora', 'Garhwal', 'Haridwar', 'Nainital-Udhamsingh Nagar', 'Tehri Garhwal',
+  'Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia'
+];
+
 export default function AdminAuditPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState('');
@@ -47,6 +75,10 @@ export default function AdminAuditPanel() {
   const [talliesRows, setTalliesRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // ECI Blackout Management
+  const [blackoutSeatInput, setBlackoutSeatInput] = useState('');
+  const [blackoutActionStatus, setBlackoutActionStatus] = useState('');
+
   // Sandbox Single Test
   const [simSeat, setSimSeat] = useState('Muzaffarpur');
   const [simState, setSimState] = useState('Bihar');
@@ -62,6 +94,9 @@ export default function AdminAuditPanel() {
   const [newTitleHi, setNewTitleHi] = useState('');
   const [newRecurrence, setNewRecurrence] = useState<'daily' | 'weekly' | 'monthly' | 'lifetime'>('monthly');
   const [newStartsAt, setNewStartsAt] = useState(new Date().toISOString().slice(0, 16));
+  const [newTargetType, setNewTargetType] = useState<'PAN_INDIA' | 'CUSTOM_SEATS'>('PAN_INDIA');
+  const [customTargetSeats, setCustomTargetSeats] = useState<string[]>([]);
+  const [targetSeatSearch, setTargetSeatSearch] = useState('');
   const [newOptions, setNewOptions] = useState([
     { text_en: 'Option 1', text_hi: 'विकल्प 1' },
     { text_en: 'Option 2', text_hi: 'विकल्प 2' },
@@ -103,7 +138,7 @@ export default function AdminAuditPanel() {
     setLoading(true);
 
     try {
-      // 1. Table 2: Blind Ballot Box (Ordered by id, no legacy cast_at dependency)
+      // 1. Table 2: Blind Ballot Box
       const { data: ballots, count: bCount } = await supabase
         .from('ballot_box')
         .select('*', { count: 'exact' })
@@ -146,6 +181,7 @@ export default function AdminAuditPanel() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'ballot_box' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_participations' }, () => runComprehensiveAudit(selectedPollId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, () => fetchPolls())
         .subscribe();
 
       return () => {
@@ -154,7 +190,95 @@ export default function AdminAuditPanel() {
     }
   }, [isAuthenticated, selectedPollId]);
 
-  // Handle Quick Seat Selection in Sandbox
+  const selectedPoll = polls.find((p) => p.id === selectedPollId);
+  const isLedgerReconciled = ballotBoxTotalCount === participationsCount;
+  const fortifiedSeatsCount = talliesRows.filter((r) => r.is_fortified || r.total_votes >= 50).length;
+
+  const filteredTallies = talliesRows.filter((r) => {
+    if (tallyFilter === 'FORTIFIED') return r.is_fortified || r.total_votes >= 50;
+    if (tallyFilter === 'ACTIVE') return r.total_votes > 0;
+    return true;
+  });
+
+  // Toggle Poll Active/Inactive Status
+  const handleTogglePollStatus = async () => {
+    if (!selectedPoll) return;
+    const newStatus = !selectedPoll.is_active;
+
+    const { error } = await supabase
+      .from('polls')
+      .update({ is_active: newStatus })
+      .eq('id', selectedPoll.id);
+
+    if (error) {
+      alert(`Error toggling status: ${error.message}`);
+    } else {
+      setPolls(polls.map((p) => (p.id === selectedPoll.id ? { ...p, is_active: newStatus } : p)));
+    }
+  };
+
+  // Permanently Delete Poll
+  const handleDeletePoll = async () => {
+    if (!selectedPoll) return;
+    const confirmText = prompt(`Type "DELETE" to permanently destroy poll "${selectedPoll.title_en}" and its ballot records:`);
+    if (confirmText !== 'DELETE') return;
+
+    await supabase.from('ballot_box').delete().eq('poll_id', selectedPoll.id);
+    await supabase.from('voter_participations').delete().eq('poll_id', selectedPoll.id);
+    await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPoll.id);
+    await supabase.from('poll_totals').delete().eq('poll_id', selectedPoll.id);
+    const { error } = await supabase.from('polls').delete().eq('id', selectedPoll.id);
+
+    if (error) {
+      alert(`Failed to delete poll: ${error.message}`);
+    } else {
+      alert('Poll deleted permanently.');
+      const updated = polls.filter((p) => p.id !== selectedPoll.id);
+      setPolls(updated);
+      if (updated.length > 0) setSelectedPollId(updated[0].id);
+    }
+  };
+
+  // Add ECI 48-Hour Silence Blackout Seat
+  const handleAddBlackoutSeat = async (seatToAdd: string) => {
+    if (!selectedPoll || !seatToAdd.trim()) return;
+    const currentBlackouts = selectedPoll.blackout_seats || [];
+    if (currentBlackouts.includes(seatToAdd)) return;
+
+    const updated = [...currentBlackouts, seatToAdd];
+    setBlackoutActionStatus(`Adding ${seatToAdd} to ECI silence period...`);
+
+    const { error } = await supabase
+      .from('polls')
+      .update({ blackout_seats: updated })
+      .eq('id', selectedPoll.id);
+
+    if (!error) {
+      setPolls(polls.map((p) => (p.id === selectedPoll.id ? { ...p, blackout_seats: updated } : p)));
+      setBlackoutSeatInput('');
+      setBlackoutActionStatus(`✓ ${seatToAdd} placed under ECI Silence Period (Voting Locked).`);
+    } else {
+      setBlackoutActionStatus(`❌ Error: ${error.message}`);
+    }
+    setTimeout(() => setBlackoutActionStatus(''), 2500);
+  };
+
+  // Remove Blackout Seat
+  const handleRemoveBlackoutSeat = async (seatToRemove: string) => {
+    if (!selectedPoll) return;
+    const updated = (selectedPoll.blackout_seats || []).filter((s) => s !== seatToRemove);
+
+    const { error } = await supabase
+      .from('polls')
+      .update({ blackout_seats: updated })
+      .eq('id', selectedPoll.id);
+
+    if (!error) {
+      setPolls(polls.map((p) => (p.id === selectedPoll.id ? { ...p, blackout_seats: updated } : p)));
+    }
+  };
+
+  // Quick Seat Selection for Sandbox
   const handleSeatChange = (seat: string) => {
     setSimSeat(seat);
     if (QUICK_SEATS[seat]) {
@@ -162,7 +286,7 @@ export default function AdminAuditPanel() {
     }
   };
 
-  // Execute Simulated Test Vote from Sandbox
+  // Simulated Test Vote
   const handleSimulateBallot = async () => {
     setSimMessage('Casting simulated ballot...');
     const fakeToken = 'sim_' + Math.random().toString(36).substring(2, 10);
@@ -179,24 +303,24 @@ export default function AdminAuditPanel() {
     if (error || !data?.success) {
       setSimMessage(`❌ Error: ${error?.message || data?.error}`);
     } else {
-      setSimMessage(`✓ Ballot Logged: Seat total is now ${data.constituency_total}. National total is ${data.total_poll_votes}.`);
+      setSimMessage(`✓ Ballot Logged: Seat total is now ${data.constituency_total}. Total audit ledger is ${data.total_poll_votes}.`);
       runComprehensiveAudit(selectedPollId);
     }
   };
 
   const handleResetPollVotes = async () => {
-    if (!confirm(`Are you sure you want to reset all test votes for poll ${selectedPollId}?`)) return;
+    if (!confirm(`Reset all votes for poll ${selectedPollId}? This clears ballot_box and constituency_tallies for this poll.`)) return;
 
     await supabase.from('ballot_box').delete().eq('poll_id', selectedPollId);
     await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
     await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
     await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
 
-    alert('Votes reset to 0.');
+    alert('Poll votes reset to 0.');
     runComprehensiveAudit(selectedPollId);
   };
 
-  // Resilient Clean Poll Deploy Handler (Pure JSONB Schema)
+  // Deploy New Poll
   const handleDeployNewPoll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitleEn.trim()) {
@@ -213,7 +337,6 @@ export default function AdminAuditPanel() {
       text_hi: (opt.text_hi || opt.text_en).trim()
     }));
 
-    // Pure, clean payload containing only authentic database columns
     const payload = {
       id: newPollId,
       category: newCategory,
@@ -225,7 +348,9 @@ export default function AdminAuditPanel() {
       current_cycle: '2026-10',
       starts_at: new Date(newStartsAt).toISOString(),
       is_active: true,
-      target_region_type: 'PAN_INDIA'
+      target_region_type: newTargetType,
+      target_seats: newTargetType === 'CUSTOM_SEATS' ? customTargetSeats : [],
+      blackout_seats: []
     };
 
     const { error } = await supabase.from('polls').insert([payload]);
@@ -236,6 +361,7 @@ export default function AdminAuditPanel() {
       setCreatePollStatus(`✓ Poll Successfully Deployed! ID: ${newPollId}`);
       setNewTitleEn('');
       setNewTitleHi('');
+      setCustomTargetSeats([]);
       await fetchPolls();
       setSelectedPollId(newPollId);
       setTimeout(() => {
@@ -265,15 +391,13 @@ export default function AdminAuditPanel() {
     );
   }
 
-  const selectedPoll = polls.find((p) => p.id === selectedPollId);
-  const isLedgerReconciled = ballotBoxTotalCount === participationsCount;
-  const fortifiedSeatsCount = talliesRows.filter((r) => r.is_fortified || r.total_votes >= 50).length;
+  const matchingTargetSeats = targetSeatSearch.trim()
+    ? ALL_543_SEATS.filter((s) => s.toLowerCase().includes(targetSeatSearch.toLowerCase().trim())).slice(0, 8)
+    : [];
 
-  const filteredTallies = talliesRows.filter((r) => {
-    if (tallyFilter === 'FORTIFIED') return r.is_fortified || r.total_votes >= 50;
-    if (tallyFilter === 'ACTIVE') return r.total_votes > 0;
-    return true;
-  });
+  const matchingBlackoutSeats = blackoutSeatInput.trim()
+    ? ALL_543_SEATS.filter((s) => s.toLowerCase().includes(blackoutSeatInput.toLowerCase().trim())).slice(0, 6)
+    : [];
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
@@ -286,7 +410,7 @@ export default function AdminAuditPanel() {
               BhuMat Sovereign Command & Verification Suite
             </h1>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
-              Publish verified questions, audit decoupled anonymous ballots, and inspect 543 constituency rollups.
+              Publish verified questions, manage ECI silence blackouts, and audit decoupled anonymous ballots.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -310,7 +434,7 @@ export default function AdminAuditPanel() {
             </span>
             <h2 style={{ fontSize: '20px', fontWeight: 900, margin: '10px 0 6px 0' }}>Deploy Sovereign Public Opinion Poll</h2>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0' }}>
-              Configure bilingual questions, options, category track, and recurrence cadence for live feed publishing.
+              Configure bilingual questions, options, category track, targeted regions, and cadence for live feed publishing.
             </p>
 
             <form onSubmit={handleDeployNewPoll} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -340,7 +464,7 @@ export default function AdminAuditPanel() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. How do you rate municipal cleanliness in your city?"
+                    placeholder="e.g. If you could start your education all over again, which path would you take?"
                     value={newTitleEn}
                     onChange={(e) => setNewTitleEn(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600 }}
@@ -350,7 +474,7 @@ export default function AdminAuditPanel() {
                   <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>Question Title (Hindi)</label>
                   <input
                     type="text"
-                    placeholder="उदा. आप अपने शहर में नगरपालिका स्वच्छता को कैसे आंकते हैं?"
+                    placeholder="उदा. अगर आपको अपनी पढ़ाई दोबारा नए सिरे से शुरू करने का मौका मिले, तो आप कौन सा रास्ता चुनेंगे?"
                     value={newTitleHi}
                     onChange={(e) => setNewTitleHi(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600 }}
@@ -382,6 +506,65 @@ export default function AdminAuditPanel() {
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 700 }}
                   />
                 </div>
+              </div>
+
+              {/* Target Region Selector */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '8px' }}>
+                  Target Electoral Scope
+                </label>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setNewTargetType('PAN_INDIA')}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: `1.5px solid ${newTargetType === 'PAN_INDIA' ? '#0284c7' : '#cbd5e1'}`, backgroundColor: newTargetType === 'PAN_INDIA' ? '#e0f2fe' : '#ffffff', color: newTargetType === 'PAN_INDIA' ? '#0369a1' : '#475569', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
+                  >
+                    🇮🇳 Pan-India (All 543 Lok Sabha Seats)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTargetType('CUSTOM_SEATS')}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: `1.5px solid ${newTargetType === 'CUSTOM_SEATS' ? '#0284c7' : '#cbd5e1'}`, backgroundColor: newTargetType === 'CUSTOM_SEATS' ? '#e0f2fe' : '#ffffff', color: newTargetType === 'CUSTOM_SEATS' ? '#0369a1' : '#475569', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
+                  >
+                    🎯 Specific Target Constituencies Only
+                  </button>
+                </div>
+
+                {newTargetType === 'CUSTOM_SEATS' && (
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Type constituency to add (e.g. Darbhanga, Banka, Nagpur)..."
+                      value={targetSeatSearch}
+                      onChange={(e) => setTargetSeatSearch(e.target.value)}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                    />
+                    {matchingTargetSeats.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                        {matchingTargetSeats.map((seat) => (
+                          <span
+                            key={seat}
+                            onClick={() => {
+                              if (!customTargetSeats.includes(seat)) setCustomTargetSeats([...customTargetSeats, seat]);
+                              setTargetSeatSearch('');
+                            }}
+                            style={{ backgroundColor: '#ffffff', border: '1px solid #0284c7', color: '#0284c7', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            ＋ {seat}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+                      {customTargetSeats.map((seat) => (
+                        <span key={seat} style={{ backgroundColor: '#0284c7', color: '#ffffff', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          {seat}
+                          <button type="button" onClick={() => setCustomTargetSeats(customTargetSeats.filter((s) => s !== seat))} style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: 0, fontWeight: 900 }}>✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Options */}
@@ -451,28 +634,118 @@ export default function AdminAuditPanel() {
             </form>
           </div>
         ) : (
-          /* TAB 2: AUDIT & TESTING LEDGER */
+          /* TAB 2: AUDIT & GOVERNANCE SUITE */
           <>
-            {/* Poll Selector */}
-            <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', gap: '14px', alignItems: 'center' }}>
-              <label style={{ fontSize: '13px', fontWeight: 800 }}>Audit Poll Target:</label>
-              <select
-                value={selectedPollId}
-                onChange={(e) => setSelectedPollId(e.target.value)}
-                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1.5px solid #0284c7', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
-              >
-                {polls.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    [{p.category}] {p.title_en} ({p.id})
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => runComprehensiveAudit(selectedPollId)} style={{ padding: '10px 16px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-                ↻ Refresh
-              </button>
-              <button onClick={handleResetPollVotes} style={{ padding: '10px 16px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-                Reset Votes
-              </button>
+            {/* Poll Governance Control Bar */}
+            <div style={{ backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '320px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 800 }}>Audit Target:</label>
+                  <select
+                    value={selectedPollId}
+                    onChange={(e) => setSelectedPollId(e.target.value)}
+                    style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1.5px solid #0284c7', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
+                  >
+                    {polls.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        [{p.is_active ? '🟢 LIVE' : '🔴 DEACTIVATED'}] [{p.category}] {p.title_en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Governance Controls */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={handleTogglePollStatus}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: selectedPoll?.is_active ? '#fef3c7' : '#ecfdf5',
+                      color: selectedPoll?.is_active ? '#b45309' : '#059669',
+                      fontWeight: 800,
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {selectedPoll?.is_active ? '⏸ Pause / Deactivate Poll' : '▶ Reactivate Poll'}
+                  </button>
+
+                  <button
+                    onClick={handleDeletePoll}
+                    style={{ padding: '10px 16px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    🗑️ Delete Poll
+                  </button>
+
+                  <button onClick={handleResetPollVotes} style={{ padding: '10px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                    Reset Votes
+                  </button>
+                  
+                  <button onClick={() => runComprehensiveAudit(selectedPollId)} style={{ padding: '10px 14px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                    ↻
+                  </button>
+                </div>
+              </div>
+
+              {/* ECI 48-Hour Silence Period (Constituency Blackout Manager) */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🏛️ Election Commission Compliance: 48-Hour Silence Blackout
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Blacklisted constituencies cannot cast ballots or view leading trends during statutory silence windows.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Search seat to blackout (e.g. Darbhanga, Banka, Nagpur)..."
+                    value={blackoutSeatInput}
+                    onChange={(e) => setBlackoutSeatInput(e.target.value)}
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600 }}
+                  />
+                  {matchingBlackoutSeats.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: '120px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, marginTop: '2px' }}>
+                      {matchingBlackoutSeats.map((s) => (
+                        <div
+                          key={s}
+                          onClick={() => handleAddBlackoutSeat(s)}
+                          style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                        >
+                          ⛔ Silence {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => handleAddBlackoutSeat(blackoutSeatInput)}
+                    style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Lock Seat
+                  </button>
+                </div>
+
+                {blackoutActionStatus && (
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626' }}>{blackoutActionStatus}</div>
+                )}
+
+                {/* Active Blackouts Chips */}
+                {selectedPoll?.blackout_seats && selectedPoll.blackout_seats.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', alignSelf: 'center' }}>Active Silence Seats:</span>
+                    {selectedPoll.blackout_seats.map((seat) => (
+                      <span key={seat} style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        ⛔ {seat}
+                        <button onClick={() => handleRemoveBlackoutSeat(seat)} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: 0, fontWeight: 900 }}>✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Reconciliation Meters */}
