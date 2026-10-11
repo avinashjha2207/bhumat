@@ -13,32 +13,37 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [animDuration, setAnimDuration] = useState(24);
 
+  const isJanMat = activePoll?.category === 'JanMat';
+
   useEffect(() => {
     let isMounted = true;
 
     async function fetchLiveTicker() {
       if (!activePoll?.id) return;
       try {
-        const { data, error } = await supabase.rpc('get_poll_telemetry', { p_poll_id: activePoll.id });
-        if (data && data.length > 0 && !error && isMounted) {
-          const formatted: TickerItem[] = data.map((row: any) => {
+        const { data, error } = await supabase.rpc('get_live_consensus_hierarchy', {
+          p_poll_id: activePoll.id
+        });
+        if (data && data.constituencies && !error && isMounted) {
+          const list: TickerItem[] = Object.values(data.constituencies).map((row: any) => {
             const optIndex = Number(row.leading_option || 0);
             const optText = activePoll.options?.[optIndex]
               ? (lang === 'EN' ? activePoll.options[optIndex].text_en : activePoll.options[optIndex].text_hi).split('/')[0].trim()
               : (lang === 'HI' ? 'सक्रिय जनमत' : 'Consensus Active');
             return {
               seat: row.constituency_name,
-              verdict: `${optText} (${Number(row.total_votes).toLocaleString()} votes)`
+              verdict: `${optText} (${Number(row.total_votes).toLocaleString()} ${lang === 'HI' ? 'मत' : 'votes'})`
             };
           });
-          setTickerItems(formatted);
-          return;
+          if (list.length > 0) {
+            setTickerItems(list);
+            return;
+          }
         }
       } catch (e) {
         console.warn('Ticker telemetry notice:', e);
       }
 
-      // Truth-in-data fallback: Zero fake votes or synthetic city claims
       if (isMounted) {
         setTickerItems([]);
       }
@@ -60,18 +65,32 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
   }, [tickerItems]);
 
   const hasLiveVotes = tickerItems.length > 0;
-  const items = hasLiveVotes 
-    ? (tickerItems.length < 5 ? [...tickerItems, ...tickerItems, ...tickerItems, ...tickerItems] : [...tickerItems, ...tickerItems])
+
+  // Bifurcated Ticker Lenses
+  const fallbackItems = isJanMat
+    ? [
+        {
+          seat: '543 Seats',
+          verdict: lang === 'HI' ? 'प्रत्येक संसदीय सीट पर 50 मतों से कोरम पूर्ण • संप्रभु नागरिक ऑडिट' : '50 Ballots to Fortify Constituency Quorum • Sovereign Civic Audit'
+        },
+        {
+          seat: 'Pan-Bharat',
+          verdict: lang === 'HI' ? 'गोपनीय मतपेटी • सत्यापित सहमति ग्रिड' : 'Anonymous Secret Ballot • Verified Consensus Grid'
+        }
+      ]
     : [
         {
           seat: 'Pan-Bharat',
-          verdict: lang === 'HI' ? 'अपने निर्वाचन क्षेत्र में पहला सत्यापित मत दर्ज करें • लाइव जनमत' : 'Be the first in your constituency to cast a verified ballot • Live Sovereign Consensus'
+          verdict: lang === 'HI' ? 'जनता की आवाज • महान सांस्कृतिक पल्स' : 'Voice of the People • The Great Cultural Pulse'
         },
         {
           seat: '543 Seats',
-          verdict: lang === 'HI' ? 'प्रत्येक संसदीय सीट पर 50 मतों से कोरम पूर्ण • निष्पक्ष ऑडिट' : '50 Ballots to Fortify Constituency Quorum • Verified Ledger'
+          verdict: lang === 'HI' ? 'अपने संसदीय क्षेत्र से जुड़ें • रियल-टाइम मत' : 'Share your take with your constituency • Real-time Mat'
         }
       ];
+
+  const rawList = hasLiveVotes ? tickerItems : fallbackItems;
+  const items = rawList.length < 5 ? [...rawList, ...rawList, ...rawList, ...rawList] : [...rawList, ...rawList];
 
   return (
     <div
@@ -109,7 +128,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           animation: `steadyScrollLinear ${animDuration}s linear infinite`
         }}
       >
-        {[...items, ...items].map((item, idx) => (
+        {items.map((item, idx) => (
           <div
             key={idx}
             style={{
@@ -121,7 +140,7 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
               fontWeight: 600
             }}
           >
-            <span style={{ color: '#38bdf8', fontWeight: 800 }}>📍 {item.seat}:</span>
+            <span style={{ color: isJanMat ? '#38bdf8' : '#fbbf24', fontWeight: 800 }}>📍 {item.seat}:</span>
             <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.verdict}</span>
             <span style={{ color: '#475569', marginLeft: '12px' }}>•</span>
           </div>

@@ -8,6 +8,8 @@ interface DrishtiMapProps {
   selectedConstituencyName?: string;
   selectedState?: string;
   pollId?: string;
+  cycleId?: string;
+  userVotedOptionIdx?: number | null;
   options?: Array<{ id: number; text_en: string; text_hi: string }>;
 }
 
@@ -15,16 +17,32 @@ const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 
 export default function DrishtiMap({
-  selectedConstituencyName = 'Gorakhpur',
-  selectedState = 'Uttar Pradesh',
+  selectedConstituencyName = 'Darbhanga',
+  selectedState = 'Bihar',
   pollId,
+  cycleId,
+  userVotedOptionIdx = null,
   options = []
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [dbTelemetry, setDbTelemetry] = useState<Record<string, any>>({});
+
+  // Exact option color selected by user
+  const activeOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
+    ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
+    : OPTION_PALETTE[0];
+
+  const [telemetry, setTelemetry] = useState<{
+    national: any;
+    states: Record<string, any>;
+    constituencies: Record<string, any>;
+  }>({
+    national: { total_votes: 0, leading_option: 0, leading_votes: 0, opt_breakdown: [0, 0, 0, 0] },
+    states: {},
+    constituencies: {}
+  });
 
   useEffect(() => {
     fetch('/india_pc_2019_simplified.geojson')
@@ -42,32 +60,39 @@ export default function DrishtiMap({
       });
   }, []);
 
-  useEffect(() => {
-    async function loadTelemetry() {
-      if (!pollId) return;
-      try {
-        const { data, error } = await supabase.rpc('get_poll_telemetry', { p_poll_id: pollId });
-        if (data && !error) {
-          const map: Record<string, any> = {};
-          data.forEach((row: any) => {
-            const key = (row.constituency_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-            map[key] = {
-              totalVotes: Number(row.total_votes || 0),
-              leadingOpt: Number(row.leading_option || 0),
-              isFortified: Boolean(row.is_fortified)
-            };
-          });
-          setDbTelemetry(map);
-        }
-      } catch (e) {
-        console.warn('RPC telemetry notice:', e);
+  async function loadHierarchyTelemetry() {
+    if (!pollId) return;
+    try {
+      const { data, error } = await supabase.rpc('get_live_consensus_hierarchy', {
+        p_poll_id: pollId,
+        p_cycle_id: cycleId || null
+      });
+      if (data && !error) {
+        setTelemetry(data);
       }
+    } catch (e) {
+      console.warn('Hierarchy fetch note:', e);
     }
-    loadTelemetry();
-  }, [pollId]);
+  }
+
+  useEffect(() => {
+    loadHierarchyTelemetry();
+
+    const channel = supabase
+      .channel(`drishti_sync_${pollId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes', filter: `poll_id=eq.${pollId}` }, () => {
+        loadHierarchyTelemetry();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [pollId, cycleId]);
 
   const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const activeTarget = clean(selectedConstituencyName);
+  const activeStateKey = clean(selectedState);
 
   const stateFeatures = useMemo(() => {
     if (!geoData) return [];
@@ -91,11 +116,11 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
-    if (isTargetMatch(name)) return '#10b981';
-    const t = dbTelemetry[clean(name)];
-    // Strict truth-in-data: If 0 votes or no quorum, display unpolled neutral slate
-    if (!t || !t.isFortified) return UNPOLLED_SEAT_COLOR;
-    return OPTION_PALETTE[t.leadingOpt % OPTION_PALETTE.length];
+    // The user's home seat strictly adopts their chosen option's color
+    if (isTargetMatch(name)) return activeOptionColor;
+    const seatData = telemetry.constituencies[clean(name)];
+    if (!seatData || !seatData.is_fortified) return UNPOLLED_SEAT_COLOR;
+    return OPTION_PALETTE[seatData.leading_option % OPTION_PALETTE.length];
   };
 
   useEffect(() => {
@@ -126,7 +151,7 @@ export default function DrishtiMap({
       .attr('d', (d: any) => pathGenerator(d))
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? '#064e3b' : '#94a3b8';
+        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? activeOptionColor : '#94a3b8';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
@@ -137,6 +162,7 @@ export default function DrishtiMap({
         return getSeatFill(p.PC_NAME || p.pc_name || p.NAME || '');
       });
 
+    // Centroid Radar Pulsing Beacon
     const activeFeature = stateFeatures.find((f: any) => {
       const p = f.properties || {};
       return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '');
@@ -145,104 +171,117 @@ export default function DrishtiMap({
     if (activeFeature) {
       const centroid = pathGenerator.centroid(activeFeature);
       if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+        // Inner Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
           .attr('r', 16)
           .attr('fill', 'none')
-          .attr('stroke', '#10b981')
+          .attr('stroke', activeOptionColor)
           .attr('stroke-width', 3)
           .attr('class', 'state-calm-radar')
           .attr('pointer-events', 'none');
 
+        // Outer Radar Ring
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
-          .attr('r', 26)
+          .attr('r', 28)
           .attr('fill', 'none')
-          .attr('stroke', '#34d399')
+          .attr('stroke', activeOptionColor)
           .attr('stroke-width', 1.5)
           .attr('class', 'state-calm-radar-outer')
           .attr('pointer-events', 'none');
 
+        // Center Beacon Core
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
           .attr('r', 5.5)
-          .attr('fill', '#065f46')
+          .attr('fill', activeOptionColor)
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 2)
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, dbTelemetry]);
+  }, [stateFeatures, selectedConstituencyName, telemetry, activeOptionColor]);
 
-  const targetTelemetry = dbTelemetry[activeTarget] || { totalVotes: 0, isFortified: false, leadingOpt: 0 };
+  // Read Telemetry Values Cleanly
+  const seatRecord = telemetry.constituencies[activeTarget] || { total_votes: 0, is_fortified: false, leading_option: 0 };
+  const stateRecord = telemetry.states[activeStateKey] || { total_votes: 0, leading_option: 0, fortified_seats: 0 };
+  const nationalRecord = telemetry.national || { total_votes: 0, leading_option: 0 };
+
+  const getOptTitle = (idx: number) => {
+    return options[idx] ? options[idx].text_en.split('/')[0].slice(0, 14) : `Option ${idx + 1}`;
+  };
 
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <style>{`
         @keyframes calmRadarWave {
-          0% { r: 6px; opacity: 0.9; stroke-width: 3px; }
-          100% { r: 36px; opacity: 0; stroke-width: 0.2px; }
+          0% { r: 6px; opacity: 0.95; stroke-width: 3px; }
+          100% { r: 38px; opacity: 0; stroke-width: 0.2px; }
         }
         @keyframes calmRadarWaveOuter {
-          0% { r: 10px; opacity: 0.7; stroke-width: 2px; }
-          100% { r: 48px; opacity: 0; stroke-width: 0.1px; }
+          0% { r: 12px; opacity: 0.8; stroke-width: 2px; }
+          100% { r: 52px; opacity: 0; stroke-width: 0.1px; }
         }
         .state-calm-radar {
-          animation: calmRadarWave 3.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+          animation: calmRadarWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
         .state-calm-radar-outer {
-          animation: calmRadarWaveOuter 3.2s infinite 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: calmRadarWaveOuter 3s infinite 0.75s cubic-bezier(0.4, 0, 0.2, 1);
         }
         @keyframes calmSeatBreathing {
           0% {
-            stroke: #047857;
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4));
+            filter: drop-shadow(0 0 3px ${activeOptionColor}66);
           }
           50% {
-            stroke: #10b981;
             stroke-width: 4.5px;
-            filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.9));
+            filter: drop-shadow(0 0 16px ${activeOptionColor}cc);
           }
           100% {
-            stroke: #047857;
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.4));
+            filter: drop-shadow(0 0 3px ${activeOptionColor}66);
           }
         }
         .user-state-glow {
-          animation: calmSeatBreathing 3.2s infinite ease-in-out !important;
-          stroke: #10b981 !important;
-          fill: #10b981 !important;
+          animation: calmSeatBreathing 3s infinite ease-in-out !important;
+          stroke: ${activeOptionColor} !important;
+          fill: ${activeOptionColor} !important;
         }
       `}</style>
 
-      {/* Honest 3-Box Telemetry Header */}
+      {/* 3-Box Live Consensus Hierarchy Scorecard */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>National</div>
+          <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
-            {Object.keys(dbTelemetry).length > 0 ? 'Live Tallies' : '0 Ballots'}
+            {nationalRecord.total_votes > 0 ? getOptTitle(nationalRecord.leading_option) : '0 Ballots'}
           </div>
-          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Consensus Grid</div>
+          <div style={{ fontSize: '9px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+            {Number(nationalRecord.total_votes).toLocaleString()} Votes
+          </div>
         </div>
+
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
           <div style={{ fontSize: '11px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
-            {Object.keys(dbTelemetry).length > 0 ? 'Auditing' : 'Pending'}
+            {stateRecord.total_votes > 0 ? getOptTitle(stateRecord.leading_option) : '0 Ballots'}
           </div>
-          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>● State Ledger</div>
+          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
+            {Number(stateRecord.total_votes).toLocaleString()} Votes
+          </div>
         </div>
+
         <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
-            {targetTelemetry.totalVotes} {targetTelemetry.totalVotes === 1 ? 'Vote' : 'Votes'}
+          <div style={{ fontSize: '11px', fontWeight: 900, color: activeOptionColor, marginTop: '2px' }}>
+            {seatRecord.total_votes > 0 ? getOptTitle(seatRecord.leading_option) : '1 Ballot Active'}
           </div>
-          <div style={{ fontSize: '9px', color: targetTelemetry.isFortified ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
-            {targetTelemetry.isFortified ? '● Quorum Met' : `⏳ ${targetTelemetry.totalVotes}/50 Ballots`}
+          <div style={{ fontSize: '9px', color: seatRecord.is_fortified ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
+            {seatRecord.is_fortified ? '● Quorum Met' : `⏳ ${seatRecord.total_votes}/50 Ballots`}
           </div>
         </div>
       </div>
@@ -257,7 +296,7 @@ export default function DrishtiMap({
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: UNPOLLED_SEAT_COLOR, flexShrink: 0 }} />
-          <span>No Ballots / Below Quorum</span>
+          <span>Pending Quorum (0–49)</span>
         </div>
       </div>
 

@@ -11,6 +11,7 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST = 50;
+const OPTION_PALETTE = ['#f97316', '#10b981', '#8b5cf6', '#0ea5e9'];
 
 interface Poll {
   id: string;
@@ -50,7 +51,7 @@ const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
   'gaya': {
     pcCode: '38-BI',
     mpName: 'Jitan Ram Manjhi',
-    party: 'Hindustani Awam Morcha (Secular) / NDA',
+    party: 'Hindustani Awam Hamrocha (Secular) / NDA',
     cases: 6,
     education: 'Graduate (B.A. Hons)',
     assets: '₹1.54 Crore',
@@ -270,13 +271,12 @@ export default function BhuMatApp() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
 
-  const [inspectedSeatName, setInspectedSeatName] = useState('Gaya');
+  const [inspectedSeatName, setInspectedSeatName] = useState('Darbhanga');
   const [inspectedSeatState, setInspectedSeatState] = useState('Bihar');
   const [isInspectingFromSearch, setIsInspectingFromSearch] = useState(false);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
 
   const [polls, setPolls] = useState<Poll[]>([]);
-  // flippedOverrides tracks whether user manually clicked "View Ballot" or "View Drishti"
   const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
   const [selectedVotes, setSelectedVotes] = useState<Record<string, number>>({});
   const [votedCycleKeys, setVotedCycleKeys] = useState<string[]>([]);
@@ -525,8 +525,6 @@ export default function BhuMatApp() {
 
   const inspectedKyc = resolveConstituencyDossier(inspectedSeatName, inspectedSeatState);
 
-  // STABLE FEED POSITIONING:
-  // Strict chronological order (starts_at DESC). Cards do NOT jump to the bottom upon voting!
   const liveAccessiblePolls = useMemo(() => {
     const now = new Date();
     const filtered = polls.filter((p) => {
@@ -702,7 +700,7 @@ export default function BhuMatApp() {
 
                 <input
                   type="text"
-                  placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गया, दरभंगा, गोरखपुर)...' : '🔍 Search seat or state (e.g. Gaya, Darbhanga, Gorakhpur)...'}
+                  placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे दरभंगा, गया, गोरखपुर)...' : '🔍 Search seat or state (e.g. Darbhanga, Gaya, Gorakhpur)...'}
                   value={seatSearchInput}
                   onChange={(e) => setSeatSearchInput(e.target.value)}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', marginBottom: '10px' }}
@@ -785,7 +783,7 @@ export default function BhuMatApp() {
                     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                     const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
 
-                    // RULE: If voted, default view is State Drishti (flipped = true) UNLESS user manually toggled it
+                    // If voted, default view is State Drishti (flipped = true) UNLESS user manually toggled it
                     const isFlipped = flippedOverrides[poll.id] !== undefined 
                       ? flippedOverrides[poll.id] 
                       : hasVotedThisCycle;
@@ -800,6 +798,7 @@ export default function BhuMatApp() {
                           {/* Front: Ballot View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
+                              {/* UNIFIED TOP HEADER: Rotate Button aligned at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className="red-dot-live" />
@@ -809,18 +808,29 @@ export default function BhuMatApp() {
                                   </span>
                                 </div>
                                 
-                                <span
-                                  className="breathing-badge"
-                                  style={{
-                                    fontSize: '11px',
-                                    fontWeight: 800,
-                                    color: hasVotedThisCycle ? (isJanMat ? '#059669' : '#d97706') : '#64748b'
-                                  }}
-                                >
-                                  {hasVotedThisCycle 
-                                    ? (isJanMat ? (lang === 'HI' ? '🔒 मतपत्र सील' : '🔒 BALLOT SEALED') : (lang === 'HI' ? `✓ मत दिया (${lokmatTimeAgo})` : `✓ Voted (${lokmatTimeAgo})`)) 
-                                    : (isJanMat ? (lang === 'HI' ? '● गोपनीय मतपत्र' : '● SECRET BALLOT') : (lang === 'HI' ? '● खुला जनमत' : '● OPEN POLL'))}
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span
+                                    className="breathing-badge"
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      color: hasVotedThisCycle ? (isJanMat ? '#059669' : '#d97706') : '#64748b'
+                                    }}
+                                  >
+                                    {hasVotedThisCycle 
+                                      ? (isJanMat ? (lang === 'HI' ? '🔒 मतपत्र सील' : '🔒 BALLOT SEALED') : (lang === 'HI' ? `✓ मत दिया (${lokmatTimeAgo})` : `✓ Voted (${lokmatTimeAgo})`)) 
+                                      : (isJanMat ? (lang === 'HI' ? '● गोपनीय मतपत्र' : '● SECRET BALLOT') : (lang === 'HI' ? '● खुला जनमत' : '● OPEN POLL'))}
+                                  </span>
+
+                                  {hasVotedThisCycle && (
+                                    <button 
+                                      onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} 
+                                      style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                      {lang === 'HI' ? 'दृष्टि ↺' : 'View Drishti ↺'}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
 
                               <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 8px 0', lineHeight: 1.5 }}>
@@ -834,11 +844,16 @@ export default function BhuMatApp() {
                                 <TickerTape activePoll={poll} lang={lang} />
                               </div>
 
-                              {/* Options */}
+                              {/* Options: Native Palette Borders, JanMat Secret Ballot Bifurcation */}
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {poll.options.map((opt, idx) => {
-                                  const isPicked = selectedVotes[poll.id] === idx;
-                                  const showChoice = isPicked;
+                                  const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                                  const isUserChoice = selectedVotes[poll.id] === idx;
+                                  
+                                  // STRICT JANMAT BIFURCATION:
+                                  // In JanMat, NEVER reveal which option was voted (Secret Ballot).
+                                  // In LokMat, display user's pick.
+                                  const showChoiceHighlight = !isJanMat && isUserChoice && hasVotedThisCycle;
 
                                   return (
                                     <button
@@ -848,18 +863,21 @@ export default function BhuMatApp() {
                                       style={{
                                         padding: '16px',
                                         borderRadius: '14px',
-                                        backgroundColor: showChoice ? '#ecfdf5' : '#f8fafc',
-                                        border: showChoice ? `2px solid ${isJanMat ? '#059669' : '#d97706'}` : '1px solid #e2e8f0',
+                                        backgroundColor: showChoiceHighlight ? '#ecfdf5' : '#ffffff',
+                                        border: showChoiceHighlight 
+                                          ? `2.5px solid ${optColor}` 
+                                          : `1.5px solid ${optColor}`,
                                         textAlign: 'left',
                                         cursor: hasVotedThisCycle ? 'default' : 'pointer',
-                                        transition: 'border 0.2s ease'
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: `0 1px 3px ${optColor}22`
                                       }}
                                     >
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
                                           {lang === 'EN' ? opt.text_en : opt.text_hi}
                                         </div>
-                                        {showChoice && (
+                                        {showChoiceHighlight && (
                                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', padding: '2px 8px', borderRadius: '6px' }}>
                                             {lang === 'HI' ? '✓ आपका मत' : '✓ Your Vote'}
                                           </span>
@@ -876,18 +894,13 @@ export default function BhuMatApp() {
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '12px' }}>
                               <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                {isJanMat ? (lang === 'HI' ? '🔒 क्रिप्टोग्राफिक गुप्त मतपेटी' : '🔒 Cryptographic Secret Ballot') : (lang === 'HI' ? '🗳️ सत्यापित खुला जनमत' : '🗳️ Verified Open Poll')}
+                                {isJanMat ? (lang === 'HI' ? '🔒 क्रिप्टोग्राफिक गुप्त मतपेटी' : '🔒 Cryptographic Secret Ballot') : (lang === 'HI' ? '🗳️ खुला जनमत पल्स' : '🗳️ Open Public Pulse')}
                               </span>
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 {hasVotedThisCycle && (
-                                  <>
-                                    <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '6px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
-                                      {lang === 'HI' ? 'नक्शा देखें ↗' : 'Explore Map ↗'}
-                                    </button>
-                                    <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
-                                      {lang === 'HI' ? 'दृष्टि नक्शा ↺' : 'View Drishti ↺'}
-                                    </button>
-                                  </>
+                                  <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                                    {lang === 'HI' ? 'नक्शा देखें ↗' : 'Explore Map ↗'}
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -896,48 +909,79 @@ export default function BhuMatApp() {
                           {/* Back: Drishti State View */}
                           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', backgroundColor: '#ffffff', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '24px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
                             <div>
+                              {/* UNIFIED TOP HEADER: Rotate Button aligned at top-right */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                 <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
                                   ✓ {lang === 'HI' ? 'दृष्टि पल्स सक्रिय' : 'DRISHTI PULSE ACTIVE'}
                                 </span>
-                                <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}>
+                                <button 
+                                  onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: false }))} 
+                                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
+                                >
                                   {lang === 'HI' ? 'मतपत्र देखें ↻' : 'View Ballot ↻'}
                                 </button>
                               </div>
 
-                              <DrishtiMap selectedConstituencyName={selectedSeat?.name} selectedState={selectedSeat?.state} pollId={poll.id} options={poll.options} />
-
-                              <button onClick={() => openExpandedView(poll)} style={{ width: '100%', padding: '10px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '10px', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
-                                {lang === 'HI' ? 'अखिल भारतीय दृष्टि नक्शा खोलें (543 सीटें) 🔓' : 'Explore Pan-Bharat Drishti (543 Seats) 🔓'}
-                              </button>
+                              <DrishtiMap 
+                                selectedConstituencyName={selectedSeat?.name} 
+                                selectedState={selectedSeat?.state} 
+                                pollId={poll.id} 
+                                cycleId={poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime'}
+                                userVotedOptionIdx={selectedVotes[poll.id]}
+                                options={poll.options} 
+                              />
                             </div>
 
-                            <button
-                              onClick={() => {
-                                const shareUrl = `https://vote.bhumat.com?ref=${deviceHash}&seat=${encodeURIComponent(selectedSeat?.name || 'Bharat')}`;
-                                const msg = lang === 'HI'
-                                  ? `🇮🇳 *भूमत लोकमत ऑडिट | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_hi}"\n\nहमारे संसदीय क्षेत्र को राष्ट्रीय मानचित्र पर गणपूर्ति (कोरम) प्रमाणित करने के लिए अपना गोपनीय मत दें:`
-                                  : `🇮🇳 *BHUMAT PUBLIC OPINION AUDIT | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_en}"\n\nOur Lok Sabha seat needs verified citizens to fortify quorum on the National Map.\n\nCast your verified ballot:`;
-                                handleShareWhatsApp(msg, shareUrl);
-                              }}
-                              style={{
-                                width: '100%',
-                                backgroundColor: '#10b981',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '12px',
-                                padding: '12px 14px',
-                                fontSize: '12.5px',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <span>📲</span> {lang === 'HI' ? `${selectedSeat?.name} के नागरिकों को जोड़ें (+25 अंक)` : `Mobilize ${selectedSeat?.name} (+25 pts)`}
-                            </button>
+                            {/* CONSISTENT BUTTON SIZING: Equal height (46px) & prominent styling */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                              <button 
+                                onClick={() => openExpandedView(poll)} 
+                                style={{ 
+                                  width: '100%', 
+                                  height: '46px', 
+                                  backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', 
+                                  border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, 
+                                  borderRadius: '12px', 
+                                  color: isJanMat ? '#059669' : '#d97706', 
+                                  fontSize: '12px', 
+                                  fontWeight: 800, 
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                {lang === 'HI' ? 'अखिल भारतीय दृष्टि नक्शा खोलें (543 सीटें) 🔓' : 'Explore Pan-Bharat Drishti (543 Seats) 🔓'}
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  const shareUrl = `https://vote.bhumat.com?ref=${deviceHash}&seat=${encodeURIComponent(selectedSeat?.name || 'Bharat')}`;
+                                  const msg = lang === 'HI'
+                                    ? `🇮🇳 *भूमत लोकमत ऑडिट | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_hi}"\n\nहमारे संसदीय क्षेत्र को राष्ट्रीय मानचित्र पर गणपूर्ति (कोरम) प्रमाणित करने के लिए अपना गोपनीय मत दें:`
+                                    : `🇮🇳 *BHUMAT PUBLIC OPINION AUDIT | ${selectedSeat?.name.toUpperCase()}*\n\n"${poll.title_en}"\n\nOur Lok Sabha seat needs verified citizens to fortify quorum on the National Map.\n\nCast your verified ballot:`;
+                                  handleShareWhatsApp(msg, shareUrl);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '46px',
+                                  backgroundColor: '#10b981',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: '12px',
+                                  padding: '12px 14px',
+                                  fontSize: '12.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
+                                }}
+                              >
+                                <span>📲</span> {lang === 'HI' ? `${selectedSeat?.name} के नागरिकों को जोड़ें (+25 अंक)` : `Mobilize ${selectedSeat?.name} (+25 pts)`}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -965,7 +1009,7 @@ export default function BhuMatApp() {
 
               <input
                 type="text"
-                placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे गया, दरभंगा, गोरखपुर)...' : '🔍 Search seat or state (e.g. Gaya, Darbhanga, Gorakhpur)...'}
+                placeholder={lang === 'HI' ? '🔍 सीट या राज्य खोजें (जैसे दरभंगा, गया, गोरखपुर)...' : '🔍 Search seat or state (e.g. Darbhanga, Gaya, Gorakhpur)...'}
                 value={archiveSearchQuery}
                 onChange={(e) => setArchiveSearchQuery(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none' }}
