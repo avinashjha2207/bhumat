@@ -17,6 +17,20 @@ interface Poll {
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 
+const QUICK_SEATS: Record<string, string> = {
+  'Muzaffarpur': 'Bihar',
+  'Darbhanga': 'Bihar',
+  'Buxar': 'Bihar',
+  'Banka': 'Bihar',
+  'Sasaram': 'Bihar',
+  'Munger': 'Bihar',
+  'Nagpur': 'Maharashtra',
+  'East Delhi': 'Delhi',
+  'Gorakhpur': 'Uttar Pradesh',
+  'Varanasi': 'Uttar Pradesh',
+  'Bangalore South': 'Karnataka'
+};
+
 export default function AdminAuditPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState('');
@@ -42,7 +56,7 @@ export default function AdminAuditPanel() {
   // Table 4 Filter
   const [tallyFilter, setTallyFilter] = useState<'ALL' | 'FORTIFIED' | 'ACTIVE'>('ALL');
 
-  // NEW POLL CREATOR FORM STATE
+  // New Poll Creator Form State
   const [newCategory, setNewCategory] = useState<'JanMat' | 'LokMat'>('JanMat');
   const [newTitleEn, setNewTitleEn] = useState('');
   const [newTitleHi, setNewTitleHi] = useState('');
@@ -89,7 +103,7 @@ export default function AdminAuditPanel() {
     setLoading(true);
 
     try {
-      // 1. Table 2: Blind Ballot Box (Ordered by cycle_date or default id, without cast_at)
+      // 1. Table 2: Blind Ballot Box (Ordered by id, no legacy cast_at dependency)
       const { data: ballots, count: bCount } = await supabase
         .from('ballot_box')
         .select('*', { count: 'exact' })
@@ -140,6 +154,14 @@ export default function AdminAuditPanel() {
     }
   }, [isAuthenticated, selectedPollId]);
 
+  // Handle Quick Seat Selection in Sandbox
+  const handleSeatChange = (seat: string) => {
+    setSimSeat(seat);
+    if (QUICK_SEATS[seat]) {
+      setSimState(QUICK_SEATS[seat]);
+    }
+  };
+
   // Execute Simulated Test Vote from Sandbox
   const handleSimulateBallot = async () => {
     setSimMessage('Casting simulated ballot...');
@@ -174,7 +196,7 @@ export default function AdminAuditPanel() {
     runComprehensiveAudit(selectedPollId);
   };
 
-  // Poll Deploy Handler
+  // Resilient Clean Poll Deploy Handler (Pure JSONB Schema)
   const handleDeployNewPoll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitleEn.trim()) {
@@ -191,15 +213,7 @@ export default function AdminAuditPanel() {
       text_hi: (opt.text_hi || opt.text_en).trim()
     }));
 
-    const opt0En = formattedOptions[0]?.text_en || 'Option 1';
-    const opt0Hi = formattedOptions[0]?.text_hi || 'विकल्प 1';
-    const opt1En = formattedOptions[1]?.text_en || 'Option 2';
-    const opt1Hi = formattedOptions[1]?.text_hi || 'विकल्प 2';
-    const opt2En = formattedOptions[2]?.text_en || '';
-    const opt2Hi = formattedOptions[2]?.text_hi || '';
-    const opt3En = formattedOptions[3]?.text_en || '';
-    const opt3Hi = formattedOptions[3]?.text_hi || '';
-
+    // Pure, clean payload containing only authentic database columns
     const payload = {
       id: newPollId,
       category: newCategory,
@@ -211,16 +225,7 @@ export default function AdminAuditPanel() {
       current_cycle: '2026-10',
       starts_at: new Date(newStartsAt).toISOString(),
       is_active: true,
-      target_region_type: 'PAN_INDIA',
-      // Explicit non-empty fallback strings for legacy columns
-      option_0_en: opt0En,
-      option_0_hi: opt0Hi,
-      option_1_en: opt1En,
-      option_1_hi: opt1Hi,
-      option_2_en: opt2En,
-      option_2_hi: opt2Hi,
-      option_3_en: opt3En,
-      option_3_hi: opt3Hi
+      target_region_type: 'PAN_INDIA'
     };
 
     const { error } = await supabase.from('polls').insert([payload]);
@@ -316,7 +321,7 @@ export default function AdminAuditPanel() {
                   style={{ padding: '14px', borderRadius: '12px', border: `2px solid ${newCategory === 'JanMat' ? '#059669' : '#e2e8f0'}`, backgroundColor: newCategory === 'JanMat' ? '#ecfdf5' : '#ffffff', cursor: 'pointer' }}
                 >
                   <div style={{ fontWeight: 800, color: '#059669', fontSize: '14px' }}>🌆 JanMat Audit (Civic Track)</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Strict cryptographic secret ballot, 50-vote quorum fortification gate.</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Strict cryptographic secret ballot, decoupled anonymous ledger.</div>
                 </div>
 
                 <div
@@ -499,24 +504,26 @@ export default function AdminAuditPanel() {
                 <div style={{ fontSize: '26px', fontWeight: 900, color: fortifiedSeatsCount > 0 ? '#10b981' : '#64748b', marginTop: '6px' }}>
                   {fortifiedSeatsCount} / 543
                 </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Seats certified (≥ 50 votes)</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Seats fortified (≥ 50 votes)</div>
               </div>
             </div>
 
             {/* Sandbox Live Ballot Injector */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>🧪 Sandbox Live Ballot Injector</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2fr auto', gap: '10px', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  placeholder="Constituency (e.g. Muzaffarpur)"
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 2fr auto', gap: '10px', alignItems: 'center' }}>
+                <select
                   value={simSeat}
-                  onChange={(e) => setSimSeat(e.target.value)}
+                  onChange={(e) => handleSeatChange(e.target.value)}
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
-                />
+                >
+                  {Object.keys(QUICK_SEATS).map((s) => (
+                    <option key={s} value={s}>{s} ({QUICK_SEATS[s]})</option>
+                  ))}
+                </select>
                 <input
                   type="text"
-                  placeholder="State (e.g. Bihar)"
+                  placeholder="State"
                   value={simState}
                   onChange={(e) => setSimState(e.target.value)}
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
@@ -570,14 +577,13 @@ export default function AdminAuditPanel() {
                       <th style={{ padding: '10px' }}>Opt 1 (Green)</th>
                       <th style={{ padding: '10px' }}>Opt 2 (Sky Blue)</th>
                       <th style={{ padding: '10px' }}>Opt 3 (Purple)</th>
-                      <th style={{ padding: '10px' }}>Leader</th>
-                      <th style={{ padding: '10px' }}>Quorum Met</th>
+                      <th style={{ padding: '10px' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredTallies.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
+                        <td colSpan={8} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
                           No seats matching filter.
                         </td>
                       </tr>
@@ -591,10 +597,9 @@ export default function AdminAuditPanel() {
                           <td style={{ padding: '10px', color: '#10b981', fontWeight: 700 }}>{row.opt_1_votes}</td>
                           <td style={{ padding: '10px', color: '#0ea5e9', fontWeight: 700 }}>{row.opt_2_votes}</td>
                           <td style={{ padding: '10px', color: '#8b5cf6', fontWeight: 700 }}>{row.opt_3_votes}</td>
-                          <td style={{ padding: '10px', fontWeight: 800 }}>Option {row.leading_option} ({row.leading_votes} v)</td>
                           <td style={{ padding: '10px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', backgroundColor: row.is_fortified ? '#ecfdf5' : '#fef3c7', color: row.is_fortified ? '#059669' : '#d97706' }}>
-                              {row.is_fortified ? '✓ FORTIFIED' : `⏳ ${row.total_votes}/50`}
+                              {row.is_fortified ? `✓ FORTIFIED (Opt ${row.leading_option})` : `🌱 ${row.total_votes} Ballots (Opt ${row.leading_option})`}
                             </span>
                           </td>
                         </tr>
