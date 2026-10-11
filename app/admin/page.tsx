@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
 interface Poll {
@@ -29,10 +29,12 @@ const QUICK_SEATS: Record<string, string> = {
   'Sasaram': 'Bihar',
   'Munger': 'Bihar',
   'Nagpur': 'Maharashtra',
+  'Ramtek': 'Maharashtra',
   'East Delhi': 'Delhi',
   'Gorakhpur': 'Uttar Pradesh',
   'Varanasi': 'Uttar Pradesh',
-  'Bangalore South': 'Karnataka'
+  'Bangalore South': 'Karnataka',
+  'Vizianagaram': 'Andhra Pradesh'
 };
 
 const ALL_543_SEATS: string[] = [
@@ -64,22 +66,24 @@ export default function AdminAuditPanel() {
   const [passcode, setPasscode] = useState('');
   const [activeAdminTab, setActiveAdminTab] = useState<'AUDIT' | 'CREATE_POLL'>('AUDIT');
 
-  // Polls & Selection (Supports 'ALL' for platform-wide health)
   const [polls, setPolls] = useState<Poll[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<string>('ALL');
 
-  // Audit Ledger Counts
   const [ballotBoxRows, setBallotBoxRows] = useState<any[]>([]);
   const [participationsCount, setParticipationsCount] = useState<number>(0);
   const [ballotBoxTotalCount, setBallotBoxTotalCount] = useState<number>(0);
   const [talliesRows, setTalliesRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Platform Maintenance Kill-Switch
+  const [isPlatformFrozen, setIsPlatformFrozen] = useState(false);
+
   // ECI Blackout Management
   const [blackoutSeatInput, setBlackoutSeatInput] = useState('');
   const [blackoutActionStatus, setBlackoutActionStatus] = useState('');
 
   // Sandbox Single Test
+  const [simTargetPollId, setSimTargetPollId] = useState('');
   const [simSeat, setSimSeat] = useState('Muzaffarpur');
   const [simState, setSimState] = useState('Bihar');
   const [simOption, setSimOption] = useState(0);
@@ -121,12 +125,30 @@ export default function AdminAuditPanel() {
 
     if (data && !error) {
       setPolls(data);
+      if (data.length > 0 && !simTargetPollId) {
+        setSimTargetPollId(data[0].id);
+      }
     }
+  }
+
+  async function fetchPlatformSettings() {
+    try {
+      const { data } = await supabase
+        .from('platform_settings')
+        .select('*')
+        .eq('key', 'maintenance_mode')
+        .maybeSingle();
+
+      if (data?.value?.is_frozen !== undefined) {
+        setIsPlatformFrozen(Boolean(data.value.is_frozen));
+      }
+    } catch (e) {}
   }
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchPolls();
+      fetchPlatformSettings();
     }
   }, [isAuthenticated]);
 
@@ -139,7 +161,7 @@ export default function AdminAuditPanel() {
       // 1. Table 2: Blind Ballot Box
       let bQuery = supabase.from('ballot_box').select('*', { count: 'exact' });
       if (!isAll) bQuery = bQuery.eq('poll_id', pollId);
-      const { data: ballots, count: bCount } = await bQuery.order('id', { ascending: false }).limit(35);
+      const { data: ballots, count: bCount } = await bQuery.order('id', { ascending: false }).limit(40);
 
       setBallotBoxRows(ballots || []);
       setBallotBoxTotalCount(bCount || 0);
@@ -185,13 +207,84 @@ export default function AdminAuditPanel() {
   const selectedPoll = polls.find((p) => p.id === selectedPollId);
   const isAllPollsSelected = selectedPollId === 'ALL';
   const isLedgerReconciled = ballotBoxTotalCount === participationsCount;
-  const fortifiedSeatsCount = talliesRows.filter((r) => r.is_fortified || r.total_votes >= 50).length;
 
-  const filteredTallies = talliesRows.filter((r) => {
+  // De-duplicated Aggregated Rollup for Table 4 in [ALL POLLS] mode
+  const aggregatedTallies = useMemo(() => {
+    if (!isAllPollsSelected) {
+      return talliesRows;
+    }
+
+    const map: Record<string, any> = {};
+    talliesRows.forEach((row) => {
+      const key = `${row.constituency_name}|||${row.state_name}`;
+      if (!map[key]) {
+        map[key] = {
+          constituency_name: row.constituency_name,
+          state_name: row.state_name,
+          total_votes: 0,
+          opt_0_votes: 0,
+          opt_1_votes: 0,
+          opt_2_votes: 0,
+          opt_3_votes: 0,
+          leading_option: row.leading_option,
+          is_fortified: false
+        };
+      }
+      map[key].total_votes += Number(row.total_votes || 0);
+      map[key].opt_0_votes += Number(row.opt_0_votes || 0);
+      map[key].opt_1_votes += Number(row.opt_1_votes || 0);
+      map[key].opt_2_votes += Number(row.opt_2_votes || 0);
+      map[key].opt_3_votes += Number(row.opt_3_votes || 0);
+      if (map[key].total_votes >= 50) map[key].is_fortified = true;
+    });
+
+    return Object.values(map).sort((a, b) => b.total_votes - a.total_votes);
+  }, [talliesRows, isAllPollsSelected]);
+
+  const fortifiedSeatsCount = aggregatedTallies.filter((r) => r.is_fortified || r.total_votes >= 50).length;
+
+  const filteredTallies = aggregatedTallies.filter((r) => {
     if (tallyFilter === 'FORTIFIED') return r.is_fortified || r.total_votes >= 50;
     if (tallyFilter === 'ACTIVE') return r.total_votes > 0;
     return true;
   });
+
+  // Top 5 Engagement Hotspots
+  const topHotspots = useMemo(() => {
+    return aggregatedTallies.slice(0, 5);
+  }, [aggregatedTallies]);
+
+  // Platform Emergency Freeze Kill-Switch
+  const handleTogglePlatformFreeze = async () => {
+    const nextState = !isPlatformFrozen;
+    const confirmMsg = nextState
+      ? '🚨 EMERGENCY: Freeze public voting platform-wide for maintenance?'
+      : 'Unfreeze platform and resume live public voting?';
+
+    if (!confirm(confirmMsg)) return;
+
+    await supabase.from('platform_settings').upsert({
+      key: 'maintenance_mode',
+      value: { is_frozen: nextState, reason: nextState ? 'Scheduled Civic Maintenance' : '' }
+    });
+
+    setIsPlatformFrozen(nextState);
+  };
+
+  // CSV Exporter for Sovereign Audit Proofs
+  const exportTableToCSV = (data: any[], filename: string) => {
+    if (!data.length) return alert('No data to export.');
+    const headers = Object.keys(data[0]).join(',');
+    const rows = data.map((obj) => Object.values(obj).map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${filename}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Toggle Poll Active/Inactive Status
   const handleTogglePollStatus = async () => {
@@ -249,7 +342,7 @@ export default function AdminAuditPanel() {
     if (!error) {
       setPolls(polls.map((p) => (p.id === selectedPoll.id ? { ...p, blackout_seats: updated } : p)));
       setBlackoutSeatInput('');
-      setBlackoutActionStatus(`✓ ${seatToAdd} placed under ECI Silence Period (Voting Locked).`);
+      setBlackoutActionStatus(`✓ ${seatToAdd} placed under ECI Silence Period.`);
     } else {
       setBlackoutActionStatus(`❌ Error: ${error.message}`);
     }
@@ -278,10 +371,11 @@ export default function AdminAuditPanel() {
     }
   };
 
+  // Simulated Test Vote
   const handleSimulateBallot = async () => {
-    const targetPoll = isAllPollsSelected ? (polls[0]?.id || '') : selectedPollId;
+    const targetPoll = isAllPollsSelected ? simTargetPollId : selectedPollId;
     if (!targetPoll) {
-      alert('No poll available for injection.');
+      alert('Please choose a valid poll target for injection.');
       return;
     }
 
@@ -406,19 +500,42 @@ export default function AdminAuditPanel() {
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1140px', margin: '0 auto' }}>
         
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
+        {/* Header with Emergency Freeze Button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#0f172a', margin: 0 }}>
-              BhuMat Sovereign Command & Verification Suite
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                BhuMat Sovereign Command & Verification Suite
+              </h1>
+              {isPlatformFrozen && (
+                <span style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 900 }}>
+                  🚨 FROZEN (MAINTENANCE)
+                </span>
+              )}
+            </div>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
-              Publish verified questions, manage ECI silence blackouts, and audit decoupled anonymous ballots.
+              Solo-Operator Console: Real-time verification, hot spot telemetry, and 48-hour ECI silence controls.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={handleTogglePlatformFreeze}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: isPlatformFrozen ? '#10b981' : '#fee2e2',
+                color: isPlatformFrozen ? '#ffffff' : '#dc2626',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              {isPlatformFrozen ? '▶ Unfreeze Platform' : '🚨 Freeze Platform'}
+            </button>
             <button
               onClick={() => setActiveAdminTab(activeAdminTab === 'AUDIT' ? 'CREATE_POLL' : 'AUDIT')}
               style={{ padding: '8px 16px', backgroundColor: activeAdminTab === 'CREATE_POLL' ? '#0f172a' : '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
@@ -469,7 +586,7 @@ export default function AdminAuditPanel() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. If you could start your education all over again, which path would you take?"
+                    placeholder="e.g. Which sector requires priority budgetary allocation in 2026?"
                     value={newTitleEn}
                     onChange={(e) => setNewTitleEn(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600 }}
@@ -479,7 +596,7 @@ export default function AdminAuditPanel() {
                   <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>Question Title (Hindi)</label>
                   <input
                     type="text"
-                    placeholder="उदा. अगर आपको अपनी पढ़ाई दोबारा नए सिरे से शुरू करने का मौका मिले, तो आप कौन सा रास्ता चुनेंगे?"
+                    placeholder="उदा. 2026 में किस क्षेत्र को प्राथमिकता बजटीय आवंटन की आवश्यकता है?"
                     value={newTitleHi}
                     onChange={(e) => setNewTitleHi(e.target.value)}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600 }}
@@ -634,17 +751,39 @@ export default function AdminAuditPanel() {
                 type="submit"
                 style={{ padding: '16px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: 900, cursor: 'pointer', marginTop: '10px' }}
               >
-                🚀 Publish & Broadcast to 543 Seats
+                {newTargetType === 'CUSTOM_SEATS'
+                  ? `🚀 Publish & Broadcast to ${customTargetSeats.length} Selected Seats`
+                  : '🚀 Publish & Broadcast to 543 Seats'}
               </button>
             </form>
           </div>
         ) : (
           /* TAB 2: AUDIT & GOVERNANCE SUITE */
           <>
+            {/* Solo-Operator Telemetry Strip */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Active Poll Cadence</span>
+                <div style={{ fontSize: '20px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{activePollsCount} Live / {polls.length} Total</div>
+              </div>
+              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>Fortified Quorum Seats</span>
+                <div style={{ fontSize: '20px', fontWeight: 900, color: '#059669', marginTop: '4px' }}>{fortifiedSeatsCount} / 543 Seats</div>
+              </div>
+              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Total Civic Ballots</span>
+                <div style={{ fontSize: '20px', fontWeight: 900, color: '#0284c7', marginTop: '4px' }}>{ballotBoxTotalCount} Cast</div>
+              </div>
+              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Top Hotspot</span>
+                <div style={{ fontSize: '16px', fontWeight: 900, color: '#b45309', marginTop: '6px' }}>
+                  {topHotspots[0] ? `${topHotspots[0].constituency_name} (${topHotspots[0].total_votes})` : 'Awaiting Data'}
+                </div>
+              </div>
+            </div>
+
             {/* Poll Target & Governance Bar */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
-              {/* Row 1: Dedicated Full-Width Dropdown */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
@@ -680,7 +819,7 @@ export default function AdminAuditPanel() {
                 </select>
               </div>
 
-              {/* Row 2: Separated Controls with No Overlap */}
+              {/* Action Controls */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '4px' }}>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   {!isAllPollsSelected ? (
@@ -724,15 +863,23 @@ export default function AdminAuditPanel() {
                   </button>
                 </div>
 
-                <button
-                  onClick={() => runComprehensiveAudit(selectedPollId)}
-                  style={{ padding: '9px 16px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  ↻ Refresh Ledger
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => exportTableToCSV(talliesRows, `bhumat_tallies_${selectedPollId}`)}
+                    style={{ padding: '9px 14px', backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    📥 Export CSV
+                  </button>
+                  <button
+                    onClick={() => runComprehensiveAudit(selectedPollId)}
+                    style={{ padding: '9px 16px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ↻ Refresh Ledger
+                  </button>
+                </div>
               </div>
 
-              {/* Row 3: ECI Silence Blackout Section (When Specific Poll is Targeted) */}
+              {/* ECI Silence Blackout Section */}
               {!isAllPollsSelected && (
                 <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -740,7 +887,7 @@ export default function AdminAuditPanel() {
                       🏛️ Election Commission Compliance: 48-Hour Silence Blackout
                     </span>
                     <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      Blacklisted constituencies cannot cast ballots or view leading trends during statutory silence windows.
+                      Constituencies in silence period cannot cast ballots or view leading trends.
                     </span>
                   </div>
 
@@ -829,9 +976,26 @@ export default function AdminAuditPanel() {
               </div>
             </div>
 
-            {/* Sandbox Live Ballot Injector */}
+            {/* Sandbox Live Ballot Injector (Explicit Target Poll Selection) */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 12px 0' }}>🧪 Sandbox Live Ballot Injector</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Live Ballot Injector</h3>
+                {isAllPollsSelected && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Injection Target:</span>
+                    <select
+                      value={simTargetPollId}
+                      onChange={(e) => setSimTargetPollId(e.target.value)}
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #0284c7', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      {polls.map((p) => (
+                        <option key={p.id} value={p.id}>[{p.category}] {p.title_en.slice(0, 30)}...</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 2fr auto', gap: '10px', alignItems: 'center' }}>
                 <select
                   value={simSeat}
@@ -854,7 +1018,7 @@ export default function AdminAuditPanel() {
                   onChange={(e) => setSimOption(Number(e.target.value))}
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 >
-                  {(selectedPoll?.options || [
+                  {((isAllPollsSelected ? polls.find((p) => p.id === simTargetPollId)?.options : selectedPoll?.options) || [
                     { id: 0, text_en: 'Option 1' },
                     { id: 1, text_en: 'Option 2' },
                     { id: 2, text_en: 'Option 3' }
@@ -878,12 +1042,17 @@ export default function AdminAuditPanel() {
               )}
             </div>
 
-            {/* Table 4: Pre-Computed Matrix */}
+            {/* Table 4: Pre-Computed Matrix (De-duplicated & Aggregated) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>
-                  📊 Table 4: Pre-computed Constituency Matrix (`constituency_tallies`)
-                </h3>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>
+                    📊 Table 4: {isAllPollsSelected ? 'Platform-Wide Aggregated Constituency Matrix' : 'Pre-computed Constituency Matrix (`constituency_tallies`)'}
+                  </h3>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    {isAllPollsSelected ? 'Aggregated unique constituency civic activity across all polls.' : 'Granular option breakdown for selected question.'}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button onClick={() => setTallyFilter('ALL')} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: tallyFilter === 'ALL' ? '#0f172a' : '#f1f5f9', color: tallyFilter === 'ALL' ? '#ffffff' : '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>All Seats</button>
                   <button onClick={() => setTallyFilter('ACTIVE')} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: tallyFilter === 'ACTIVE' ? '#0f172a' : '#f1f5f9', color: tallyFilter === 'ACTIVE' ? '#ffffff' : '#475569', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Active (&gt;0)</button>
@@ -897,7 +1066,7 @@ export default function AdminAuditPanel() {
                     <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569', fontSize: '11px', textTransform: 'uppercase' }}>
                       <th style={{ padding: '10px' }}>Constituency</th>
                       <th style={{ padding: '10px' }}>State</th>
-                      <th style={{ padding: '10px' }}>Total Votes</th>
+                      <th style={{ padding: '10px' }}>Total Ballots</th>
                       <th style={{ padding: '10px' }}>Opt 0 (Orange)</th>
                       <th style={{ padding: '10px' }}>Opt 1 (Green)</th>
                       <th style={{ padding: '10px' }}>Opt 2 (Sky Blue)</th>
@@ -914,7 +1083,7 @@ export default function AdminAuditPanel() {
                       </tr>
                     ) : (
                       filteredTallies.map((row) => (
-                        <tr key={`${row.id || row.constituency_name}-${row.state_name}-${row.poll_id || ''}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <tr key={`${row.constituency_name}-${row.state_name}-${row.poll_id || ''}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '10px', fontWeight: 800 }}>{row.constituency_name}</td>
                           <td style={{ padding: '10px', color: '#64748b' }}>{row.state_name}</td>
                           <td style={{ padding: '10px', fontWeight: 900, color: '#0284c7' }}>{row.total_votes}</td>
@@ -924,7 +1093,7 @@ export default function AdminAuditPanel() {
                           <td style={{ padding: '10px', color: '#8b5cf6', fontWeight: 700 }}>{row.opt_3_votes}</td>
                           <td style={{ padding: '10px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', backgroundColor: row.is_fortified ? '#ecfdf5' : '#fef3c7', color: row.is_fortified ? '#059669' : '#d97706' }}>
-                              {row.is_fortified ? `✓ FORTIFIED (Opt ${row.leading_option})` : `🌱 ${row.total_votes} Ballots (Opt ${row.leading_option})`}
+                              {row.is_fortified ? `✓ FORTIFIED (${row.total_votes})` : `🌱 Active (${row.total_votes})`}
                             </span>
                           </td>
                         </tr>
@@ -941,12 +1110,20 @@ export default function AdminAuditPanel() {
                 <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>
                   🔒 Table 2: Cryptographic Blind Ballot Box (`ballot_box`)
                 </h3>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', padding: '3px 8px', borderRadius: '999px' }}>
-                  ✓ Side-Channel Immune
-                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => exportTableToCSV(ballotBoxRows, `bhumat_ballots_${selectedPollId}`)}
+                    style={{ padding: '6px 12px', backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    📥 Export Ballot Box
+                  </button>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', padding: '3px 8px', borderRadius: '999px', alignSelf: 'center' }}>
+                    ✓ Side-Channel Immune
+                  </span>
+                </div>
               </div>
               <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 12px 0' }}>
-                Notice: Zero high-precision timestamps, zero voter tokens, zero device fingerprints, and zero IP addresses are stored.
+                Notice: Zero timestamps, zero voter tokens, zero device fingerprints, and zero IP addresses are stored.
               </p>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
