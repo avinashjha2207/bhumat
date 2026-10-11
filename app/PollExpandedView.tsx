@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import * as d3 from 'd3';
 import { supabase } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 
@@ -54,6 +55,7 @@ export default function PollExpandedView({
 }: PollExpandedViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const mapGroupRef = useRef<SVGGElement | null>(null);
   const gridSectionRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -62,6 +64,7 @@ export default function PollExpandedView({
   const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
   const [searchQuery, setSearchQuery] = useState('');
   const [userBeaconCoords, setUserBeaconCoords] = useState<{ x: number; y: number } | null>(null);
+  const [currentZoomScale, setCurrentZoomScale] = useState(1);
 
   // Floating Dynamic Tooltip that auto-vanishes
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
@@ -142,12 +145,8 @@ export default function PollExpandedView({
     return cId.includes(cleanUserSeat) || cName.includes(cleanUserSeat) || cleanUserSeat.includes(cName);
   };
 
-  const userOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
-    ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
-    : OPTION_PALETTE[0];
-
   // Mathematical Aggregation with Quorum Gates
-  const { nationalStats, stateStats, seatStats, seatMap, stateTable } = useMemo(() => {
+  const { nationalStats, stateStats, seatStats, seatMap, stateTable, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(poll.options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
     const stBreakdown = new Array(optCount).fill(0);
@@ -159,7 +158,6 @@ export default function PollExpandedView({
     const stateMap: Record<string, { total: number; breakdown: number[]; seatsFortified: number; totalSeats: number }> = {};
     let targetSeatRecord: any = null;
 
-    // Build state totalSeats dynamically from geography if available
     seats.forEach((seat) => {
       const st = seat.state || 'Other';
       if (!stateMap[st]) {
@@ -204,25 +202,19 @@ export default function PollExpandedView({
       }
     });
 
-    // Fallback if local vote not yet returned by network
-    if (userVotedOptionIdx !== null && (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0)) {
-      if (natTotal === 0) {
-        natTotal = 1;
-        natBreakdown[userVotedOptionIdx] = 1;
+    // Derive authentic color from user choice or fallback directly to seat's database leader
+    let homeOptionIdx = userVotedOptionIdx;
+    if (homeOptionIdx === null || homeOptionIdx === undefined) {
+      if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
+        homeOptionIdx = Number(targetSeatRecord.leading_option || 0);
       }
-      if (stTotal === 0) {
-        stTotal = 1;
-        stBreakdown[userVotedOptionIdx] = 1;
-      }
-      targetSeatRecord = {
-        total_votes: 1,
-        leading_option: userVotedOptionIdx,
-        is_tie: false,
-        is_fortified: false
-      };
     }
 
-    // National is always transparent (sums all ballots)
+    const homeColor = homeOptionIdx !== null && homeOptionIdx !== undefined
+      ? OPTION_PALETTE[homeOptionIdx % OPTION_PALETTE.length]
+      : '#10b981';
+
+    // National
     const maxNatVotes = Math.max(...natBreakdown);
     const natLeadIdx = natBreakdown.indexOf(maxNatVotes);
     const natPct = natTotal > 0 ? Math.round((maxNatVotes / natTotal) * 100) : 0;
@@ -230,12 +222,12 @@ export default function PollExpandedView({
 
     const natVerdict = {
       title: natTotal > 0 && natOpt ? natOpt.text_en.split('/')[0].trim() : '0 Ballots',
-      color: natTotal > 0 ? OPTION_PALETTE[natLeadIdx % OPTION_PALETTE.length] : '#64748b',
+      color: natTotal > 0 ? OPTION_PALETTE[natLeadIdx % OPTION_PALETTE.length] : '#1e293b',
       pct: natPct,
       total: natTotal
     };
 
-    // State Quorum Gate: Needs 50% of seats fortified to unlock winner
+    // State Quorum Gate: Needs 50% fortified seats
     const userStateData = Object.entries(stateMap).find(([name]) => clean(name) === cleanUserState)?.[1];
     const totalStateSeats = userStateData?.totalSeats || 1;
     const fortifiedSeats = userStateData?.seatsFortified || 0;
@@ -243,11 +235,11 @@ export default function PollExpandedView({
 
     let stateVerdict: any;
     if (stTotal === 0) {
-      stateVerdict = { title: '0 Ballots', color: '#64748b', pct: 0, total: 0, isQuorumMet: false };
+      stateVerdict = { title: '0 Ballots', color: '#1e293b', pct: 0, total: 0, isQuorumMet: false };
     } else if (!stateQuorumMet) {
       stateVerdict = {
-        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Quorum',
-        color: '#d97706',
+        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Public Opinion',
+        color: '#1e293b', // Strict neutral dark charcoal
         pct: 0,
         total: stTotal,
         isQuorumMet: false,
@@ -268,21 +260,21 @@ export default function PollExpandedView({
       };
     }
 
-    // Lok Sabha Quorum Gate: Needs 50 ballots to unlock winner
+    // Lok Sabha Quorum Gate: Needs 50 ballots
     const localTotal = Number(targetSeatRecord?.total_votes || 0);
     const seatQuorumMet = localTotal >= 50;
     let localVerdict: any;
 
     if (localTotal === 0) {
-      localVerdict = { title: '0 Ballots', color: '#64748b', pct: 0, total: 0, isQuorumMet: false };
+      localVerdict = { title: '0 Ballots', color: '#1e293b', pct: 0, total: 0, isQuorumMet: false };
     } else if (!seatQuorumMet) {
       localVerdict = {
-        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Quorum',
-        color: '#d97706',
+        title: lang === 'HI' ? 'कोरम प्रतीक्षित' : 'Building Public Opinion',
+        color: '#1e293b', // Strict neutral dark charcoal
         pct: 0,
         total: localTotal,
         isQuorumMet: false,
-        needed: 50 - localTotal
+        needed: Math.max(50 - localTotal, 0)
       };
     } else {
       const localLeadIdx = Number(targetSeatRecord?.leading_option || 0);
@@ -296,7 +288,7 @@ export default function PollExpandedView({
       };
     }
 
-    // Point 4: Clean percentage bars only (NO raw count on right)
+    // Clean percentage bars (No raw vote counts on the right)
     const optBars = natBreakdown.map((votes) => {
       const pct = natTotal > 0 ? Math.round((votes / natTotal) * 100) : 0;
       return { pct };
@@ -307,16 +299,48 @@ export default function PollExpandedView({
       stateStats: stateVerdict,
       seatStats: localVerdict,
       seatMap: sMap,
-      stateTable: Object.entries(stateMap).sort((a, b) => b[1].total - a[1].total)
+      stateTable: Object.entries(stateMap).sort((a, b) => b[1].total - a[1].total),
+      resolvedHomeColor: homeColor
     };
   }, [tallies, seats, cleanUserState, cleanUserSeat, userVotedOptionIdx, poll.options, lang]);
 
   const getSeatColor = (seat: PreprojectedSeat) => {
-    if (isUserSeat(seat)) return userOptionColor;
+    if (isUserSeat(seat)) return resolvedHomeColor;
     const row = seatMap[clean(seat.name)];
-    // Only fortified seats (>= 50 votes) light up on national map
     if (!row || Number(row.total_votes || 0) < 50) return UNPOLLED_SEAT_COLOR;
     return OPTION_PALETTE[Number(row.leading_option || 0) % OPTION_PALETTE.length];
+  };
+
+  // D3 Semantic Zoom Implementation
+  useEffect(() => {
+    if (!svgRef.current || !mapGroupRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const g = d3.select(mapGroupRef.current);
+
+    const zoomBehavior = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, 6])
+      .translateExtent([
+        [-100, -100],
+        [900, 1050]
+      ])
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+        setCurrentZoomScale(event.transform.k);
+      });
+
+    svg.call(zoomBehavior);
+  }, [loading]);
+
+  const resetZoom = () => {
+    if (!svgRef.current || !mapGroupRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.transition().duration(400).call(
+      d3.zoom<SVGSVGElement, unknown>().transform as any,
+      d3.zoomIdentity
+    );
+    setCurrentZoomScale(1);
   };
 
   useEffect(() => {
@@ -336,7 +360,6 @@ export default function PollExpandedView({
     }
   }, [seats, cleanUserSeat]);
 
-  // Point 5: Slide directly to grid table on toggle
   const handleToggleView = (mode: 'map' | 'grid') => {
     setViewMode(mode);
     if (mode === 'grid') {
@@ -346,16 +369,21 @@ export default function PollExpandedView({
     }
   };
 
-  // Point 6: Auto-dismiss tooltip after 8s or on exit
-  const triggerTooltip = (data: any, x: number, y: number) => {
+  // Auto-dismiss tooltip clamped within mobile viewport
+  const triggerTooltip = (data: any, clientX: number, clientY: number) => {
     if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
-    setCursorPos({ x, y });
+
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
+    const clampedX = Math.max(16, Math.min(clientX + 14, screenW - 230));
+    const clampedY = Math.max(70, clientY - 30);
+
+    setCursorPos({ x: clampedX, y: clampedY });
     setHoveredSeat(data);
 
     tooltipTimeoutRef.current = setTimeout(() => {
       setHoveredSeat(null);
       setCursorPos(null);
-    }, 8000);
+    }, 6000);
   };
 
   const clearTooltip = () => {
@@ -392,14 +420,14 @@ export default function PollExpandedView({
           animation: nationalCalmWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
         @keyframes nationalSeatGlow {
-          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${userOptionColor}66); }
-          50% { stroke-width: 5px; filter: drop-shadow(0 0 16px ${userOptionColor}cc); }
-          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${userOptionColor}66); }
+          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
+          50% { stroke-width: 5px; filter: drop-shadow(0 0 16px ${resolvedHomeColor}cc); }
+          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px ${resolvedHomeColor}66); }
         }
         .user-seat-glowing-national {
           animation: nationalSeatGlow 3s infinite ease-in-out !important;
-          stroke: ${userOptionColor} !important;
-          fill: ${userOptionColor} !important;
+          stroke: ${resolvedHomeColor} !important;
+          fill: ${resolvedHomeColor} !important;
         }
         @keyframes pulseDot {
           0% { transform: scale(0.85); opacity: 0.6; }
@@ -416,21 +444,21 @@ export default function PollExpandedView({
         }
       `}</style>
 
-      {/* Point 6: Floating Dynamic Tooltip that auto-vanishes */}
+      {/* Clamped Auto-Dismiss Tooltip */}
       {hoveredSeat && cursorPos && (
         <div
           style={{
             position: 'fixed',
-            left: `${Math.min(cursorPos.x + 12, typeof window !== 'undefined' ? window.innerWidth - 240 : 200)}px`,
-            top: `${cursorPos.y + 12}px`,
+            left: `${cursorPos.x}px`,
+            top: `${cursorPos.y}px`,
             pointerEvents: 'none',
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            backgroundColor: 'rgba(15, 23, 42, 0.96)',
             color: '#ffffff',
             padding: '8px 12px',
             borderRadius: '10px',
             fontSize: '11px',
             zIndex: 100,
-            boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
             backdropFilter: 'blur(6px)',
             border: '1px solid rgba(255,255,255,0.15)',
             boxSizing: 'border-box',
@@ -518,15 +546,15 @@ export default function PollExpandedView({
             <span style={{ fontSize: '11px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706' }}>{poll.category} {lang === 'HI' ? 'प्रश्न' : 'Question'}</span>
           </div>
 
-          <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: '1.5' }}>
+          <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: '1.45' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
           </h1>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0 0 0', lineHeight: '1.6' }}>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0 0 0', lineHeight: '1.5' }}>
             {lang === 'EN' ? poll.title_hi : poll.title_en}
           </p>
         </div>
 
-        {/* Point 4: Clean Percentage Bars (Vote count completely removed from right) */}
+        {/* Clean Percentage Bars (No raw count on right) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {poll.options.map((opt, idx) => {
@@ -546,7 +574,6 @@ export default function PollExpandedView({
                         </div>
                       </div>
                     </div>
-                    {/* Clean Percentage Display */}
                     <span style={{ fontSize: '13px', fontWeight: 800, color, marginLeft: '8px', flexShrink: 0 }}>
                       {stat.pct}%
                     </span>
@@ -560,9 +587,8 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* Point 5: Quorum-Gated 3-Box Scorecard */}
+        {/* Quorum-Gated 3-Box Scorecard (Strict Neutral Charcoal for Unfortified Status) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-          {/* Bharat: Always transparently totals national ballots */}
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
             <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px' }}>{nationalStats.title}</div>
@@ -570,26 +596,24 @@ export default function PollExpandedView({
             <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>{nationalStats.total} {nationalStats.total === 1 ? 'Vote' : 'Votes'}</div>
           </div>
 
-          {/* State: Winner locked until 50% of PC seats meet quorum */}
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userState || 'State'}</div>
             <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px' }}>{stateStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
               {stateStats.isQuorumMet ? `${stateStats.pct}%` : `${stateStats.total} ${lang === 'HI' ? 'मत' : 'Votes'}`}
             </div>
-            <div style={{ fontSize: '9.5px', color: stateStats.isQuorumMet ? '#059669' : '#d97706', marginTop: '2px', fontWeight: 700 }}>
+            <div style={{ fontSize: '9.5px', color: stateStats.isQuorumMet ? '#059669' : '#0f172a', marginTop: '2px', fontWeight: 700 }}>
               {stateStats.isQuorumMet ? '● Quorum Met' : `🔒 Quorum: ${stateStats.fortified || 0}/${stateStats.needed || 1} seats`}
             </div>
           </div>
 
-          {/* Lok Sabha: Winner locked until 50 ballots cast */}
           <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userSeatName || 'Lok Sabha'}</div>
             <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px' }}>{seatStats.title}</div>
             <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
               {seatStats.isQuorumMet ? `${seatStats.pct}%` : `${seatStats.total} ${lang === 'HI' ? 'मत' : 'Votes'}`}
             </div>
-            <div style={{ fontSize: '9.5px', color: seatStats.isQuorumMet ? '#059669' : '#d97706', marginTop: '2px', fontWeight: 700 }}>
+            <div style={{ fontSize: '9.5px', color: seatStats.isQuorumMet ? '#059669' : '#0f172a', marginTop: '2px', fontWeight: 700 }}>
               {seatStats.isQuorumMet ? '● Quorum Met' : `⏳ ${seatStats.needed || 50} more to unlock`}
             </div>
           </div>
@@ -611,45 +635,57 @@ export default function PollExpandedView({
               overflow: 'hidden'
             }}
           >
-            <div style={{ width: '100%', marginBottom: '12px', position: 'relative', boxSizing: 'border-box' }}>
-              <input
-                type="text"
-                placeholder={lang === 'HI' ? '🔍 क्षेत्र या 543 सीटें खोजें...' : '🔍 Search region / 543 seats...'}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#f8fafc', outline: 'none', fontWeight: 600 }}
-              />
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder={lang === 'HI' ? '🔍 क्षेत्र या 543 सीटें खोजें...' : '🔍 Search region / 543 seats...'}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#f8fafc', outline: 'none', fontWeight: 600 }}
+                />
 
-              {filteredSearchMatches.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, overflow: 'hidden' }}>
-                  {filteredSearchMatches.map((s) => (
-                    <div
-                      key={s.id}
-                      onClick={() => {
-                        setSearchQuery(s.name);
-                        const row = seatMap[clean(s.name)];
-                        const total = Number(row?.total_votes || 0);
-                        const isFortified = total >= 50;
-                        const winIdx = Number(row?.leading_option || 0);
-                        const leadOpt = poll.options[winIdx];
+                {filteredSearchMatches.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 60, overflow: 'hidden' }}>
+                    {filteredSearchMatches.map((s) => (
+                      <div
+                        key={s.id}
+                        onClick={() => {
+                          setSearchQuery(s.name);
+                          const row = seatMap[clean(s.name)];
+                          const total = Number(row?.total_votes || 0);
+                          const isFortified = total >= 50;
+                          const winIdx = Number(row?.leading_option || 0);
+                          const leadOpt = poll.options[winIdx];
 
-                        triggerTooltip({
-                          name: s.name,
-                          state: s.state,
-                          totalVotes: total,
-                          leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Quorum',
-                          leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#d97706',
-                          leadingVotes: Number(row?.leading_votes || 0),
-                          isFortified
-                        }, typeof window !== 'undefined' ? window.innerWidth / 2 : 200, 350);
-                      }}
-                      style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
-                    >
-                      <span>{s.name}</span>
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>{s.state}</span>
-                    </div>
-                  ))}
-                </div>
+                          triggerTooltip({
+                            name: s.name,
+                            state: s.state,
+                            totalVotes: total,
+                            leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
+                            leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+                            leadingVotes: Number(row?.leading_votes || 0),
+                            isFortified
+                          }, typeof window !== 'undefined' ? window.innerWidth / 2 : 200, 350);
+                        }}
+                        style={{ padding: '8px 12px', fontSize: '12px', fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
+                      >
+                        <span>{s.name}</span>
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>{s.state}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Reset Zoom Button */}
+              {currentZoomScale > 1.05 && (
+                <button
+                  onClick={resetZoom}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', fontSize: '11px', fontWeight: 800, color: '#0284c7', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  🔍 Reset ({Math.round(currentZoomScale * 100)}%)
+                </button>
               )}
             </div>
 
@@ -661,63 +697,67 @@ export default function PollExpandedView({
               <svg
                 ref={svgRef}
                 viewBox="0 0 800 950"
-                style={{ width: '100%', height: 'auto', display: 'block', backgroundColor: '#ffffff' }}
+                style={{ width: '100%', height: 'auto', display: 'block', backgroundColor: '#ffffff', cursor: 'grab', touchAction: 'none' }}
                 onMouseLeave={clearTooltip}
               >
-                {seats.map((seat, index) => {
-                  const row = seatMap[clean(seat.name)];
-                  const total = Number(row?.total_votes || 0);
-                  const isFortified = total >= 50;
-                  const winIdx = Number(row?.leading_option || 0);
-                  const leadOpt = poll.options[winIdx];
-                  const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
-                  const userMatched = isUserSeat(seat);
+                <g ref={mapGroupRef}>
+                  {seats.map((seat, index) => {
+                    const row = seatMap[clean(seat.name)];
+                    const total = Number(row?.total_votes || 0);
+                    const isFortified = total >= 50;
+                    const winIdx = Number(row?.leading_option || 0);
+                    const leadOpt = poll.options[winIdx];
+                    const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
+                    const userMatched = isUserSeat(seat);
 
-                  return (
-                    <path
-                      key={`${seat.id}-${index}`}
-                      id={`pc-${seat.id}`}
-                      d={seat.d}
-                      fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
-                      stroke={isSearched ? '#e11d48' : userMatched ? userOptionColor : '#94a3b8'}
-                      strokeWidth={isSearched ? 2.5 : userMatched ? 3.5 : 0.65}
-                      className={userMatched ? 'user-seat-glowing-national' : ''}
-                      style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease' }}
-                      onMouseMove={(e) => {
-                        triggerTooltip({
-                          name: seat.name,
-                          state: seat.state,
-                          totalVotes: total,
-                          leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Quorum',
-                          leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#d97706',
-                          leadingVotes: Number(row?.leading_votes || 0),
-                          isFortified
-                        }, e.clientX, e.clientY);
-                      }}
-                      onTouchStart={(e) => {
-                        const touch = e.touches[0];
-                        if (touch) {
-                          triggerTooltip({
-                            name: seat.name,
-                            state: seat.state,
-                            totalVotes: total,
-                            leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Quorum',
-                            leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#d97706',
-                            leadingVotes: Number(row?.leading_votes || 0),
-                            isFortified
-                          }, touch.clientX, touch.clientY);
-                        }
-                      }}
-                    />
-                  );
-                })}
+                    return (
+                      <g key={`${seat.id}-${index}`}>
+                        <path
+                          id={`pc-${seat.id}`}
+                          d={seat.d}
+                          fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
+                          stroke={isSearched ? '#e11d48' : userMatched ? resolvedHomeColor : '#94a3b8'}
+                          strokeWidth={isSearched ? 2.5 : userMatched ? 3.5 : 0.65}
+                          className={userMatched ? 'user-seat-glowing-national' : ''}
+                          style={{ cursor: 'pointer', transition: 'fill 0.2s ease, stroke 0.2s ease' }}
+                          onMouseMove={(e) => {
+                            triggerTooltip({
+                              name: seat.name,
+                              state: seat.state,
+                              totalVotes: total,
+                              leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
+                              leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+                              leadingVotes: Number(row?.leading_votes || 0),
+                              isFortified
+                            }, e.clientX, e.clientY);
+                          }}
+                          onTouchStart={(e) => {
+                            const touch = e.touches[0];
+                            if (touch) {
+                              triggerTooltip({
+                                name: seat.name,
+                                state: seat.state,
+                                totalVotes: total,
+                                leadingOptText: isFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion',
+                                leadingOptColor: isFortified ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#1e293b',
+                                leadingVotes: Number(row?.leading_votes || 0),
+                                isFortified
+                              }, touch.clientX, touch.clientY);
+                            }
+                          }}
+                        />
+                      </g>
+                    );
+                  })}
 
-                {userBeaconCoords && (
-                  <g pointerEvents="none">
-                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={18} fill="none" stroke={RADAR_GREEN} strokeWidth={3.5} className="national-beacon-ring" />
-                    <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={5.5} fill="#065f46" stroke="#ffffff" strokeWidth={2} />
-                  </g>
-                )}
+                  {/* Centered Beacon on Voter's Seat */}
+                  {userBeaconCoords && (
+                    <g pointerEvents="none">
+                      <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={18} fill="none" stroke={RADAR_GREEN} strokeWidth={3.5} className="national-beacon-ring" />
+                      <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={5.5} fill="#065f46" stroke="#ffffff" strokeWidth={2} />
+                    </g>
+                  )}
+                </g>
               </svg>
             )}
 
@@ -754,13 +794,13 @@ export default function PollExpandedView({
                   const maxVotes = Math.max(...stData.breakdown);
                   const leadIdx = stData.breakdown.indexOf(maxVotes);
                   const leadOpt = poll.options[leadIdx];
-                  const optText = isStateFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Quorum';
+                  const optText = isStateFortified && leadOpt ? leadOpt.text_en.split('/')[0].trim() : 'Building Public Opinion';
 
                   return (
                     <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.2fr 1.8fr 1.1fr', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 10px', fontSize: '11px', marginTop: '6px' }}>
                       <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
                       <span style={{ color: poll.category === 'JanMat' ? '#059669' : '#d97706', fontWeight: 700 }}>{totalVotes.toLocaleString()}</span>
-                      <span style={{ color: isStateFortified ? '#059669' : '#d97706', fontWeight: 700 }}>
+                      <span style={{ color: isStateFortified ? '#059669' : '#0f172a', fontWeight: 700 }}>
                         {fortifiedSeats} / {totalSeats} seats
                       </span>
 
@@ -770,7 +810,7 @@ export default function PollExpandedView({
                           <span style={{ color: '#059669', fontWeight: 800, textAlign: 'right' }}>{maxVotes.toLocaleString()}</span>
                         </>
                       ) : (
-                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#d97706', backgroundColor: '#fef3c7', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, textAlign: 'center' }}>
+                        <span style={{ gridColumn: 'span 2', fontSize: '9.5px', color: '#1e293b', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, textAlign: 'center' }}>
                           🔒 Locked (Needs {Math.ceil(totalSeats * 0.5)} Seats Quorum)
                         </span>
                       )}

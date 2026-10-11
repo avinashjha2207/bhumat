@@ -34,11 +34,6 @@ export default function DrishtiMap({
   // Live tallies from the pre-aggregated constituency matrix
   const [tallies, setTallies] = useState<any[]>([]);
 
-  // Exact option color chosen by the citizen
-  const userOptionColor = userVotedOptionIdx !== null && userVotedOptionIdx !== undefined
-    ? OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length]
-    : OPTION_PALETTE[0];
-
   useEffect(() => {
     fetch('/india_pc_2019_simplified.geojson')
       .then((res) => {
@@ -74,7 +69,6 @@ export default function DrishtiMap({
   useEffect(() => {
     loadTallies();
 
-    // Subscribe to live tally updates
     const channel = supabase
       .channel(`drishti_tally_${pollId}`)
       .on(
@@ -96,7 +90,7 @@ export default function DrishtiMap({
   const activeStateKey = clean(selectedState);
 
   // Real-time calculation from constituency_tallies
-  const { nationalTally, stateTally, seatTally, seatMap } = useMemo(() => {
+  const { nationalTally, stateTally, seatTally, seatMap, resolvedHomeColor } = useMemo(() => {
     const optCount = Math.max(options.length, 2);
     const natBreakdown = new Array(optCount).fill(0);
     const stBreakdown = new Array(optCount).fill(0);
@@ -131,17 +125,17 @@ export default function DrishtiMap({
       }
     });
 
-    // If citizen voted locally but network row hasn't populated yet, register at least 1 vote
-    if (userVotedOptionIdx !== null && (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0)) {
-      if (natTotal === 0) natTotal = 1;
-      if (stTotal === 0) stTotal = 1;
-      targetSeatRecord = {
-        total_votes: 1,
-        leading_option: userVotedOptionIdx,
-        is_tie: false,
-        is_fortified: false
-      };
+    // Derive authentic color from user choice or fallback directly to seat's database leader
+    let homeOptionIdx = userVotedOptionIdx;
+    if (homeOptionIdx === null || homeOptionIdx === undefined) {
+      if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
+        homeOptionIdx = Number(targetSeatRecord.leading_option || 0);
+      }
     }
+
+    const homeColor = homeOptionIdx !== null && homeOptionIdx !== undefined
+      ? OPTION_PALETTE[homeOptionIdx % OPTION_PALETTE.length]
+      : '#10b981';
 
     const resolveWinner = (arr: number[], total: number) => {
       if (total === 0) return { idx: -1, isTie: false, votes: 0 };
@@ -154,7 +148,8 @@ export default function DrishtiMap({
       nationalTally: { total: natTotal, ...resolveWinner(natBreakdown, natTotal) },
       stateTally: { total: stTotal, ...resolveWinner(stBreakdown, stTotal) },
       seatTally: targetSeatRecord || { total_votes: 0, leading_option: 0, is_tie: false, is_fortified: false },
-      seatMap: sMap
+      seatMap: sMap,
+      resolvedHomeColor: homeColor
     };
   }, [tallies, activeStateKey, activeTarget, userVotedOptionIdx, options]);
 
@@ -180,8 +175,8 @@ export default function DrishtiMap({
   };
 
   const getSeatFill = (name: string) => {
-    // The voter's home seat is ALWAYS lit with their chosen option color
-    if (isTargetMatch(name)) return userOptionColor;
+    // Voter's home seat is lit with its chosen/leading option color
+    if (isTargetMatch(name)) return resolvedHomeColor;
 
     // Neighboring seats only light up when quorum is fortified (>= 50 votes)
     const row = seatMap[clean(name)];
@@ -217,7 +212,7 @@ export default function DrishtiMap({
       .attr('d', (d: any) => pathGenerator(d))
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
-        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? userOptionColor : '#94a3b8';
+        return isTargetMatch(p.PC_NAME || p.pc_name || p.NAME || '') ? resolvedHomeColor : '#94a3b8';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
@@ -270,23 +265,35 @@ export default function DrishtiMap({
           .attr('pointer-events', 'none');
       }
     }
-  }, [stateFeatures, selectedConstituencyName, tallies, userOptionColor]);
+  }, [stateFeatures, selectedConstituencyName, tallies, resolvedHomeColor]);
 
-  // Verdict calculation
-  const getVerdictDetails = (total: number, idx: number, isTie: boolean) => {
-    if (total === 0) return { title: '0 Ballots', color: '#64748b' };
+  // Verdict calculation: Strict neutral charcoal/black for unfortified states/seats
+  const getVerdictDetails = (total: number, idx: number, isTie: boolean, isFortified: boolean) => {
+    if (total === 0) return { title: '0 Ballots', color: '#1e293b' };
+    if (!isFortified) {
+      return { title: 'Building Public Opinion', color: '#1e293b' }; // Pure neutral dark charcoal, no option colors!
+    }
     if (isTie) return { title: '⚖️ Split (Tie)', color: '#64748b' };
     const opt = options[idx];
     const name = opt ? opt.text_en.split('/')[0].trim() : `Option ${idx + 1}`;
     return { title: name, color: OPTION_PALETTE[idx % OPTION_PALETTE.length] };
   };
 
-  const natVerdict = getVerdictDetails(nationalTally.total, nationalTally.idx, nationalTally.isTie);
-  const stVerdict = getVerdictDetails(stateTally.total, stateTally.idx, stateTally.isTie);
+  const natVerdict = nationalTally.total > 0
+    ? {
+        title: nationalTally.isTie ? '⚖️ Split (Tie)' : (options[nationalTally.idx]?.text_en?.split('/')[0]?.trim() || 'Option'),
+        color: nationalTally.isTie ? '#64748b' : OPTION_PALETTE[nationalTally.idx % OPTION_PALETTE.length]
+      }
+    : { title: '0 Ballots', color: '#1e293b' };
+
+  const stTotal = stateTally.total;
+  const isStateFortified = stTotal >= 100; // State threshold
+  const stVerdict = getVerdictDetails(stTotal, stateTally.idx, stateTally.isTie, isStateFortified);
 
   const seatTotal = Number(seatTally.total_votes || 0);
-  const seatLeadIdx = userVotedOptionIdx !== null ? userVotedOptionIdx : Number(seatTally.leading_option || 0);
-  const seatVerdict = getVerdictDetails(seatTotal, seatLeadIdx, Boolean(seatTally.is_tie));
+  const isSeatFortified = seatTotal >= 50;
+  const seatLeadIdx = Number(seatTally.leading_option || 0);
+  const seatVerdict = getVerdictDetails(seatTotal, seatLeadIdx, Boolean(seatTally.is_tie), isSeatFortified);
 
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
@@ -308,66 +315,66 @@ export default function DrishtiMap({
         @keyframes calmSeatBreathing {
           0% {
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px ${userOptionColor}66);
+            filter: drop-shadow(0 0 3px ${resolvedHomeColor}66);
           }
           50% {
             stroke-width: 4.5px;
-            filter: drop-shadow(0 0 16px ${userOptionColor}cc);
+            filter: drop-shadow(0 0 16px ${resolvedHomeColor}cc);
           }
           100% {
             stroke-width: 2.5px;
-            filter: drop-shadow(0 0 3px ${userOptionColor}66);
+            filter: drop-shadow(0 0 3px ${resolvedHomeColor}66);
           }
         }
         .user-state-glow {
           animation: calmSeatBreathing 3s infinite ease-in-out !important;
-          stroke: ${userOptionColor} !important;
-          fill: ${userOptionColor} !important;
+          stroke: ${resolvedHomeColor} !important;
+          fill: ${resolvedHomeColor} !important;
         }
       `}</style>
 
-      {/* 3-Box Live Scorecard: Bound to exact option color */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
-        <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+      {/* 3-Box Live Scorecard: Strict Neutral Charcoal for Unfortified Status */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+        <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: natVerdict.color, marginTop: '2px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: natVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
             {natVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
+          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
             {nationalTally.total} {nationalTally.total === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+        <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedState || 'State'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: stVerdict.color, marginTop: '2px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: stVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
             {stVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
-            {stateTally.total} {stateTally.total === 1 ? 'Vote' : 'Votes'}
+          <div style={{ fontSize: '9px', color: isStateFortified ? '#059669' : '#64748b', fontWeight: 700, marginTop: '4px' }}>
+            {stTotal} {stTotal === 1 ? 'Vote' : 'Votes'}
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#f8fafc', padding: '8px 4px', borderRadius: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+        <div style={{ backgroundColor: '#f8fafc', padding: '10px 6px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{selectedConstituencyName || 'Lok Sabha'}</div>
-          <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '2px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: seatVerdict.color, marginTop: '4px', lineHeight: 1.3 }}>
             {seatVerdict.title}
           </div>
-          <div style={{ fontSize: '9px', color: seatTotal >= 50 ? '#059669' : '#d97706', fontWeight: 800, marginTop: '2px' }}>
-            {seatTotal >= 50 ? '● Quorum Met' : `⏳ ${seatTotal}/50 Ballots`}
+          <div style={{ fontSize: '9px', color: isSeatFortified ? '#059669' : '#0f172a', fontWeight: 800, marginTop: '4px' }}>
+            {isSeatFortified ? '● Quorum Met' : `⏳ ${seatTotal}/50 Ballots`}
           </div>
         </div>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', padding: '6px 8px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
+      {/* Standardized Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', padding: '8px 10px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
         {options.map((opt, idx) => (
-          <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
+          <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: '#334155' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: OPTION_PALETTE[idx % OPTION_PALETTE.length], flexShrink: 0 }} />
             <span>{opt.text_en.split('/')[0].slice(0, 16)}</span>
           </div>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9.5px', fontWeight: 700, color: '#64748b' }}>
           <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: UNPOLLED_SEAT_COLOR, flexShrink: 0 }} />
           <span>Pending Quorum (0–49)</span>
         </div>
