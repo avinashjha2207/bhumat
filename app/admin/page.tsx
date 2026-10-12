@@ -203,18 +203,10 @@ export default function AdminAuditPanel() {
         setAnonymityVerdict('🛡️ Cryptographic Blind Ledger Verified');
       }
 
-      // 2. Table 1: Participations (Gating)
-      let pQuery = supabase.from('participations').select('*', { count: 'exact', head: true });
+      // 2. Table 1: Voter Participations (Gating)
+      let pQuery = supabase.from('voter_participations').select('*', { count: 'exact', head: true });
       if (!isAll) pQuery = pQuery.eq('poll_id', pollId);
-      let { count: pCount, error: pErr } = await pQuery;
-
-      // Safe fallback if table is named voter_participations
-      if (pErr) {
-        let altQuery = supabase.from('voter_participations').select('*', { count: 'exact', head: true });
-        if (!isAll) altQuery = altQuery.eq('poll_id', pollId);
-        const { count: altCount } = await altQuery;
-        pCount = altCount;
-      }
+      const { count: pCount } = await pQuery;
       setParticipationsCount(pCount || 0);
 
       // 3. Table 4: Pre-computed Matrix
@@ -236,7 +228,7 @@ export default function AdminAuditPanel() {
         .channel(`admin_audit_stream_${selectedPollId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'ballot_box' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => runComprehensiveAudit(selectedPollId))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'participations' }, () => runComprehensiveAudit(selectedPollId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_participations' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, () => fetchPolls())
         .subscribe();
       return () => {
