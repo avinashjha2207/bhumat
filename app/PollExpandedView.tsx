@@ -1,140 +1,136 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
-import { supabase } from './utils/supabaseClient';
+import { supabase, safeStorage } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 
-interface PollOption {
-  id: number;
-  text_en: string;
-  text_hi: string;
-}
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+const UNPOLLED_SEAT_COLOR = '#e2e8f0';
+const TIE_COLOR = '#475569';
+const RADAR_GREEN = '#10b981';
 
 interface Poll {
   id: string;
   category: string;
   title_en: string;
   title_hi: string;
-  options: PollOption[];
-  current_cycle?: string;
+  target_region_type?: string;
+  starts_at?: string;
+  participation_mode?: string;
   recurrence?: string;
-  is_active?: boolean;
-}
-
-interface PreprojectedSeat {
-  id: string;
-  name: string;
-  state: string;
-  d: string;
+  options: { id: number; text_en: string; text_hi: string }[];
 }
 
 interface PollExpandedViewProps {
   poll: Poll;
   userSeatName?: string;
   userState?: string;
-  userVotedOptionIdx?: number | null;
+  userVotedOptionIdx: number | null;
   lang: 'EN' | 'HI';
   onBack: () => void;
   initialTallies?: any[];
 }
 
-const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
-const UNPOLLED_SEAT_COLOR = '#cbd5e1';
-const TIE_COLOR = '#475569';
-const RADAR_GREEN = '#10b981';
-
-let CACHED_PREPROJECTED_SEATS: PreprojectedSeat[] | null = null;
-
 export default function PollExpandedView({
   poll,
-  userSeatName = '',
-  userState = '',
-  userVotedOptionIdx = null,
+  userSeatName,
+  userState,
+  userVotedOptionIdx,
   lang,
   onBack,
   initialTallies = []
 }: PollExpandedViewProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const mapGroupRef = useRef<SVGGElement | null>(null);
-  const gridSectionRef = useRef<HTMLDivElement | null>(null);
+  const [viewMode, setViewMode] = useState<'MAP' | 'GRID'>('MAP');
+  const [tallies, setTallies] = useState<any[]>(initialTallies);
+  const [geoData, setGeoData] = useState<any | null>(null);
+  const [isLoadingGeo, setIsLoadingGeo] = useState<boolean>(true);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
+  const [activeInfoPopup, setActiveInfoPopup] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const gridSectionRef = useRef<HTMLDivElement>(null);
+  const zoomBehaviorRef = useRef<any>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [seats, setSeats] = useState<PreprojectedSeat[]>(CACHED_PREPROJECTED_SEATS || []);
-  const [loading, setLoading] = useState(!CACHED_PREPROJECTED_SEATS);
-  const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [userBeaconCoords, setUserBeaconCoords] = useState<{ x: number; y: number } | null>(null);
-  const [currentZoomScale, setCurrentZoomScale] = useState(1);
+  const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  const [hoveredSeat, setHoveredSeat] = useState<{
-    name: string;
-    state: string;
-    totalVotes: number;
-    leadingOptText: string;
-    leadingOptColor: string;
-    leadingVotes: number;
-    isTie: boolean;
-  } | null>(null);
+  const triggerInfoPopup = (title: string, desc: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
+    const clampedX = Math.max(16, Math.min(rect.left - 80, screenW - 250));
+    const clampedY = Math.max(70, rect.bottom + 8);
+    setActiveInfoPopup({ title, desc, x: clampedX, y: clampedY });
+  };
 
-  const [tallies, setTallies] = useState<any[]>(initialTallies);
-  const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
+  const handleSwitchToGrid = () => {
+    setViewMode('GRID');
+    setTimeout(() => {
+      gridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
 
+  // 1. Realtime Subscriptions
   useEffect(() => {
-    if (CACHED_PREPROJECTED_SEATS) {
-      setSeats(CACHED_PREPROJECTED_SEATS);
-      setLoading(false);
-      return;
-    }
-
-    fetch('/india_pc_preprojected.json')
-      .then((res) => res.json())
-      .then((data) => {
-        CACHED_PREPROJECTED_SEATS = data;
-        setSeats(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Vector map fetch error:', err);
-        setLoading(false);
-      });
-  }, []);
-
-  async function loadTallies() {
-    try {
+    async function fetchTallies() {
       const { data, error } = await supabase
         .from('constituency_tallies')
         .select('*')
         .eq('poll_id', poll.id);
 
-      if (data && !error) {
+      if (!error && data) {
         setTallies(data);
       }
-    } catch (e) {
-      console.warn('PollExpanded tally fetch error:', e);
     }
-  }
 
-  useEffect(() => {
-    loadTallies();
+    fetchTallies();
 
     const tallyChannel = supabase
-      .channel(`expanded_tallies_live_${poll.id}`)
+      .channel(`expanded_tallies_${poll.id}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'constituency_tallies', filter: `poll_id=eq.${poll.id}` },
-        () => loadTallies()
+        {
+          event: '*',
+          schema: 'public',
+          table: 'constituency_tallies',
+          filter: `poll_id=eq.${poll.id}`
+        },
+        (payload: any) => {
+          if (payload.new) {
+            setTallies((prev) => {
+              const existingIdx = prev.findIndex(
+                (t) =>
+                  clean(t.constituency_name) === clean(payload.new.constituency_name) &&
+                  clean(t.state_name) === clean(payload.new.state_name)
+              );
+              if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = payload.new;
+                return next;
+              }
+              return [...prev, payload.new];
+            });
+          }
+        }
       )
       .subscribe();
 
-    const ballotChannel = supabase
+    const ballotPulseChannel = supabase
       .channel(`expanded_ballot_pulse_${poll.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ballot_box', filter: `poll_id=eq.${poll.id}` },
-        (payload) => {
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ballot_box',
+          filter: `poll_id=eq.${poll.id}`
+        },
+        (payload: any) => {
           const newBallot = payload.new;
           if (newBallot && newBallot.constituency_name) {
             const cleanSeat = clean(newBallot.constituency_name);
@@ -148,7 +144,7 @@ export default function PollExpandedView({
       )
       .subscribe();
 
-    const interval = setInterval(() => {
+    const pulseInterval = setInterval(() => {
       const now = Date.now();
       setLivePulses((prev) => {
         let changed = false;
@@ -166,491 +162,615 @@ export default function PollExpandedView({
 
     return () => {
       supabase.removeChannel(tallyChannel);
-      supabase.removeChannel(ballotChannel);
-      clearInterval(interval);
+      supabase.removeChannel(ballotPulseChannel);
+      clearInterval(pulseInterval);
+      if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
     };
   }, [poll.id]);
 
-  const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const cleanUserSeat = clean(userSeatName);
-  const cleanUserState = clean(userState);
-
-  const isUserSeat = (seat: PreprojectedSeat) => {
-    if (!cleanUserSeat) return false;
-    const cId = clean(seat.id);
-    const cName = clean(seat.name);
-    return cId.includes(cleanUserSeat) || cName.includes(cleanUserSeat) || cleanUserSeat.includes(cName);
-  };
-
-  const { nationalStats, stateStats, seatStats, seatMap, stateTable, resolvedHomeColor } = useMemo(() => {
-    const optCount = Math.max(poll.options.length, 2);
-    const natBreakdown = new Array(optCount).fill(0);
-    const stBreakdown = new Array(optCount).fill(0);
-
-    let natTotal = 0;
-    let stTotal = 0;
-
-    const sMap: Record<string, any> = {};
-    const stateMap: Record<string, { total: number; breakdown: number[]; totalSeats: number }> = {};
-    let targetSeatRecord: any = null;
-
-    seats.forEach((seat) => {
-      const st = seat.state || 'Other';
-      if (!stateMap[st]) {
-        stateMap[st] = { total: 0, breakdown: new Array(optCount).fill(0), totalSeats: 0 };
-      }
-      stateMap[st].totalSeats += 1;
-    });
-
-    tallies.forEach((row) => {
-      const cSeat = clean(row.constituency_name);
-      const cState = clean(row.state_name);
-      const rowTotal = Number(row.total_votes || 0);
-
-      sMap[cSeat] = row;
-      natTotal += rowTotal;
-
-      for (let i = 0; i < optCount; i++) {
-        natBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
-      }
-
-      if (cState === cleanUserState) {
-        stTotal += rowTotal;
-        for (let i = 0; i < optCount; i++) {
-          stBreakdown[i] += Number(row[`opt_${i}_votes`] || 0);
-        }
-      }
-
-      if (cSeat === cleanUserSeat) {
-        targetSeatRecord = { ...row };
-      }
-
-      const stName = row.state_name || 'Other';
-      if (!stateMap[stName]) {
-        stateMap[stName] = { total: 0, breakdown: new Array(optCount).fill(0), totalSeats: 0 };
-      }
-      stateMap[stName].total += rowTotal;
-      for (let i = 0; i < optCount; i++) {
-        stateMap[stName].breakdown[i] += Number(row[`opt_${i}_votes`] || 0);
-      }
-    });
-
-    if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
-      if (!targetSeatRecord || Number(targetSeatRecord.total_votes || 0) === 0) {
-        targetSeatRecord = {
-          total_votes: 1,
-          leading_option: userVotedOptionIdx,
-          is_tie: false,
-          [`opt_${userVotedOptionIdx}_votes`]: 1
-        };
-        sMap[cleanUserSeat] = targetSeatRecord;
-        if (natTotal === 0) natTotal = 1;
-        if (stTotal === 0) stTotal = 1;
-        natBreakdown[userVotedOptionIdx] = Math.max(natBreakdown[userVotedOptionIdx], 1);
-        stBreakdown[userVotedOptionIdx] = Math.max(stBreakdown[userVotedOptionIdx], 1);
-      }
-    }
-
-    let homeColor = UNPOLLED_SEAT_COLOR;
-    if (targetSeatRecord && Number(targetSeatRecord.total_votes || 0) > 0) {
-      if (targetSeatRecord.is_tie) {
-        homeColor = TIE_COLOR;
-      } else {
-        const lead = Number(targetSeatRecord.leading_option || 0);
-        homeColor = OPTION_PALETTE[lead % OPTION_PALETTE.length];
-      }
-    } else if (userVotedOptionIdx !== null && userVotedOptionIdx !== undefined) {
-      homeColor = OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length];
-    }
-
-    const resolveBreakdown = (arr: number[], total: number) => {
-      if (total === 0) return { title: '0 Ballots', color: '#64748b', pct: 0, isTie: false };
-      const maxV = Math.max(...arr);
-      const topIndices = arr.map((v, i) => (v === maxV ? i : -1)).filter((i) => i !== -1);
-      const isTie = topIndices.length > 1;
-      const pct = Math.round((maxV / total) * 100);
-
-      if (isTie) {
-        return { title: lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)', color: TIE_COLOR, pct, isTie: true };
-      }
-
-      const winIdx = topIndices[0];
-      const opt = poll.options[winIdx];
-      const title = opt ? opt.text_en.trim() : `Option ${winIdx + 1}`;
-      return { title, color: OPTION_PALETTE[winIdx % OPTION_PALETTE.length], pct, isTie: false };
-    };
-
-    const natVerdict = resolveBreakdown(natBreakdown, natTotal);
-    const stVerdict = resolveBreakdown(stBreakdown, stTotal);
-
-    const localTotal = Number(targetSeatRecord?.total_votes || 0);
-    let localVerdict: any;
-
-    if (localTotal === 0) {
-      localVerdict = { title: '0 Ballots', color: '#64748b', pct: 0, total: 0 };
-    } else if (targetSeatRecord?.is_tie) {
-      localVerdict = { title: lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)', color: TIE_COLOR, pct: 50, total: localTotal };
-    } else {
-      const localLeadIdx = Number(targetSeatRecord?.leading_option || 0);
-      const localOpt = poll.options[localLeadIdx];
-      localVerdict = {
-        title: localOpt ? localOpt.text_en.trim() : `Option ${localLeadIdx + 1}`,
-        color: OPTION_PALETTE[localLeadIdx % OPTION_PALETTE.length],
-        pct: 100,
-        total: localTotal
-      };
-    }
-
-    const optBars = natBreakdown.map((votes) => {
-      const pct = natTotal > 0 ? Math.round((votes / natTotal) * 100) : 0;
-      return { pct };
-    });
-
-    return {
-      nationalStats: { optBars, ...natVerdict, total: natTotal },
-      stateStats: { ...stVerdict, total: stTotal },
-      seatStats: localVerdict,
-      seatMap: sMap,
-      stateTable: Object.entries(stateMap).sort((a, b) => b[1].total - a[1].total),
-      resolvedHomeColor: homeColor
-    };
-  }, [tallies, seats, cleanUserState, cleanUserSeat, userVotedOptionIdx, poll.options, lang]);
-
-  const getSeatColor = (seat: PreprojectedSeat) => {
-    const cleanSeatName = clean(seat.name);
-    if (livePulses[cleanSeatName]) {
-      return livePulses[cleanSeatName].color;
-    }
-
-    if (isUserSeat(seat)) return resolvedHomeColor;
-    const row = seatMap[cleanSeatName];
-    if (!row || Number(row.total_votes || 0) === 0) return UNPOLLED_SEAT_COLOR;
-
-    if (row.is_tie) return TIE_COLOR;
-    return OPTION_PALETTE[Number(row.leading_option || 0) % OPTION_PALETTE.length];
-  };
-
-  const getSeatOpacity = (seat: PreprojectedSeat) => {
-    const cleanSeatName = clean(seat.name);
-    if (livePulses[cleanSeatName]) return 1.0;
-
-    const row = seatMap[cleanSeatName];
-    const total = isUserSeat(seat)
-      ? Number(seatStats.total || 1)
-      : Number(row?.total_votes || 0);
-
-    if (total === 0) return 1;
-    if (total < 10) return 0.85;
-    if (total < 50) return 0.94;
-    return 1.0;
-  };
-
+  // 2. Fetch GeoJSON
   useEffect(() => {
-    if (!svgRef.current || !mapGroupRef.current) return;
+    let isMounted = true;
+    setIsLoadingGeo(true);
 
-    const svg = d3.select(svgRef.current);
-    const g = d3.select(mapGroupRef.current);
-
-    const zoomBehavior = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([1, 6])
-      .translateExtent([
-        [-100, -100],
-        [900, 1050]
-      ])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-        setCurrentZoomScale(event.transform.k);
+    fetch('/india_pc_2019_simplified.geojson')
+      .then((res) => {
+        if (!res.ok) throw new Error('Primary geojson not found');
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted) {
+          setGeoData(data);
+          setIsLoadingGeo(false);
+        }
+      })
+      .catch(() => {
+        fetch('/india_pc_preprojected.json')
+          .then((res) => res.json())
+          .then((data) => {
+            if (isMounted) {
+              setGeoData(data);
+              setIsLoadingGeo(false);
+            }
+          })
+          .catch(() => {
+            if (isMounted) setIsLoadingGeo(false);
+          });
       });
 
-    svg.call(zoomBehavior);
-  }, [loading]);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  const resetZoom = () => {
-    if (!svgRef.current || !mapGroupRef.current) return;
-    const svg = d3.select(svgRef.current);
-    svg.interrupt();
-    svg.call(
-      d3.zoom<SVGSVGElement, unknown>().transform as any,
-      d3.zoomIdentity
-    );
-    setCurrentZoomScale(1);
-  };
+  // 3. Tally Processing & Color Normalization
+  const { tallyMap, bharatStats, stateStats, userSeatStats, formattedGridList } = useMemo(() => {
+    const map = new Map<string, any>();
+    let totalBharatVotes = 0;
+    const bharatCounts: Record<number, number> = {};
+    poll.options.forEach((_, idx) => (bharatCounts[idx] = 0));
 
+    let totalStateVotes = 0;
+    const stateCounts: Record<number, number> = {};
+    poll.options.forEach((_, idx) => (stateCounts[idx] = 0));
+
+    let userFound: any = null;
+    const grid: any[] = [];
+
+    tallies.forEach((row: any) => {
+      const counts: Record<number, number> = {};
+      let seatTotal = 0;
+
+      poll.options.forEach((_, idx) => {
+        const c = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
+        counts[idx] = c;
+        seatTotal += c;
+
+        bharatCounts[idx] = (bharatCounts[idx] || 0) + c;
+        totalBharatVotes += c;
+
+        if (userState && clean(row.state_name) === clean(userState)) {
+          stateCounts[idx] = (stateCounts[idx] || 0) + c;
+          totalStateVotes += c;
+        }
+      });
+
+      let highestVotes = -1;
+      let winningOptIdx: number | null = null;
+      let isTie = false;
+
+      Object.entries(counts).forEach(([idxStr, count]) => {
+        const optIdx = parseInt(idxStr, 10);
+        if (count > highestVotes) {
+          highestVotes = count;
+          winningOptIdx = optIdx;
+          isTie = false;
+        } else if (count === highestVotes && count > 0) {
+          isTie = true;
+        }
+      });
+
+      const leadingPct = seatTotal > 0 && highestVotes > 0 ? Math.round((highestVotes / seatTotal) * 100) : 0;
+      const leadingText = isTie
+        ? 'Split Mat (Tie)'
+        : winningOptIdx !== null && highestVotes > 0
+        ? (lang === 'HI' ? poll.options[winningOptIdx]?.text_hi : poll.options[winningOptIdx]?.text_en) || 'Awaiting'
+        : 'Awaiting Ballots';
+
+      const entry = {
+        seatName: row.constituency_name,
+        stateName: row.state_name,
+        totalVotes: seatTotal,
+        leadingOptionIdx: isTie ? null : winningOptIdx,
+        leadingOptionText: leadingText,
+        leadingPercent: leadingPct,
+        isTie,
+        trend: seatTotal >= 20 ? (lang === 'HI' ? 'सत्यापित' : 'Fortified') : (lang === 'HI' ? 'रुझान' : 'Early Trend')
+      };
+
+      const key = `${clean(row.constituency_name)}___${clean(row.state_name)}`;
+      map.set(key, entry);
+      grid.push(entry);
+
+      if (
+        userSeatName &&
+        userState &&
+        clean(row.constituency_name) === clean(userSeatName) &&
+        clean(row.state_name) === clean(userState)
+      ) {
+        userFound = entry;
+      }
+    });
+
+    const evaluateAggregate = (counts: Record<number, number>, total: number) => {
+      if (total === 0) return { total: 0, text: 'Awaiting Ballots', percent: 0, color: '#64748b' };
+      let highest = -1;
+      let winningIdx: number | null = null;
+      let tie = false;
+
+      Object.entries(counts).forEach(([idxStr, c]) => {
+        const idx = parseInt(idxStr, 10);
+        if (c > highest) {
+          highest = c;
+          winningIdx = idx;
+          tie = false;
+        } else if (c === highest && c > 0) {
+          tie = true;
+        }
+      });
+
+      const pct = Math.round((highest / total) * 100);
+      const text = tie
+        ? 'Split Mat (Tie)'
+        : winningIdx !== null && highest > 0
+        ? (lang === 'HI' ? poll.options[winningIdx]?.text_hi : poll.options[winningIdx]?.text_en) || 'Split Mat'
+        : 'Awaiting Ballots';
+
+      const color = tie
+        ? TIE_COLOR
+        : winningIdx !== null
+        ? OPTION_PALETTE[winningIdx % OPTION_PALETTE.length]
+        : '#64748b';
+
+      return { total, text, percent: pct, color };
+    };
+
+    return {
+      tallyMap: map,
+      bharatStats: evaluateAggregate(bharatCounts, totalBharatVotes),
+      stateStats: evaluateAggregate(stateCounts, totalStateVotes),
+      userSeatStats: userFound,
+      formattedGridList: grid
+    };
+  }, [tallies, poll.options, userSeatName, userState, lang]);
+
+  // 4. SVG Renderer with Zoom, Traveling Cursor Tooltip, and Search Highlighting
   useEffect(() => {
-    if (!seats.length || !svgRef.current || !cleanUserSeat) return;
-    const matched = seats.find(isUserSeat);
-    if (matched) {
-      const el = svgRef.current.querySelector(`#pc-${matched.id}`) as SVGGraphicsElement;
-      if (el && el.getBBox) {
-        try {
-          const bbox = el.getBBox();
-          setUserBeaconCoords({
-            x: Number((bbox.x + bbox.width / 2).toFixed(1)),
-            y: Number((bbox.y + bbox.height / 2).toFixed(1))
+    if (viewMode !== 'MAP' || !geoData || !svgRef.current || !containerRef.current) return;
+
+    const width = containerRef.current.clientWidth ? Math.min(containerRef.current.clientWidth - 28, 440) : 380;
+    const height = Math.round(width * 1.25);
+
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    const projection = d3.geoIdentity()
+      .reflectY(true)
+      .fitExtent([[12, 12], [width - 12, height - 12]], geoData);
+
+    const pathGenerator = d3.geoPath().projection(projection);
+
+    const zoomGroup = svg.append('g').attr('class', 'zoom-viewport');
+
+    const zoom = d3.zoom()
+      .scaleExtent([1, 8])
+      .translateExtent([[0, 0], [width, height]])
+      .on('zoom', (event: any) => {
+        zoomGroup.attr('transform', event.transform);
+      });
+
+    svg.call(zoom as any);
+    zoomBehaviorRef.current = { zoom, svg };
+
+    const searchKeyword = clean(searchFilter);
+
+    // Constituencies
+    zoomGroup.selectAll('path.constituency')
+      .data(geoData.features || [])
+      .enter()
+      .append('path')
+      .attr('class', 'constituency')
+      .attr('d', (d: any) => pathGenerator(d))
+      .attr('fill', (d: any) => {
+        const props = d.properties || {};
+        const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        if (livePulses[seat]) return livePulses[seat].color;
+
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        const match = tallyMap.get(`${seat}___${state}`);
+
+        if (!match || match.totalVotes === 0) return UNPOLLED_SEAT_COLOR;
+        if (match.isTie) return TIE_COLOR;
+        if (match.leadingOptionIdx !== null) return OPTION_PALETTE[match.leadingOptionIdx % OPTION_PALETTE.length];
+        return UNPOLLED_SEAT_COLOR;
+      })
+      .attr('stroke', (d: any) => {
+        const props = d.properties || {};
+        const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
+          return '#0f172a';
+        }
+        return '#ffffff';
+      })
+      .attr('stroke-width', (d: any) => {
+        const props = d.properties || {};
+        const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
+          return 2.0;
+        }
+        return 0.4;
+      })
+      .attr('opacity', (d: any) => {
+        if (!searchKeyword) return 1;
+        const props = d.properties || {};
+        const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        return seat.includes(searchKeyword) || state.includes(searchKeyword) ? 1 : 0.35;
+      })
+      .style('cursor', 'pointer')
+      .on('mousemove touchmove', function (event: any, d: any) {
+        const props = d.properties || {};
+        const seatName = props.PC_NAME || props.pc_name || props.name || 'Unknown';
+        const stateName = props.ST_NAME || props.st_name || props.state || 'Bharat';
+        const key = `${clean(seatName)}___${clean(stateName)}`;
+        const match = tallyMap.get(key);
+
+        setHoveredSeat({
+          seatName,
+          stateName,
+          leadingOptionText: match ? match.leadingOptionText : 'Awaiting Ballots',
+          totalVotes: match ? match.totalVotes : 0
+        });
+
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
+          const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 100);
+          setTooltipPos({
+            x: Math.max(16, Math.min(clientX - rect.left - 70, width - 160)),
+            y: Math.max(10, clientY - rect.top - 80)
           });
-        } catch (e) {}
+        }
+
+        if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+        tooltipTimeoutRef.current = setTimeout(() => {
+          setHoveredSeat(null);
+          setTooltipPos(null);
+        }, 4000);
+      })
+      .on('mouseleave touchend', function () {
+        if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+        tooltipTimeoutRef.current = setTimeout(() => {
+          setHoveredSeat(null);
+          setTooltipPos(null);
+        }, 2500);
+      });
+
+    // Realtime live shockwave rings
+    Object.keys(livePulses).forEach((pulsingSeatKey) => {
+      const feat = (geoData.features || []).find((f: any) => {
+        const p = f.properties || {};
+        const pName = clean(p.PC_NAME || p.pc_name || p.name || '');
+        return pName === pulsingSeatKey;
+      });
+      if (feat) {
+        const centroid = pathGenerator.centroid(feat);
+        if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+          zoomGroup.append('circle')
+            .attr('cx', centroid[0])
+            .attr('cy', centroid[1])
+            .attr('r', 10)
+            .attr('fill', 'none')
+            .attr('stroke', livePulses[pulsingSeatKey].color)
+            .attr('stroke-width', 3)
+            .attr('class', 'live-pop-shockwave-circle')
+            .attr('pointer-events', 'none');
+        }
+      }
+    });
+
+    // Centroid radar ping on user's active home seat
+    if (userSeatName) {
+      const activeClean = clean(userSeatName);
+      const homeFeat = (geoData.features || []).find((f: any) => {
+        const p = f.properties || {};
+        return clean(p.PC_NAME || p.pc_name || p.name || '') === activeClean;
+      });
+      if (homeFeat) {
+        const centroid = pathGenerator.centroid(homeFeat);
+        if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+          zoomGroup.append('circle')
+            .attr('cx', centroid[0])
+            .attr('cy', centroid[1])
+            .attr('r', 14)
+            .attr('fill', 'none')
+            .attr('stroke', RADAR_GREEN)
+            .attr('stroke-width', 2.5)
+            .attr('class', 'home-seat-radar')
+            .attr('pointer-events', 'none');
+          zoomGroup.append('circle')
+            .attr('cx', centroid[0])
+            .attr('cy', centroid[1])
+            .attr('r', 4.5)
+            .attr('fill', '#065f46')
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 1.8)
+            .attr('pointer-events', 'none');
+        }
       }
     }
-  }, [seats, cleanUserSeat]);
+  }, [viewMode, geoData, tallyMap, livePulses, userSeatName, searchFilter]);
 
-  const handleToggleView = (mode: 'map' | 'grid') => {
-    setViewMode(mode);
-    if (mode === 'grid') {
-      setTimeout(() => {
-        gridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 50);
+  const handleZoomReset = () => {
+    if (zoomBehaviorRef.current && svgRef.current) {
+      const { zoom, svg } = zoomBehaviorRef.current;
+      svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
     }
   };
 
-  const triggerTooltip = (data: any, clientX: number, clientY: number) => {
-    if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+  const handleShareScoreboard = () => {
+    const shareSeat = userSeatName || 'Bharat';
+    const shareRef = safeStorage.getItem('bhumat_voter_token')?.slice(-6) || 'BM01';
+    const targetUrl = `https://vote.bhumat.com?ref=${shareRef}`;
 
-    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
-    const clampedX = Math.max(16, Math.min(clientX + 14, screenW - 230));
-    const clampedY = Math.max(70, clientY - 30);
+    const messageText =
+      `🇮🇳 *BhuMat Sovereign Audit — ${shareSeat}*\n\n` +
+      `*Question:* ${poll.title_en}\n` +
+      `📍 Leading Stance: ${userSeatStats?.leadingOptionText || bharatStats.text}\n\n` +
+      `Cast your ballot across all 543 Lok Sabha seats:\n${targetUrl}`;
 
-    setCursorPos({ x: clampedX, y: clampedY });
-    setHoveredSeat(data);
-
-    tooltipTimeoutRef.current = setTimeout(() => {
-      setHoveredSeat(null);
-      setCursorPos(null);
-    }, 6000);
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
   };
 
-  const clearTooltip = () => {
-    if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
-    setHoveredSeat(null);
-    setCursorPos(null);
+  const filteredGrid = useMemo(() => {
+    if (!searchFilter.trim()) return formattedGridList;
+    const q = clean(searchFilter);
+    return formattedGridList.filter(
+      (s) =>
+        clean(s.seatName).includes(q) ||
+        clean(s.stateName).includes(q) ||
+        clean(s.leadingOptionText).includes(q)
+    );
+  }, [formattedGridList, searchFilter]);
+
+  const getRecurrenceBadgeText = () => {
+    const r = (poll.recurrence || 'monthly').toLowerCase();
+    if (r === 'lifetime' || r === 'one_time') return '🔒 Sovereign One-Time';
+    if (r.includes('day')) return '⚡ 24h Daily Rerun';
+    if (r.includes('week')) return '📅 Weekly Pulse';
+    return '📅 Monthly Sovereign Cycle';
   };
 
-  const filteredSearchMatches = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return seats
-      .filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q))
-      .sort((a, b) => {
-        const aStarts = a.name.toLowerCase().startsWith(q) ? -1 : 1;
-        const bStarts = b.name.toLowerCase().startsWith(q) ? -1 : 1;
-        return aStarts - bStarts;
-      })
-      .slice(0, 6);
-  }, [searchQuery, seats]);
-
-  const handleSelectSearchedSeat = (s: PreprojectedSeat) => {
-    (document.activeElement as HTMLElement)?.blur();
-    setSearchQuery(s.name);
-
-    const row = seatMap[clean(s.name)];
-    const total = Number(row?.total_votes || 0);
-    const isTie = Boolean(row?.is_tie);
-    const winIdx = Number(row?.leading_option || 0);
-    const leadOpt = poll.options[winIdx];
-
-    triggerTooltip({
-      name: s.name,
-      state: s.state,
-      totalVotes: total,
-      leadingOptText: isTie
-        ? 'Split Mat (Tie)'
-        : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
-      leadingOptColor: isTie
-        ? TIE_COLOR
-        : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
-      leadingVotes: Number(row?.leading_votes || 0),
-      isTie
-    }, typeof window !== 'undefined' ? window.innerWidth / 2 : 200, 350);
+  const getNextWindowText = () => {
+    const r = (poll.recurrence || 'monthly').toLowerCase();
+    if (r === 'lifetime' || r === 'one_time') return 'Ballot active until cycle concludes';
+    if (r.includes('day')) return 'Next ballot window unlocks tomorrow at 8:00 AM';
+    if (r.includes('week')) return 'Next ballot window unlocks next Monday';
+    return 'Next ballot window unlocks in Season 11 (Nov 2026)';
   };
 
   return (
     <div
-      suppressHydrationWarning
+      ref={containerRef}
+      onClick={() => {
+        setActiveInfoPopup(null);
+        setHoveredSeat(null);
+      }}
       style={{
-        minHeight: '100dvh',
+        minHeight: '100vh',
         backgroundColor: '#f8fafc',
         color: '#0f172a',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
         fontFamily: 'system-ui, -apple-system, sans-serif'
       }}
     >
       <style>{`
-        @keyframes nationalCalmWave {
-          0% { r: 6px; opacity: 0.95; stroke-width: 3.5px; }
-          100% { r: 40px; opacity: 0; stroke-width: 0.2px; }
+        @keyframes radarExpandWave {
+          0% { r: 5px; opacity: 0.95; stroke-width: 2.5px; }
+          100% { r: 32px; opacity: 0; stroke-width: 0.3px; }
         }
-        .national-beacon-ring {
-          animation: nationalCalmWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        .home-seat-radar {
+          animation: radarExpandWave 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
-        @keyframes nationalSeatGlow {
-          0% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
-          50% { stroke-width: 4.8px; filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.95)); opacity: 1; }
-          100% { stroke-width: 2.5px; filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.35)); opacity: 0.85; }
+        @keyframes shockwavePulseRing {
+          0% { r: 6px; opacity: 1; stroke-width: 4px; }
+          100% { r: 38px; opacity: 0; stroke-width: 0.5px; }
         }
-        .user-seat-glowing-national {
-          animation: nationalSeatGlow 2.6s infinite ease-in-out !important;
-        }
-        @keyframes liveDotPulseSlow {
-          0% { opacity: 0.35; transform: scale(0.92); }
-          50% { opacity: 1; transform: scale(1.15); }
-          100% { opacity: 0.35; transform: scale(0.92); }
-        }
-        .live-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background-color: #ef4444;
-          display: inline-block;
-          animation: liveDotPulseSlow 2.4s infinite ease-in-out;
-        }
-        @keyframes nationalLiveFlash {
-          0% { filter: brightness(1.75); }
-          50% { filter: brightness(1.35); }
-          100% { filter: brightness(1); }
-        }
-        .national-live-pulse-path {
-          animation: nationalLiveFlash 3.8s ease-out forwards;
+        .live-pop-shockwave-circle {
+          animation: shockwavePulseRing 1.8s infinite ease-out;
         }
       `}</style>
 
-      {hoveredSeat && cursorPos && (
+      {/* Info Context Popup */}
+      {activeInfoPopup && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
-            left: `${cursorPos.x}px`,
-            top: `${cursorPos.y}px`,
-            pointerEvents: 'none',
-            backgroundColor: 'rgba(15, 23, 42, 0.96)',
+            left: `${activeInfoPopup.x}px`,
+            top: `${activeInfoPopup.y}px`,
+            zIndex: 130,
+            backgroundColor: '#0f172a',
             color: '#ffffff',
-            padding: '8px 12px',
-            borderRadius: '10px',
-            fontSize: '11px',
-            zIndex: 100,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-            backdropFilter: 'blur(6px)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            boxSizing: 'border-box',
-            maxWidth: '220px',
-            transition: 'opacity 0.2s ease'
+            padding: '12px 14px',
+            borderRadius: '12px',
+            maxWidth: '240px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+            border: '1px solid #334155'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline' }}>
-            <span style={{ fontWeight: 800, fontSize: '12px', color: '#ffffff' }}>{hoveredSeat.name}</span>
-            <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>{hoveredSeat.state}</span>
+          <div style={{ fontSize: '12px', fontWeight: 800, color: '#38bdf8', marginBottom: '4px' }}>
+            {activeInfoPopup.title}
           </div>
-          
-          <div style={{ fontSize: '11px', fontWeight: 800, color: hoveredSeat.leadingOptColor, marginTop: '2px' }}>
-            {hoveredSeat.isTie
-              ? '⚖️ Split Mat (Tie)'
-              : hoveredSeat.totalVotes > 0 ? `Leading: ${hoveredSeat.leadingOptText} (${hoveredSeat.leadingVotes})` : 'Awaiting Ballots'}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9.5px' }}>
-            <span style={{ color: '#6ee7b7' }}>Total: {hoveredSeat.totalVotes}</span>
-            <span style={{ color: hoveredSeat.totalVotes >= 20 ? '#34d399' : '#fcd34d' }}>
-              {hoveredSeat.totalVotes >= 20 ? '● Fortified' : '● Early Trend'}
-            </span>
+          <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>
+            {activeInfoPopup.desc}
           </div>
         </div>
       )}
 
-      {/* Header */}
+      {/* Clean Sticky Header Centered Within App Bounds */}
       <header
         style={{
-          width: '100%',
-          maxWidth: '480px',
           height: '56px',
-          backgroundColor: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
-          padding: '0 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          backgroundColor: '#ffffff',
           position: 'sticky',
           top: 0,
-          zIndex: 50,
-          boxSizing: 'border-box'
+          zIndex: 40,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '0 14px'
         }}
       >
-        <button
-          onClick={onBack}
-          style={{ backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-        >
-          {lang === 'HI' ? '← वापस' : '← Back'}
-        </button>
-
-        <span style={{ fontSize: '10px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: poll.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', border: `1px solid ${poll.category === 'JanMat' ? '#a7f3d0' : '#fde68a'}`, padding: '3px 10px', borderRadius: '999px', textTransform: 'uppercase' }}>
-          {poll.category} AUDIT • 543 SEATS
-        </span>
-
-        <div style={{ display: 'flex', gap: '2px', backgroundColor: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
+        <div style={{ width: '100%', maxWidth: '460px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
-            onClick={() => handleToggleView('map')}
-            style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: viewMode === 'map' ? (poll.category === 'JanMat' ? '#059669' : '#d97706') : 'transparent', color: viewMode === 'map' ? '#ffffff' : '#64748b', fontWeight: 800, fontSize: '11px', cursor: 'pointer' }}
+            onClick={onBack}
+            style={{
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
           >
-            {lang === 'HI' ? 'मानचित्र' : 'Map'}
+            ← Back
           </button>
-          <button
-            onClick={() => handleToggleView('grid')}
-            style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: viewMode === 'grid' ? (poll.category === 'JanMat' ? '#059669' : '#d97706') : 'transparent', color: viewMode === 'grid' ? '#ffffff' : '#64748b', fontWeight: 800, fontSize: '11px', cursor: 'pointer' }}
+
+          <span
+            onClick={(e) => triggerInfoPopup(
+              `${poll.category} Sovereign Audit`,
+              poll.category === 'JanMat'
+                ? 'Cryptographic Secret Ballot. Decoupled from your identity, zero voter tokens stored on your ballot.'
+                : 'Open Civic Pulse. Discloses cultural consensus patterns across all 543 Lok Sabha seats.',
+              e
+            )}
+            style={{
+              fontSize: '11px',
+              fontWeight: 800,
+              color: poll.category === 'JanMat' ? '#059669' : '#d97706',
+              backgroundColor: poll.category === 'JanMat' ? '#ecfdf5' : '#fffbeb',
+              padding: '4px 10px',
+              borderRadius: '999px',
+              border: `1px solid ${poll.category === 'JanMat' ? '#a7f3d0' : '#fde68a'}`,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
-            {lang === 'HI' ? 'ग्रिड' : 'Grid'}
-          </button>
+            <span>● {poll.category} AUDIT • 543 SEATS</span>
+            <span style={{ fontSize: '10px', opacity: 0.6 }}>ⓘ</span>
+          </span>
+
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => setViewMode('MAP')}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: viewMode === 'MAP' ? '#0f172a' : '#f1f5f9',
+                color: viewMode === 'MAP' ? '#ffffff' : '#64748b',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              Map
+            </button>
+            <button
+              onClick={handleSwitchToGrid}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: viewMode === 'GRID' ? '#0f172a' : '#f1f5f9',
+                color: viewMode === 'GRID' ? '#ffffff' : '#64748b',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              Grid
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Ticker */}
-      <div style={{ width: '100%', maxWidth: '480px', padding: '0 14px', boxSizing: 'border-box', marginTop: '4px' }}>
+      {/* Live Ticker Tape */}
+      <div style={{ padding: '8px 14px 0 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         <TickerTape activePoll={poll} lang={lang} />
       </div>
 
-      <div style={{ maxWidth: '480px', width: '100%', padding: '12px 14px 80px 14px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
+      {/* Main Content Area */}
+      <main style={{ flex: 1, padding: '12px 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         
-        {/* Question Header */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-            <span className="live-dot" />
-            <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em' }}>LIVE</span>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>•</span>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706' }}>{poll.category} {lang === 'HI' ? 'प्रश्न' : 'Question'}</span>
+        {/* Card 1: Question Header & Recurrence Window */}
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '18px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+              {getRecurrenceBadgeText()}
+            </span>
+            <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 600 }}>
+              {getNextWindowText()}
+            </span>
           </div>
 
-          <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: '1.45', wordBreak: 'break-word' }}>
+          <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 8px 0', lineHeight: 1.45, color: '#0f172a' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
-          </h1>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '6px 0 0 0', lineHeight: '1.5', wordBreak: 'break-word' }}>
+          </h2>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0', lineHeight: 1.5 }}>
             {lang === 'EN' ? poll.title_hi : poll.title_en}
           </p>
         </div>
 
-        {/* Option Distribution Bars */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Card 2: Options Breakdown with Generous Spacing & Secret JanMat Handling */}
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '18px', marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '16px', letterSpacing: '0.04em' }}>
+            National Preference Breakdown
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             {poll.options.map((opt, idx) => {
-              const stat = nationalStats.optBars[idx] || { pct: 0 };
-              const color = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+              const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+              const optCount = tallies.reduce((sum, r) => sum + (Number(r[`option_${idx}_votes`] ?? r[`opt_${idx}_votes`]) || 0), 0);
+              const optPct = bharatStats.total > 0 ? Math.round((optCount / bharatStats.total) * 100) : 0;
+              const isUserChoice = poll.category !== 'JanMat' && userVotedOptionIdx === idx;
+
+              const primaryText = lang === 'EN' ? opt.text_en : opt.text_hi;
+              const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;
+
               return (
-                <div key={opt.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '10px' }}>
+                <div key={opt.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    
+                    {/* Bilingual Options with 6px Spacing */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '3px', backgroundColor: color, marginTop: '4px', flexShrink: 0 }} />
-                      <div style={{ wordBreak: 'break-word' }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', lineHeight: 1.35 }}>
-                          {lang === 'EN' ? opt.text_en : opt.text_hi}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px', lineHeight: 1.4 }}>
-                          {lang === 'EN' ? opt.text_hi : opt.text_en}
-                        </div>
+                      <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: optColor, marginTop: '4px', flexShrink: 0 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', lineHeight: 1.35 }}>
+                          {primaryText}
+                        </span>
+                        {secondaryText && secondaryText !== primaryText && (
+                          <span style={{ fontSize: '11.5px', color: '#64748b', lineHeight: 1.35 }}>
+                            {secondaryText}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <span style={{ fontSize: '13px', fontWeight: 800, color, flexShrink: 0 }}>
-                      {stat.pct}%
-                    </span>
+
+                    {/* Stats and User Choice Tag */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginTop: '2px' }}>
+                      {isUserChoice && (
+                        <span style={{ fontSize: '10px', color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          ✓ You
+                        </span>
+                      )}
+                      <span style={{ fontWeight: 800, color: optColor, minWidth: '34px', textAlign: 'right', fontSize: '13px' }}>
+                        {optPct}%
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ width: '100%', height: '8px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: `${stat.pct}%`, height: '100%', backgroundColor: color, borderRadius: '999px', transition: 'width 0.6s ease' }} />
+
+                  <div style={{ width: '100%', height: '6px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${optPct}%`, height: '100%', backgroundColor: optColor, transition: 'width 0.4s ease' }} />
                   </div>
                 </div>
               );
@@ -658,78 +778,99 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* 3-Box Scorecard */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Bharat</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: nationalStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{nationalStats.title}</div>
-            <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{nationalStats.pct}%</div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>{nationalStats.total} {nationalStats.total === 1 ? 'Vote' : 'Votes'}</div>
+        {/* Card 3: 3-Box Geo-Comparison Ledger */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+          {/* BHARAT */}
+          <div
+            onClick={(e) => triggerInfoPopup('Bharat Consensus', 'Aggregated tally across all 543 Lok Sabha seats nationwide.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+          >
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>BHARAT ⓘ</div>
+            <div style={{ fontSize: '11.5px', fontWeight: 900, color: bharatStats.color, marginTop: '5px', lineHeight: 1.35 }}>
+              {bharatStats.text}
+            </div>
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
+              {bharatStats.total} {bharatStats.total === 1 ? 'Vote' : 'Votes'}
+            </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userState || 'State'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: stateStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{stateStats.title}</div>
-            <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
-              {stateStats.total > 0 ? `${stateStats.pct}%` : '0%'}
+          {/* STATE */}
+          <div
+            onClick={(e) => triggerInfoPopup('State Jurisdiction', 'Consensus aggregated strictly within your registered state boundary.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+          >
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>
+              {userState ? userState.toUpperCase() : 'STATE'} ⓘ
             </div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 900, color: stateStats.color, marginTop: '5px', lineHeight: 1.35 }}>
+              {stateStats.text}
+            </div>
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
               {stateStats.total} {stateStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '12px 6px', borderRadius: '12px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{userSeatName || 'Lok Sabha'}</div>
-            <div style={{ fontSize: '12px', fontWeight: 900, color: seatStats.color, marginTop: '6px', lineHeight: 1.35, wordBreak: 'break-word' }}>{seatStats.title}</div>
-            <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
-              {seatStats.total > 0 ? `${seatStats.pct}%` : '0%'}
+          {/* YOUR SEAT */}
+          <div
+            onClick={(e) => triggerInfoPopup('Constituency Sentiment', 'Direct sovereign tally for your specific parliamentary seat.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+          >
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>
+              {userSeatName ? userSeatName.toUpperCase() : 'YOUR SEAT'} ⓘ
             </div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '2px' }}>
-              {seatStats.total} {seatStats.total === 1 ? 'Vote' : 'Votes'}
+            <div
+              style={{
+                fontSize: '11.5px',
+                fontWeight: 900,
+                color: userSeatStats?.isTie
+                  ? TIE_COLOR
+                  : userSeatStats?.leadingOptionIdx !== null && userSeatStats?.leadingOptionIdx !== undefined
+                  ? OPTION_PALETTE[userSeatStats.leadingOptionIdx % OPTION_PALETTE.length]
+                  : '#64748b',
+                marginTop: '5px',
+                lineHeight: 1.35
+              }}
+            >
+              {userSeatStats?.leadingOptionText || 'Awaiting'}
+            </div>
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
+              {userSeatStats?.totalVotes || 0} {userSeatStats?.totalVotes === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
         </div>
 
         {/* View Mode: Map or Grid */}
-        {viewMode === 'map' ? (
+        {viewMode === 'MAP' ? (
           <div
-            ref={containerRef}
             style={{
+              position: 'relative',
               backgroundColor: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '20px',
               padding: '14px',
-              position: 'relative',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-              boxSizing: 'border-box',
-              width: '100%',
-              overflow: 'hidden'
+              marginBottom: '14px'
             }}
           >
-            {/* Search Bar with '✕ Clear' button */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   type="text"
-                  placeholder={lang === 'HI' ? '🔍 क्षेत्र या 543 सीटें खोजें...' : '🔍 Search region / 543 seats...'}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔍 Search region (e.g. Darbhanga, Buxar)..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
                   style={{
                     width: '100%',
                     boxSizing: 'border-box',
-                    padding: '10px 36px 10px 14px',
+                    padding: '9px 34px 9px 12px',
                     borderRadius: '10px',
-                    border: '1px solid #cbd5e1',
+                    border: '1.5px solid #cbd5e1',
                     fontSize: '12px',
-                    backgroundColor: '#f8fafc',
-                    outline: 'none',
-                    fontWeight: 600
+                    backgroundColor: '#f8fafc'
                   }}
                 />
-
-                {searchQuery.trim() && (
+                {searchFilter && (
                   <button
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => setSearchFilter('')}
                     style={{
                       position: 'absolute',
                       right: '10px',
@@ -738,7 +879,7 @@ export default function PollExpandedView({
                       background: 'none',
                       border: 'none',
                       color: '#94a3b8',
-                      fontSize: '14px',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       fontWeight: 800
                     }}
@@ -746,217 +887,175 @@ export default function PollExpandedView({
                     ✕
                   </button>
                 )}
-
-                {filteredSearchMatches.length > 0 && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 4px)',
-                      left: 0,
-                      right: 0,
-                      backgroundColor: '#ffffff',
-                      border: '1.5px solid #0284c7',
-                      borderRadius: '10px',
-                      boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
-                      zIndex: 999,
-                      maxHeight: '180px',
-                      overflowY: 'auto',
-                      WebkitOverflowScrolling: 'touch',
-                      overscrollBehavior: 'contain'
-                    }}
-                  >
-                    {filteredSearchMatches.map((s) => (
-                      <div
-                        key={s.id}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectSearchedSeat(s);
-                        }}
-                        onTouchStart={(e) => {
-                          e.preventDefault();
-                          handleSelectSearchedSeat(s);
-                        }}
-                        style={{
-                          padding: '10px 14px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: '#0f172a',
-                          borderBottom: '1px solid #f1f5f9',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          backgroundColor: '#ffffff'
-                        }}
-                      >
-                        <span>{s.name}</span>
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>{s.state}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {currentZoomScale > 1.05 && (
+              <button
+                onClick={handleZoomReset}
+                title="Reset Map Zoom & Pan"
+                style={{
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '10px',
+                  padding: '8px 10px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  color: '#475569',
+                  cursor: 'pointer',
+                  flexShrink: 0
+                }}
+              >
+                ⟲ Reset
+              </button>
+            </div>
+
+            {isLoadingGeo && (
+              <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '12px' }}>
+                Rendering Sovereign Drishti Grid...
+              </div>
+            )}
+
+            <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: isLoadingGeo ? 'none' : 'block', touchAction: 'none' }} />
+
+            {/* Traveling Cursor Floating Tooltip */}
+            {hoveredSeat && tooltipPos && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${tooltipPos.x}px`,
+                  top: `${tooltipPos.y}px`,
+                  backgroundColor: '#0f172a',
+                  color: '#ffffff',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  pointerEvents: 'none',
+                  zIndex: 30,
+                  boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+                  border: '1px solid #334155'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#38bdf8' }}>{hoveredSeat.seatName}</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8' }}>{hoveredSeat.stateName}</div>
+                <div style={{ marginTop: '2px', fontWeight: 700 }}>{hoveredSeat.leadingOptionText}</div>
+                <div style={{ fontSize: '9.5px', color: '#64748b' }}>Total: {hoveredSeat.totalVotes}</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div ref={gridSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', marginBottom: '14px' }}>
+            <div style={{ position: 'relative', width: '100%', marginBottom: '12px' }}>
+              <input
+                type="text"
+                placeholder="🔍 Filter seat by name or state..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 34px 10px 12px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px'
+                }}
+              />
+              {searchFilter && (
                 <button
-                  onClick={resetZoom}
+                  onClick={() => setSearchFilter('')}
                   style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    color: '#0284c7',
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    fontSize: '13px',
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap'
+                    fontWeight: 800
                   }}
                 >
-                  🔍 Reset ({Math.round(currentZoomScale * 100)}%)
+                  ✕
                 </button>
               )}
             </div>
 
-            {loading ? (
-              <div style={{ height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                {lang === 'HI' ? '543 संसदीय सीमाएं लोड हो रही हैं...' : 'Rendering 543 Parliamentary Boundaries...'}
-              </div>
-            ) : (
-              <svg
-                ref={svgRef}
-                viewBox="0 0 800 950"
-                style={{ width: '100%', height: 'auto', display: 'block', backgroundColor: '#ffffff', cursor: 'grab', touchAction: 'none' }}
-                onMouseLeave={clearTooltip}
-              >
-                <g ref={mapGroupRef}>
-                  {seats.map((seat, index) => {
-                    const row = seatMap[clean(seat.name)];
-                    const total = Number(row?.total_votes || 0);
-                    const isTie = Boolean(row?.is_tie);
-                    const winIdx = Number(row?.leading_option || 0);
-                    const leadOpt = poll.options[winIdx];
-                    const isSearched = searchQuery.trim() && seat.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
-                    const userMatched = isUserSeat(seat);
-                    const isPulse = Boolean(livePulses[clean(seat.name)]);
+            {/* 5-Column Structured Table */}
+            <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '11.5px' }}>
+                <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
+                  <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b' }}>
+                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>Constituency</th>
+                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>State</th>
+                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>Leading Stance</th>
+                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>Trend</th>
+                    <th style={{ padding: '8px 6px', fontWeight: 800, textAlign: 'right' }}>Ballots</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGrid.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: '24px 0' }}>
+                        No constituency records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredGrid.map((item) => {
+                      const color = item.isTie
+                        ? TIE_COLOR
+                        : item.leadingOptionIdx !== null && item.leadingOptionIdx !== undefined
+                        ? OPTION_PALETTE[item.leadingOptionIdx % OPTION_PALETTE.length]
+                        : '#64748b';
 
-                    return (
-                      <g key={`${seat.id}-${index}`}>
-                        <path
-                          id={`pc-${seat.id}`}
-                          d={seat.d}
-                          fill={isSearched ? '#fca5a5' : getSeatColor(seat)}
-                          fillOpacity={getSeatOpacity(seat)}
-                          stroke={isSearched ? '#e11d48' : isPulse ? livePulses[clean(seat.name)].color : userMatched ? resolvedHomeColor : '#94a3b8'}
-                          strokeWidth={isSearched ? 2.5 : isPulse ? 3.5 : userMatched ? 3.5 : 0.65}
-                          className={userMatched ? 'user-seat-glowing-national' : isPulse ? 'national-live-pulse-path' : ''}
-                          style={{ cursor: 'pointer', transition: 'fill 0.25s ease, stroke 0.25s ease' }}
-                          onMouseMove={(e) => {
-                            triggerTooltip({
-                              name: seat.name,
-                              state: seat.state,
-                              totalVotes: total,
-                              leadingOptText: isTie
-                                ? 'Split Mat (Tie)'
-                                : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
-                              leadingOptColor: isTie
-                                ? TIE_COLOR
-                                : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
-                              leadingVotes: Number(row?.leading_votes || 0),
-                              isTie
-                            }, e.clientX, e.clientY);
-                          }}
-                          onTouchStart={(e) => {
-                            const touch = e.touches[0];
-                            if (touch) {
-                              triggerTooltip({
-                                name: seat.name,
-                                state: seat.state,
-                                totalVotes: total,
-                                leadingOptText: isTie
-                                  ? 'Split Mat (Tie)'
-                                  : leadOpt ? leadOpt.text_en.trim() : 'Awaiting Ballots',
-                                leadingOptColor: isTie
-                                  ? TIE_COLOR
-                                  : total > 0 ? OPTION_PALETTE[winIdx % OPTION_PALETTE.length] : '#64748b',
-                                leadingVotes: Number(row?.leading_votes || 0),
-                                isTie
-                              }, touch.clientX, touch.clientY);
-                            }
-                          }}
-                        />
-                      </g>
-                    );
-                  })}
-
-                  {userBeaconCoords && (
-                    <g pointerEvents="none">
-                      <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={18} fill="none" stroke={RADAR_GREEN} strokeWidth={3.5} className="national-beacon-ring" />
-                      <circle cx={userBeaconCoords.x} cy={userBeaconCoords.y} r={5.5} fill="#065f46" stroke="#ffffff" strokeWidth={2} />
-                    </g>
+                      return (
+                        <tr key={`${item.seatName}_${item.stateName}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px 6px', fontWeight: 800, color: '#0f172a' }}>{item.seatName}</td>
+                          <td style={{ padding: '8px 6px', color: '#64748b' }}>{item.stateName}</td>
+                          <td style={{ padding: '8px 6px', fontWeight: 700, color }}>
+                            <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: color, marginRight: '5px' }} />
+                            {item.leadingOptionText}
+                          </td>
+                          <td style={{ padding: '8px 6px' }}>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: item.totalVotes >= 20 ? '#ecfdf5' : '#f8fafc', color: item.totalVotes >= 20 ? '#059669' : '#64748b', fontWeight: 700 }}>
+                              {item.trend}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                            {item.totalVotes}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
-                </g>
-              </svg>
-            )}
-
-            <button
-              onClick={() => {
-                const targetUrl = `https://vote.bhumat.com/audit/${poll.id}?seat=${encodeURIComponent(userSeatName || 'Bharat')}&state=${encodeURIComponent(userState || 'India')}`;
-                const msg = `🇮🇳 *BHUMAT PUBLIC OPINION AUDIT*\n\n"${poll.title_en}"\n\n📍 *${userSeatName || 'Bharat'} Status:* ${seatStats.title} (${seatStats.total} Ballots)\n\nLive National Map:\n${targetUrl}`;
-                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
-              }}
-              style={{ width: '100%', height: '46px', marginTop: '14px', padding: '12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-            >
-              <span>📲</span> {lang === 'HI' ? 'व्हाट्सएप पर स्कोरकार्ड साझा करें (1-टैप)' : 'Share Scoreboard to WhatsApp (1-Tap)'}
-            </button>
-          </div>
-        ) : (
-          <div ref={gridSectionRef} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
-            <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
-              <div style={{ minWidth: '580px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.8fr 1.1fr', gap: '8px', padding: '8px 10px', fontSize: '10px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0' }}>
-                  <span>STATE / UT</span>
-                  <span>TOTAL VOTES</span>
-                  <span>STATE LEADING MAT</span>
-                  <span style={{ textAlign: 'right' }}>LEADING VOTES</span>
-                </div>
-
-                {stateTable.map(([stName, stData]) => {
-                  const totalVotes = Number(stData.total || 0);
-                  const maxVotes = Math.max(...stData.breakdown);
-                  const winners = stData.breakdown.map((v, i) => (v === maxVotes && maxVotes > 0 ? i : -1)).filter((i) => i !== -1);
-                  const isTie = winners.length > 1;
-
-                  let optText = 'Awaiting Ballots';
-                  let optColor = '#64748b';
-
-                  if (totalVotes > 0) {
-                    if (isTie) {
-                      optText = '⚖️ Split Mat (Tie)';
-                      optColor = TIE_COLOR;
-                    } else {
-                      const leadIdx = winners[0];
-                      const leadOpt = poll.options[leadIdx];
-                      optText = leadOpt ? leadOpt.text_en.trim() : `Option ${leadIdx + 1}`;
-                      optColor = OPTION_PALETTE[leadIdx % OPTION_PALETTE.length];
-                    }
-                  }
-
-                  return (
-                    <div key={stName} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.1fr 1.8fr 1.1fr', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 10px', fontSize: '11px', marginTop: '6px' }}>
-                      <span style={{ fontWeight: 800, color: '#0f172a' }}>{stName}</span>
-                      <span style={{ color: totalVotes > 0 ? '#0284c7' : '#94a3b8', fontWeight: 700 }}>{totalVotes.toLocaleString()}</span>
-                      <span style={{ color: optColor, fontWeight: 800 }}>{optText}</span>
-                      <span style={{ color: totalVotes > 0 ? optColor : '#94a3b8', fontWeight: 800, textAlign: 'right' }}>
-                        {totalVotes > 0 ? maxVotes.toLocaleString() : '-'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-      </div>
+        {/* WhatsApp Share Button */}
+        <button
+          onClick={handleShareScoreboard}
+          style={{
+            width: '100%',
+            height: '48px',
+            backgroundColor: '#10b981',
+            color: '#ffffff',
+            borderRadius: '14px',
+            border: 'none',
+            fontSize: '13.5px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            boxShadow: '0 4px 14px rgba(16,185,129,0.2)'
+          }}
+        >
+          <span>📲</span>
+          <span>Share Scoreboard to WhatsApp (1-Tap)</span>
+        </button>
+      </main>
     </div>
   );
 }

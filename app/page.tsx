@@ -1,13 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { supabase, safeStorage } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 import { getCurrentCycleId } from './utils/cycleManager';
 
-const DrishtiMap = dynamic(() => import('./DrishtiMap'), { ssr: false });
+const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: '100%', height: '260px', backgroundColor: '#f1f5f9', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
+      Loading sovereign map vector...
+    </div>
+  )
+});
+
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
 
 const SEAT_CHANGE_COST_DBG = 100;
@@ -28,153 +36,6 @@ interface Poll {
   is_active?: boolean;
   options: { id: number; text_en: string; text_hi: string }[];
 }
-
-const VERIFIED_SEAT_DOSSIERS: Record<string, any> = {
-  'vizianagaram': {
-    pcCode: '03-AP',
-    mpName: 'Appalanaidu Kalisetti',
-    party: 'Telugu Desam Party (TDP) / NDA',
-    cases: 0,
-    education: 'Graduate (B.Sc., B.Ed.)',
-    assets: '₹2.85 Crore',
-    turnout: '81.05%',
-    margin: '2,49,351 Votes',
-    electors: '15,62,110 Electors',
-    vidhanSabhaSegments: ['Etcherla (12)', 'Rajam [SC] (13)', 'Bobbili (14)', 'Cheepurupalli (15)', 'Gajapathinagaram (16)', 'Nellimarla (17)', 'Vizianagaram (18)']
-  },
-  'banka': {
-    pcCode: '27-BI',
-    mpName: 'Giridhari Yadav',
-    party: 'Janata Dal (United) / NDA',
-    cases: 0,
-    education: 'Post Graduate (M.A., LL.B.)',
-    assets: '₹4.12 Crore',
-    turnout: '54.48%',
-    margin: '1,03,844 Votes',
-    electors: '17,82,310 Electors',
-    vidhanSabhaSegments: ['Sultanganj (157)', 'Amarpur (159)', 'Dhoraiya [SC] (160)', 'Banka (161)', 'Katoria [ST] (162)', 'Belhar (163)']
-  },
-  'buxar': {
-    pcCode: '33-BI',
-    mpName: 'Sudhakar Singh',
-    party: 'Rashtriya Janata Dal (RJD)',
-    cases: 2,
-    education: 'Graduate (B.A.)',
-    assets: '₹8.4 Crore',
-    turnout: '57.20%',
-    margin: '30,091 Votes',
-    electors: '18,72,110 Electors',
-    vidhanSabhaSegments: ['Brahmpur (199)', 'Buxar (200)', 'Dumraon (201)', 'Rajpur [SC] (202)', 'Ramgarh (203)', 'Dinara (210)']
-  },
-  'darbhanga': {
-    pcCode: '14-BI',
-    mpName: 'Gopal Jee Thakur',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 0,
-    education: 'Post Graduate (M.A.)',
-    assets: '₹3.42 Crore',
-    turnout: '58.31%',
-    margin: '1,78,156 Votes',
-    electors: '17,45,210 Electors',
-    vidhanSabhaSegments: ['Gaura Bauram (79)', 'Benipur (80)', 'Alinagar (81)', 'Darbhanga Rural (82)', 'Darbhanga (83)', 'Bahadurpur (85)']
-  },
-  'muzaffarpur': {
-    pcCode: '15-BI',
-    mpName: 'Raj Bhushan Choudhary',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 0,
-    education: 'Post Graduate (M.D.)',
-    assets: '₹9.82 Crore',
-    turnout: '56.92%',
-    margin: '2,34,927 Votes',
-    electors: '18,45,210 Electors',
-    vidhanSabhaSegments: ['Gaighat (88)', 'Aurai (89)', 'Bochahan [SC] (91)', 'Sakra [SC] (92)', 'Kurhani (93)', 'Muzaffarpur (94)']
-  },
-  'munger': {
-    pcCode: '28-BI',
-    mpName: 'Rajiv Ranjan Singh (Lalan Singh)',
-    party: 'Janata Dal (United) / NDA',
-    cases: 1,
-    education: 'Graduate (B.A.)',
-    assets: '₹14.3 Crore',
-    turnout: '55.42%',
-    margin: '80,870 Votes',
-    electors: '18,94,220 Electors',
-    vidhanSabhaSegments: ['Tarapur (164)', 'Munger (165)', 'Jamalpur (166)', 'Suryagarha (167)', 'Lakhisarai (168)', 'Mokama (178)']
-  },
-  'sasaram': {
-    pcCode: '34-BI',
-    mpName: 'Manoj Kumar',
-    party: 'Indian National Congress (INC)',
-    cases: 0,
-    education: 'Post Graduate',
-    assets: '₹3.18 Crore',
-    turnout: '52.74%',
-    margin: '19,157 Votes',
-    electors: '17,99,240 Electors',
-    vidhanSabhaSegments: ['Mohania [SC] (204)', 'Bhabua (205)', 'Chainpur (206)', 'Chenari [SC] (207)', 'Sasaram (208)', 'Kargahar (209)']
-  },
-  'nagpur': {
-    pcCode: '10-MH',
-    mpName: 'Nitin Jairam Gadkari',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 0,
-    education: 'Post Graduate (M.Com, LL.B.)',
-    assets: '₹28.0 Crore',
-    turnout: '54.11%',
-    margin: '1,37,603 Votes',
-    electors: '22,23,550 Electors',
-    vidhanSabhaSegments: ['Nagpur South West (52)', 'Nagpur South (53)', 'Nagpur East (54)', 'Nagpur Central (55)', 'Nagpur West (56)', 'Nagpur North [SC] (57)']
-  },
-  'ramtek': {
-    pcCode: '09-MH',
-    mpName: 'Shyamkumar Barwe',
-    party: 'Indian National Congress (INC)',
-    cases: 0,
-    education: 'Graduate',
-    assets: '₹11.2 Crore',
-    turnout: '61.01%',
-    margin: '76,768 Votes',
-    electors: '20,49,110 Electors',
-    vidhanSabhaSegments: ['Katol (48)', 'Savner (49)', 'Hingna (50)', 'Umred [SC] (51)', 'Kamthi (58)', 'Ramtek (59)']
-  },
-  'gorakhpur': {
-    pcCode: '64-UP',
-    mpName: 'Ravi Kishan (Ravindra Shukla)',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 1,
-    education: 'Intermediate (12th Pass)',
-    assets: '₹34.5 Crore',
-    turnout: '54.98%',
-    margin: '1,03,526 Votes',
-    electors: '20,41,830 Electors',
-    vidhanSabhaSegments: ['Caimpiyarganj (320)', 'Pipraich (321)', 'Gorakhpur Urban (322)', 'Gorakhpur Rural (323)', 'Sahajanwa (324)']
-  },
-  'varanasi': {
-    pcCode: '77-UP',
-    mpName: 'Narendra Modi',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 0,
-    education: 'Post Graduate (M.A.)',
-    assets: '₹3.02 Crore',
-    turnout: '56.44%',
-    margin: '1,52,513 Votes',
-    electors: '19,97,578 Electors',
-    vidhanSabhaSegments: ['Rohaniya (387)', 'Varanasi North (388)', 'Varanasi South (389)', 'Varanasi Cantt. (390)', 'Sevapuri (391)']
-  },
-  'bangaloresouth': {
-    pcCode: '26-KA',
-    mpName: 'Tejasvi Surya',
-    party: 'Bharatiya Janata Party (BJP)',
-    cases: 0,
-    education: 'Academic Graduate (B.A. LL.B.)',
-    assets: '₹4.10 Crore',
-    turnout: '53.17%',
-    margin: '2,77,083 Votes',
-    electors: '23,41,200 Electors',
-    vidhanSabhaSegments: ['Govindraj Nagar (166)', 'Vijay Nagar (167)', 'Chickpet (170)', 'Basavanagudi (171)', 'Padmanaba Nagar (172)', 'B.T.M. Layout (173)', 'Jayanagar (174)', 'Bommanahalli (175)']
-  }
-};
 
 const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'Andaman and Nicobar Islands': ['Andaman and Nicobar Islands'],
@@ -215,24 +76,6 @@ const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
-function resolveConstituencyDossier(seatName: string, stateName: string) {
-  const cleanKey = (seatName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (VERIFIED_SEAT_DOSSIERS[cleanKey]) return VERIFIED_SEAT_DOSSIERS[cleanKey];
-
-  return {
-    pcCode: `PC-${(stateName || 'IN').slice(0, 2).toUpperCase()}`,
-    mpName: `Hon. Member of Parliament (${seatName})`,
-    party: 'Electoral Commission of India Verified',
-    cases: 0,
-    education: 'Official Affidavit Record',
-    assets: 'Affidavit Filed',
-    turnout: 'Official Record',
-    margin: 'Declared Margin',
-    electors: 'Electors Enrolled',
-    vidhanSabhaSegments: [`${seatName} Vidhan Sabha Segment 1`, `${seatName} Vidhan Sabha Segment 2`, `${seatName} Vidhan Sabha Segment 3`]
-  };
-}
-
 function format3LetterDate(dateStr?: string): string {
   if (!dateStr) return 'TBA';
   const d = new Date(dateStr);
@@ -255,6 +98,14 @@ function formatVotingSince(dateStr?: string): string {
   return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
+function resolveCivicRecognitionTier(prevVotes: number): { title: string; color: string; level: number } {
+  if (prevVotes >= 50) return { title: '👑 Sovereign Ratna (Level 5)', color: '#8b5cf6', level: 5 };
+  if (prevVotes >= 40) return { title: '⚖️ Rashtriya Nirdharak (Level 4)', color: '#0284c7', level: 4 };
+  if (prevVotes >= 25) return { title: '🛡️ Lok Prahari (Level 3)', color: '#10b981', level: 3 };
+  if (prevVotes >= 10) return { title: '🏛️ Jagruk Nagrik (Level 2)', color: '#d97706', level: 2 };
+  return { title: '🌱 Prathamik Nagrik (Level 1)', color: '#64748b', level: 1 };
+}
+
 function getOrCreateVoterToken(): string {
   let token = safeStorage.getItem('bhumat_voter_token');
   if (!token) {
@@ -266,11 +117,12 @@ function getOrCreateVoterToken(): string {
 
 export default function BhuMatApp() {
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'search' | 'dossier' | 'vote' | 'schedule' | 'profile'>('vote');
+  const [activeTab, setActiveTab] = useState<'search' | 'vote' | 'schedule' | 'profile'>('vote');
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [pillarFilter, setPillarFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
 
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
+  const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
 
   const [username] = useState('CitizenBharat');
@@ -279,19 +131,19 @@ export default function BhuMatApp() {
   const [janmatAuditsCount, setJanmatAuditsCount] = useState(0);
   const [lokmatPollsCount, setLokmatPollsCount] = useState(0);
   const [totalVotesCount, setTotalVotesCount] = useState(0);
+  const [monthlyVotesCount, setMonthlyVotesCount] = useState(0);
+  const [prevMonthVotesCount, setPrevMonthVotesCount] = useState(0);
   const [deviceHash, setDeviceHash] = useState<string>('');
   const [votingSinceDate, setVotingSinceDate] = useState('2026-10-11');
 
   const [selectedSeat, setSelectedSeat] = useState<{ name: string; state: string } | null>(null);
   const [tentativeSeat, setTentativeSeat] = useState<{ name: string; state: string } | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isChangeSeatModalOpen, setIsChangeSeatModalOpen] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
 
-  const [inspectedSeatName, setInspectedSeatName] = useState('Vizianagaram');
-  const [inspectedSeatState, setInspectedSeatState] = useState('Andhra Pradesh');
-  const [isInspectingFromSearch, setIsInspectingFromSearch] = useState(false);
-  const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
-  const [filterStatePill, setFilterStatePill] = useState<string>('ALL');
+  const [pollSearchQuery, setPollSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [polls, setPolls] = useState<Poll[]>([]);
   const [cachedTalliesByPoll, setCachedTalliesByPoll] = useState<Record<string, any[]>>({});
@@ -320,14 +172,32 @@ export default function BhuMatApp() {
     setTimeout(() => setToast(null), 3200);
   };
 
+  const triggerInfoPopup = (title: string, desc: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
+    const clampedX = Math.max(16, Math.min(rect.left - 80, screenW - 250));
+    const clampedY = Math.max(70, rect.bottom + 8);
+
+    setActiveTooltip({ title, desc, x: clampedX, y: clampedY });
+  };
+
   const handleBrandReset = () => {
     setExpandedPoll(null);
     setActiveTab('vote');
     setPillarFilter('ALL');
-    setArchiveSearchQuery('');
+    setPollSearchQuery('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     loadPolls();
   };
+
+  useEffect(() => {
+    if (activeTab === 'search') {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 150);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -373,6 +243,16 @@ export default function BhuMatApp() {
         setLokmatPollsCount(data.lokmat_votes ?? 0);
         if (data.voting_since) setVotingSinceDate(data.voting_since);
       }
+      const { data: mData } = await supabase.rpc('check_monthly_milestone', {
+        p_voter_token: token
+      });
+      if (mData?.success) {
+        setMonthlyVotesCount(mData.monthly_votes ?? 0);
+        setPrevMonthVotesCount(mData.prev_month_votes ?? 0);
+        if (mData.earned_bonus) {
+          alert('🎉 Congratulations! You reached 15 votes this month and unlocked +100 DBG!');
+        }
+      }
     } catch (e) {
       console.warn('Wallet fetch error:', e);
     }
@@ -393,8 +273,6 @@ export default function BhuMatApp() {
 
       if (savedSeat && savedState) {
         setSelectedSeat({ name: savedSeat, state: savedState });
-        setInspectedSeatName(savedSeat);
-        setInspectedSeatState(savedState);
         setIsConfirmed(true);
       }
 
@@ -443,12 +321,11 @@ export default function BhuMatApp() {
     const seatToConfirm = tentativeSeat || selectedSeat;
     if (!seatToConfirm) return;
 
-    if (isConfirmed && selectedSeat && selectedSeat.name !== seatToConfirm.name) {
-      if (dbgPoints < SEAT_CHANGE_COST_DBG) {
-        alert(lang === 'HI' ? `सीट बदलने के लिए ${SEAT_CHANGE_COST_DBG} DBG चाहिए। आपके पास ${dbgPoints} DBG हैं।` : `Changing seat costs ${SEAT_CHANGE_COST_DBG} DBG. You have ${dbgPoints} DBG.`);
-        return;
-      }
+    if (typeof document !== 'undefined' && document.activeElement) {
+      (document.activeElement as HTMLElement)?.blur();
+    }
 
+    if (isConfirmed && selectedSeat && selectedSeat.name !== seatToConfirm.name) {
       const { data, error } = await supabase.rpc('deduct_seat_change_fee', {
         p_voter_token: deviceHash
       });
@@ -457,50 +334,58 @@ export default function BhuMatApp() {
         alert(lang === 'HI' ? 'अंक कटौती विफल रही।' : 'Failed to deduct DBG points.');
         return;
       }
-      setDbgPoints(data.new_balance);
+      setDbgPoints(data.new_balance ?? Math.max(0, dbgPoints - SEAT_CHANGE_COST_DBG));
+      setFlippedOverrides({});
     }
 
     setSelectedSeat(seatToConfirm);
-    setInspectedSeatName(seatToConfirm.name);
-    setInspectedSeatState(seatToConfirm.state);
     setIsConfirmed(true);
+    setIsChangeSeatModalOpen(false);
+    setTentativeSeat(null);
+    setSeatSearchInput('');
 
     try {
       safeStorage.setItem('bhumat_user_seat', seatToConfirm.name);
       safeStorage.setItem('bhumat_user_state', seatToConfirm.state);
     } catch (e) {}
+
+    syncWallet(deviceHash);
   };
 
   const getFrequencyRevoteMessage = (recurrence?: string) => {
     const rec = (recurrence || 'monthly').toLowerCase();
-    if (rec.includes('day')) return 'You already voted. You can re-vote tomorrow.';
-    if (rec.includes('week')) return 'You already voted. You can re-vote next week.';
-    if (rec.includes('month')) return 'You already voted. You can re-vote next month.';
-    return 'You already voted.';
+    if (rec.includes('day')) return 'You already voted for this seat. You can re-vote tomorrow.';
+    if (rec.includes('week')) return 'You already voted for this seat. You can re-vote next week.';
+    if (rec.includes('month')) return 'You already voted for this seat. You can re-vote next month.';
+    return 'You already voted in this constituency.';
   };
 
   const handleCastVote = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
 
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
-    const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
+    const seatSlug = selectedSeat.name.toLowerCase().trim();
+    
+    const scopedCycleVoteKey = `${poll.id}___${dynamicCycle}___${seatSlug}`;
+    const scopedChoiceKey = `${poll.id}___${seatSlug}`;
 
-    if (votedCycleKeys.includes(cycleVoteKey)) {
+    if (votedCycleKeys.includes(scopedCycleVoteKey)) {
       showPointerToast(getFrequencyRevoteMessage(poll.recurrence), e);
       return;
     }
 
-    const updatedKeys = [...votedCycleKeys, cycleVoteKey];
+    const updatedKeys = [...votedCycleKeys, scopedCycleVoteKey];
     setVotedCycleKeys(updatedKeys);
 
-    const updatedChoices = { ...sessionBallotChoices, [poll.id]: optionIdx };
+    const updatedChoices = { ...sessionBallotChoices, [scopedChoiceKey]: optionIdx };
     setSessionBallotChoices(updatedChoices);
 
     const nowIso = new Date().toISOString();
-    const updatedTimestamps = { ...voteTimestamps, [poll.id]: nowIso };
+    const updatedTimestamps = { ...voteTimestamps, [scopedChoiceKey]: nowIso };
     setVoteTimestamps(updatedTimestamps);
 
     setTotalVotesCount((prev) => prev + 1);
+    setMonthlyVotesCount((prev) => prev + 1);
     if (poll.category === 'JanMat') {
       setJanmatAuditsCount((prev) => prev + 1);
     } else {
@@ -512,9 +397,7 @@ export default function BhuMatApp() {
     try {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
       safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
-      if (poll.category === 'LokMat') {
-        safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedChoices));
-      }
+      safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedChoices));
     } catch (err) {}
 
     await supabase.rpc('cast_ballot_transaction', {
@@ -528,8 +411,6 @@ export default function BhuMatApp() {
 
     syncWallet(deviceHash);
   };
-
-  const inspectedKyc = resolveConstituencyDossier(inspectedSeatName, inspectedSeatState);
 
   const liveAccessiblePolls = useMemo(() => {
     return polls.filter((p) => p.is_active && (pillarFilter === 'ALL' || p.category === pillarFilter));
@@ -556,15 +437,15 @@ export default function BhuMatApp() {
     return list;
   }, []);
 
-  const searchResults = useMemo(() => {
-    let list = allFlattenedSeats;
-    if (filterStatePill !== 'ALL') {
-      list = list.filter((s) => s.state.toLowerCase() === filterStatePill.toLowerCase());
-    }
-    if (!archiveSearchQuery.trim()) return list.slice(0, 35);
-    const q = archiveSearchQuery.toLowerCase().trim();
-    return list.filter((s) => s.name.toLowerCase().includes(q) || s.state.toLowerCase().includes(q)).slice(0, 40);
-  }, [archiveSearchQuery, filterStatePill, allFlattenedSeats]);
+  const searchPollMatches = useMemo(() => {
+    if (!pollSearchQuery.trim()) return polls;
+    const q = pollSearchQuery.toLowerCase().trim();
+    return polls.filter((p) =>
+      p.title_en.toLowerCase().includes(q) ||
+      p.title_hi.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q)
+    );
+  }, [pollSearchQuery, polls]);
 
   const filteredDropdownSeats = useMemo(() => {
     if (!seatSearchInput.trim()) return GROUPED_PARLIAMENTARY_SEATS;
@@ -600,15 +481,21 @@ export default function BhuMatApp() {
     return 'Monthly';
   };
 
+  const recognitionTier = resolveCivicRecognitionTier(prevMonthVotesCount);
+  const displayMonthlyVotes = Math.max(monthlyVotesCount, totalVotesCount);
+
   if (!mounted) return null;
 
   if (expandedPoll) {
+    const currentSeatSlug = selectedSeat?.name.toLowerCase().trim() || '';
+    const scopedUserChoice = sessionBallotChoices[`${expandedPoll.id}___${currentSeatSlug}`] ?? null;
+
     return (
       <PollExpandedView
         poll={expandedPoll}
         userSeatName={selectedSeat?.name}
         userState={selectedSeat?.state}
-        userVotedOptionIdx={sessionBallotChoices[expandedPoll.id] ?? null}
+        userVotedOptionIdx={scopedUserChoice}
         lang={lang}
         onBack={closeExpandedView}
         initialTallies={cachedTalliesByPoll[expandedPoll.id] || []}
@@ -617,7 +504,10 @@ export default function BhuMatApp() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div
+      onClick={() => setActiveTooltip(null)}
+      style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+    >
       <Head>
         <title>BhuMat — Bharat's Sovereign Public Opinion Grid</title>
       </Head>
@@ -668,35 +558,70 @@ export default function BhuMatApp() {
         </div>
       )}
 
-      {/* Header */}
-      <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40 }}>
+      {/* Explanation Popup */}
+      {activeTooltip && (
         <div
-          onClick={handleBrandReset}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none' }}
-          title="Reset & Go to Poll Feed"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: `${activeTooltip.x}px`,
+            top: `${activeTooltip.y}px`,
+            zIndex: 130,
+            backgroundColor: '#0f172a',
+            color: '#ffffff',
+            padding: '12px 14px',
+            borderRadius: '12px',
+            maxWidth: '240px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+            border: '1px solid #334155'
+          }}
         >
-          <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BhuMat</span>
-          <span style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>EARLY ACCESS</span>
-          {selectedSeat && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '999px', fontSize: '11px' }}>
-              <span className="seat-beacon-glowing-dot" />
-              <span style={{ color: '#065f46', fontWeight: 700 }}>{selectedSeat.name}</span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: '#b45309' }}>
-            ⚡ {dbgPoints} DBG
+          <div style={{ fontSize: '12px', fontWeight: 800, color: '#38bdf8', marginBottom: '4px' }}>
+            {activeTooltip.title}
           </div>
-          <button onClick={() => setLang(lang === 'EN' ? 'HI' : 'EN')} style={{ border: 'none', backgroundColor: '#f1f5f9', fontWeight: 700, fontSize: '10px', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer' }}>
-            {lang === 'EN' ? 'हिन्दी' : 'EN'}
-          </button>
+          <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>
+            {activeTooltip.desc}
+          </div>
+        </div>
+      )}
+
+      {/* Centered Top Header */}
+      <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '0 12px' }}>
+        <div style={{ width: '100%', maxWidth: '460px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div
+            onClick={handleBrandReset}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none' }}
+            title="Reset & Go to Poll Feed"
+          >
+            <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>BhuMat</span>
+            <span style={{ fontSize: '9px', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>EARLY ACCESS</span>
+            {selectedSeat && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '999px', fontSize: '11px' }}>
+                <span className="seat-beacon-glowing-dot" />
+                <span style={{ color: '#065f46', fontWeight: 700 }}>{selectedSeat.name}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div
+              onClick={(e) => triggerInfoPopup('Civic DBG Balance', 'Your sovereign credits. Earned by participation consistency & verified peer referrals. Used for constituency seat shifts.', e)}
+              style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: '#b45309', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+            >
+              <span>⚡ {dbgPoints} DBG</span>
+              <span style={{ fontSize: '10px', opacity: 0.6 }}>ⓘ</span>
+            </div>
+            <button onClick={() => setLang(lang === 'EN' ? 'HI' : 'EN')} style={{ border: 'none', backgroundColor: '#f1f5f9', fontWeight: 700, fontSize: '10px', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer' }}>
+              {lang === 'EN' ? 'हिन्दी' : 'EN'}
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 14px 110px 14px' }}>
+        
+        {/* TAB 1: VOTE FEED */}
         {activeTab === 'vote' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {!isConfirmed ? (
@@ -709,20 +634,36 @@ export default function BhuMatApp() {
                   Select your Lok Sabha constituency across all 543 seats to unlock your sovereign ballot:
                 </p>
 
-                <input
-                  type="text"
-                  placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
-                  value={seatSearchInput}
-                  onChange={(e) => setSeatSearchInput(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', marginBottom: '8px' }}
-                />
+                <div style={{ position: 'relative', width: '100%', marginBottom: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
+                    value={seatSearchInput}
+                    onChange={(e) => setSeatSearchInput(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 36px 10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                  {seatSearchInput && (
+                    <button
+                      onClick={() => setSeatSearchInput('')}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', fontWeight: 800 }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
 
                 {quickSeatMatches.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                     {quickSeatMatches.map((m) => (
                       <span
                         key={m.name}
-                        onClick={() => { setTentativeSeat({ name: m.name, state: m.state }); setSeatSearchInput(m.name); }}
+                        onClick={() => {
+                          setTentativeSeat({ name: m.name, state: m.state });
+                          setSeatSearchInput(m.name);
+                          if (typeof document !== 'undefined' && document.activeElement) {
+                            (document.activeElement as HTMLElement)?.blur();
+                          }
+                        }}
                         style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
                       >
                         📍 {m.name} ({m.state})
@@ -737,6 +678,9 @@ export default function BhuMatApp() {
                     if (!e.target.value) return setTentativeSeat(null);
                     const [name, state] = e.target.value.split('|||');
                     setTentativeSeat({ name, state });
+                    if (typeof document !== 'undefined' && document.activeElement) {
+                      (document.activeElement as HTMLElement)?.blur();
+                    }
                   }}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #0284c7', fontSize: '13px', fontWeight: 700, marginBottom: '14px', backgroundColor: '#f0f9ff' }}
                 >
@@ -767,7 +711,14 @@ export default function BhuMatApp() {
                     <span style={{ fontSize: '10px', color: '#059669', fontWeight: 800 }}>● Verified Lok Sabha</span>
                     <div style={{ fontSize: '16px', fontWeight: 800 }}>{selectedSeat?.name} <span style={{ fontSize: '12px', color: '#64748b' }}>({selectedSeat?.state})</span></div>
                   </div>
-                  <button onClick={() => setIsConfirmed(false)} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', fontSize: '11px', padding: '6px 12px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button
+                    onClick={() => {
+                      setTentativeSeat(null);
+                      setSeatSearchInput('');
+                      setIsChangeSeatModalOpen(true);
+                    }}
+                    style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', fontSize: '11px', padding: '6px 12px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+                  >
                     Change Seat ({SEAT_CHANGE_COST_DBG} DBG)
                   </button>
                 </div>
@@ -781,9 +732,14 @@ export default function BhuMatApp() {
                 {liveAccessiblePolls.map((poll) => {
                   const isJanMat = poll.category === 'JanMat';
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
-                  const hasVotedThisCycle = votedCycleKeys.includes(`${poll.id}___${dynamicCycle}`);
+                  
+                  const currentSeatSlug = (selectedSeat?.name || '').toLowerCase().trim();
+                  const scopedVoteCycleKey = `${poll.id}___${dynamicCycle}___${currentSeatSlug}`;
+                  const scopedChoiceKey = `${poll.id}___${currentSeatSlug}`;
+
+                  const hasVotedThisCycle = votedCycleKeys.includes(scopedVoteCycleKey);
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
-                  const userChoiceIdx = sessionBallotChoices[poll.id];
+                  const userChoiceIdx = sessionBallotChoices[scopedChoiceKey];
 
                   const optionCount = poll.options.length;
                   const computedCardHeight = Math.max(590, 420 + optionCount * 62);
@@ -821,7 +777,19 @@ export default function BhuMatApp() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span className="live-dot-animated" />
                                 <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em' }}>LIVE</span>
-                                <span style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px' }}>{poll.category}</span>
+                                <span
+                                  onClick={(e) => triggerInfoPopup(
+                                    isJanMat ? 'JanMat Civic Audit' : 'LokMat Cultural Pulse',
+                                    isJanMat
+                                      ? 'Cryptographic Secret Ballot. Decoupled from your identity, zero voter tokens stored on your ballot.'
+                                      : 'Open Civic Pulse. Choice attributed to your voter profile to reveal community cultural trends.',
+                                    e
+                                  )}
+                                  style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <span>{poll.category}</span>
+                                  <span style={{ fontSize: '9px', opacity: 0.6 }}>ⓘ</span>
+                                </span>
                               </div>
                               {hasVotedThisCycle && (
                                 <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
@@ -837,7 +805,7 @@ export default function BhuMatApp() {
                               {lang === 'EN' ? poll.title_hi : poll.title_en}
                             </p>
 
-                            <div style={{ margin: '4px 0 14px 0' }}>
+                            <div style={{ margin: '4px 0 14px 0', maxWidth: '100%', boxSizing: 'border-box' }}>
                               <TickerTape activePoll={poll} lang={lang} />
                             </div>
 
@@ -922,14 +890,16 @@ export default function BhuMatApp() {
                               </button>
                             </div>
 
-                            <DrishtiMap
-                              selectedConstituencyName={selectedSeat?.name}
-                              selectedState={selectedSeat?.state}
-                              pollId={poll.id}
-                              userVotedOptionIdx={sessionBallotChoices[poll.id] ?? null}
-                              options={poll.options}
-                              optimisticLocalVote={hasVotedThisCycle}
-                            />
+                            {isFlipped && (
+                              <DrishtiMap
+                                selectedConstituencyName={selectedSeat?.name}
+                                selectedState={selectedSeat?.state}
+                                pollId={poll.id}
+                                userVotedOptionIdx={userChoiceIdx ?? null}
+                                options={poll.options}
+                                optimisticLocalVote={hasVotedThisCycle}
+                              />
+                            )}
                           </div>
 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
@@ -948,116 +918,71 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 2: SEARCH ARCHIVE */}
+        {/* TAB 2: DEDICATED POLL SEARCH */}
         {activeTab === 'search' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '20px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '6px' }}>543 CONSTITUENCY ARCHIVE</span>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 4px 0' }}>Sovereign Public Opinion Index</h2>
-              <input
-                type="text"
-                placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
-                value={archiveSearchQuery}
-                onChange={(e) => setArchiveSearchQuery(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none', margin: '10px 0' }}
-              />
-              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {['ALL', 'Bihar', 'Maharashtra', 'Delhi', 'Uttar Pradesh', 'Karnataka'].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setFilterStatePill(st)}
-                    style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', backgroundColor: filterStatePill === st ? '#0f172a' : '#f1f5f9', color: filterStatePill === st ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    {st === 'ALL' ? 'Pan-Bharat' : st}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {searchResults.map((seat) => (
-                <div
-                  key={seat.name}
-                  onClick={() => {
-                    setInspectedSeatName(seat.name);
-                    setInspectedSeatState(seat.state);
-                    setIsInspectingFromSearch(true);
-                    setActiveTab('dossier');
-                  }}
-                  style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                >
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{seat.name}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>{seat.state} • Lok Sabha Seat</div>
-                  </div>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>View Dossier ❯</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: DOSSIER */}
-        {activeTab === 'dossier' && (
-          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {isInspectingFromSearch && (
-              <button onClick={() => { setIsInspectingFromSearch(false); setActiveTab('search'); }} style={{ alignSelf: 'flex-start', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
-                ← Back to 543 Search Archive
-              </button>
-            )}
-
-            <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>
-                  PARLIAMENTARY DOSSIER: {inspectedKyc.pcCode}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '6px' }}>
+                  SOVEREIGN OPINION ARCHIVE
                 </span>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>● 18th Lok Sabha Certified</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>
+                  ● Live Sovereign Consensus
+                </span>
               </div>
 
-              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '8px 0 2px 0' }}>{inspectedSeatName} Parliamentary Constituency</h2>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>{inspectedSeatState} State Jurisdiction</div>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '6px 0 12px 0' }}>Search Public Opinion Polls</h2>
 
-              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.mpName}</div>
-                <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>{inspectedKyc.party}</div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', fontSize: '11.5px' }}>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Winning Margin:</span>
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.margin}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Voter Turnout:</span>
-                    <div style={{ fontWeight: 800, color: '#059669' }}>{inspectedKyc.turnout}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Assets Declared:</span>
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{inspectedKyc.assets}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Criminal Cases:</span>
-                    <div style={{ fontWeight: 800, color: inspectedKyc.cases > 0 ? '#dc2626' : '#059669' }}>
-                      {inspectedKyc.cases} Listed
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="🔍 Search questions by topic or keyword..."
+                  value={pollSearchQuery}
+                  onChange={(e) => setPollSearchQuery(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px 36px 12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1', fontSize: '13px', fontWeight: 600, outline: 'none' }}
+                />
+                {pollSearchQuery && (
+                  <button
+                    onClick={() => setPollSearchQuery('')}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', fontWeight: 800 }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Poll Results List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {searchPollMatches.length === 0 ? (
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', padding: '28px', textAlign: 'center', color: '#64748b', fontSize: '13px', border: '1px solid #e2e8f0' }}>
+                  No public opinion polls matching "{pollSearchQuery}".
+                </div>
+              ) : (
+                searchPollMatches.map((poll) => (
+                  <div
+                    key={poll.id}
+                    onClick={() => openExpandedView(poll)}
+                    style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: poll.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', padding: '2px 8px', borderRadius: '999px' }}>
+                        ● {poll.category}
+                      </span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>View Drishti ❯</span>
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.4 }}>
+                      {lang === 'EN' ? poll.title_en : poll.title_hi}
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Assembly Segments (Vidhan Sabha):</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                  {inspectedKyc.vidhanSabhaSegments.map((seg: string) => (
-                    <span key={seg} style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, color: '#334155' }}>
-                      {seg}
-                    </span>
-                  ))}
-                </div>
-              </div>
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB 4: SCHEDULE */}
+        {/* TAB 3: SCHEDULE */}
         {activeTab === 'schedule' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #0284c7', borderRadius: '20px', padding: '20px', boxShadow: '0 4px 12px rgba(2,132,199,0.06)' }}>
@@ -1119,21 +1044,38 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 5: PROFILE */}
+        {/* TAB 4: PROFILE */}
         {activeTab === 'profile' && (
-          <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+              
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontSize: '18px', fontWeight: 800 }}>{username}</div>
-                  <div style={{ fontSize: '12px', color: '#059669', fontWeight: 700, marginTop: '2px' }}>● Verified Sovereign Citizen</div>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: recognitionTier.color, marginTop: '2px' }}>
+                    {recognitionTier.title}
+                  </div>
                 </div>
                 <span style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '999px' }}>
                   Verified Citizen
                 </span>
               </div>
 
-              <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Monthly Season Progress Bar */}
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', marginTop: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800 }}>
+                  <span style={{ color: '#475569' }}>October Civic Goal (15 Votes Milestone):</span>
+                  <span style={{ color: displayMonthlyVotes >= 15 ? '#059669' : '#0284c7' }}>
+                    {displayMonthlyVotes} / 15 Votes ({displayMonthlyVotes >= 15 ? '✓ Unlocked +100 DBG' : `${15 - displayMonthlyVotes} to +100 DBG`})
+                  </span>
+                </div>
+                <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '999px', marginTop: '8px', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, Math.round((displayMonthlyVotes / 15) * 100))}%`, height: '100%', backgroundColor: displayMonthlyVotes >= 15 ? '#10b981' : '#0284c7', transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+
+              {/* DBG Wallet Card */}
+              <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: '#94a3b8' }}>Civic Balance</div>
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#f59e0b' }}>{dbgPoints} DBG</div>
@@ -1141,6 +1083,7 @@ export default function BhuMatApp() {
                 <div style={{ fontSize: '11px', color: '#38bdf8' }}>Seat Change: {SEAT_CHANGE_COST_DBG} DBG</div>
               </div>
 
+              {/* Referral Code */}
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px', marginTop: '14px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Your Sovereign Referral Code</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
@@ -1171,6 +1114,7 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
+              {/* Account Ledger */}
               <div style={{ backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                   <span style={{ color: '#64748b' }}>Voting Since:</span>
@@ -1190,6 +1134,7 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
+              {/* Counts */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '14px' }}>
                 <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
                   <div style={{ fontSize: '10px', fontWeight: 800, color: '#059669' }}>JanMat Audits</div>
@@ -1203,8 +1148,9 @@ export default function BhuMatApp() {
 
               <button
                 onClick={() => {
-                  setIsConfirmed(false);
-                  setActiveTab('vote');
+                  setTentativeSeat(null);
+                  setSeatSearchInput('');
+                  setIsChangeSeatModalOpen(true);
                 }}
                 style={{
                   width: '100%',
@@ -1226,44 +1172,193 @@ export default function BhuMatApp() {
         )}
       </main>
 
-      {/* Dock Navigation */}
+      {/* Change Seat Modal */}
+      {isChangeSeatModalOpen && (
+        <div
+          onClick={() => setIsChangeSeatModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '24px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '420px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+              position: 'relative'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{ backgroundColor: '#fef3c7', color: '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
+                SOVEREIGN RE-ENROLLMENT
+              </span>
+              <button
+                onClick={() => setIsChangeSeatModalOpen(false)}
+                style={{
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  color: '#64748b'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px 0' }}>Change Lok Sabha Seat</h3>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 14px 0' }}>
+              Changing your parliamentary seat costs <strong>100 DBG</strong>. Choose your new constituency below:
+            </p>
+
+            <div style={{ position: 'relative', width: '100%', marginBottom: '8px' }}>
+              <input
+                type="text"
+                placeholder="🔍 Search seat (e.g. Nagpur, Banka, Buxar)..."
+                value={seatSearchInput}
+                onChange={(e) => setSeatSearchInput(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 36px 10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '13px' }}
+              />
+              {seatSearchInput && (
+                <button
+                  onClick={() => setSeatSearchInput('')}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', fontWeight: 800 }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {quickSeatMatches.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                {quickSeatMatches.map((m) => (
+                  <span
+                    key={m.name}
+                    onClick={() => {
+                      setTentativeSeat({ name: m.name, state: m.state });
+                      setSeatSearchInput(m.name);
+                      if (typeof document !== 'undefined' && document.activeElement) {
+                        (document.activeElement as HTMLElement)?.blur();
+                      }
+                    }}
+                    style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    📍 {m.name} ({m.state})
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <select
+              value={tentativeSeat ? `${tentativeSeat.name}|||${tentativeSeat.state}` : ''}
+              onChange={(e) => {
+                if (!e.target.value) return setTentativeSeat(null);
+                const [name, state] = e.target.value.split('|||');
+                setTentativeSeat({ name, state });
+                if (typeof document !== 'undefined' && document.activeElement) {
+                  (document.activeElement as HTMLElement)?.blur();
+                }
+              }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '1.5px solid #0284c7', fontSize: '13px', fontWeight: 700, marginBottom: '14px', backgroundColor: '#f0f9ff' }}
+            >
+              <option value="">-- Choose New Parliamentary Seat (543) --</option>
+              {Object.entries(filteredDropdownSeats).map(([state, seats]) => (
+                <optgroup key={state} label={`──────── 📍 ${state.toUpperCase()} ────────`}>
+                  {seats.map((seat) => (
+                    <option key={seat} value={`${seat}|||${state}`}>
+                      {seat} ({state})
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setIsChangeSeatModalOpen(false)}
+                style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', fontWeight: 800, borderRadius: '10px', border: 'none', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!tentativeSeat || tentativeSeat.name === selectedSeat?.name}
+                onClick={handleConfirmSeat}
+                style={{ flex: 2, padding: '12px', backgroundColor: tentativeSeat && tentativeSeat.name !== selectedSeat?.name ? '#10b981' : '#cbd5e1', color: '#ffffff', fontWeight: 800, borderRadius: '10px', border: 'none', cursor: tentativeSeat && tentativeSeat.name !== selectedSeat?.name ? 'pointer' : 'not-allowed' }}
+              >
+                Confirm Shift ({SEAT_CHANGE_COST_DBG} DBG)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Centered Bottom Dock Navigation */}
       <nav
         style={{
           position: 'fixed',
           bottom: 0,
           left: 0,
           right: 0,
-          height: '64px',
+          height: '62px',
           backgroundColor: '#ffffff',
           borderTop: '1px solid #e2e8f0',
           display: 'flex',
+          justifyContent: 'center',
           alignItems: 'center',
-          justifyContent: 'space-around',
           zIndex: 50,
+          padding: '0 8px',
           paddingBottom: 'env(safe-area-inset-bottom, 6px)',
-          boxSizing: 'border-box'
+          boxShadow: '0 -2px 10px rgba(0,0,0,0.03)'
         }}
       >
-        <button onClick={() => setActiveTab('search')} style={{ background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
-          <span style={{ fontSize: '18px', lineHeight: 1 }}>🔍</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Search</span>
-        </button>
-        <button onClick={() => setActiveTab('dossier')} style={{ background: 'none', border: 'none', color: activeTab === 'dossier' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
-          <span style={{ fontSize: '18px', lineHeight: 1 }}>📋</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Dossier</span>
-        </button>
-        <button onClick={() => setActiveTab('vote')} style={{ background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
-          <span style={{ fontSize: '19px', lineHeight: 1 }}>🗳️</span>
-          <span style={{ fontSize: '10px', fontWeight: 800, marginTop: '3px' }}>Vote</span>
-        </button>
-        <button onClick={() => setActiveTab('schedule')} style={{ background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
-          <span style={{ fontSize: '18px', lineHeight: 1 }}>📅</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Schedule</span>
-        </button>
-        <button onClick={() => setActiveTab('profile')} style={{ background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}>
-          <span style={{ fontSize: '18px', lineHeight: 1 }}>👤</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, marginTop: '3px' }}>Profile</span>
-        </button>
+        <div style={{ width: '100%', maxWidth: '460px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button
+            onClick={() => setActiveTab('search')}
+            style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '18px', lineHeight: 1 }}>🔍</span>
+            <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'search' ? 800 : 600, marginTop: '3px' }}>Search</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('vote')}
+            style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '19px', lineHeight: 1 }}>🗳️</span>
+            <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'vote' ? 800 : 600, marginTop: '3px' }}>Vote</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('schedule')}
+            style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '18px', lineHeight: 1 }}>📅</span>
+            <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'schedule' ? 800 : 600, marginTop: '3px' }}>Schedule</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('profile')}
+            style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '18px', lineHeight: 1 }}>👤</span>
+            <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'profile' ? 800 : 600, marginTop: '3px' }}>Profile</span>
+          </button>
+        </div>
       </nav>
     </div>
   );
