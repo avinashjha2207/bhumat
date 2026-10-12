@@ -38,8 +38,149 @@ const QUICK_SEATS: Record<string, string> = {
   'Kurnool': 'Andhra Pradesh'
 };
 
+const SEAT_TO_STATE_MAP: Record<string, string> = {
+  'Andaman and Nicobar Islands': 'Andaman and Nicobar Islands',
+  'Amalapuram': 'Andhra Pradesh', 'Anakapalli': 'Andhra Pradesh', 'Anantapur': 'Andhra Pradesh', 'Araku': 'Andhra Pradesh',
+  'Bapatla': 'Andhra Pradesh', 'Chittoor': 'Andhra Pradesh', 'Eluru': 'Andhra Pradesh', 'Guntur': 'Andhra Pradesh',
+  'Hindupur': 'Andhra Pradesh', 'Kadapa': 'Andhra Pradesh', 'Kakinada': 'Andhra Pradesh', 'Kurnool': 'Andhra Pradesh',
+  'Machilipatnam': 'Andhra Pradesh', 'Nandyal': 'Andhra Pradesh', 'Narasaraopet': 'Andhra Pradesh', 'Narsapuram': 'Andhra Pradesh',
+  'Nellore': 'Andhra Pradesh', 'Ongole': 'Andhra Pradesh', 'Rajahmundry': 'Andhra Pradesh', 'Rajampet': 'Andhra Pradesh',
+  'Srikakulam': 'Andhra Pradesh', 'Tirupati': 'Andhra Pradesh', 'Vijayawada': 'Andhra Pradesh', 'Visakhapatnam': 'Andhra Pradesh', 'Vizianagaram': 'Andhra Pradesh',
+  'Arunachal East': 'Arunachal Pradesh', 'Arunachal West': 'Arunachal Pradesh',
+  'Barpeta': 'Assam', 'Darrang-Udalguri': 'Assam', 'Dhubri': 'Assam', 'Dibrugarh': 'Assam', 'Diphu': 'Assam',
+  'Guwahati': 'Assam', 'Kaziranga': 'Assam', 'Kokrajhar': 'Assam', 'Lakhimpur': 'Assam', 'Nagaon': 'Assam',
+  'Silchar': 'Assam', 'Sonitpur': 'Assam',
+  'Araria': 'Bihar', 'Arrah': 'Bihar', 'Aurangabad': 'Bihar', 'Banka': 'Bihar', 'Begusarai': 'Bihar',
+  'Bhagalpur': 'Bihar', 'Buxar': 'Bihar', 'Darbhanga': 'Bihar', 'Gaya': 'Bihar', 'Gopalganj': 'Bihar',
+  'Hajipur': 'Bihar', 'Jahanabad': 'Bihar', 'Jamui': 'Bihar', 'Jhanjharpur': 'Bihar', 'Karakat': 'Bihar',
+  'Katihar': 'Bihar', 'Khagaria': 'Bihar', 'Kishanganj': 'Bihar', 'Madhepura': 'Bihar', 'Madhubani': 'Bihar',
+  'Maharajganj': 'Bihar', 'Munger': 'Bihar', 'Muzaffarpur': 'Bihar', 'Nalanda': 'Bihar', 'Nawada': 'Bihar',
+  'Paschim Champaran': 'Bihar', 'Pataliputra': 'Bihar', 'Patna Sahib': 'Bihar', 'Purnia': 'Bihar',
+  'Purvi Champaran': 'Bihar', 'Samastipur': 'Bihar', 'Saran': 'Bihar', 'Sasaram': 'Bihar', 'Sheohar': 'Bihar',
+  'Sitamarhi': 'Bihar', 'Siwan': 'Bihar', 'Supaul': 'Bihar', 'Ujiarpur': 'Bihar', 'Vaishali': 'Bihar', 'Valmiki Nagar': 'Bihar',
+  'Chandigarh': 'Chandigarh',
+  'Bastar': 'Chhattisgarh', 'Bilaspur': 'Chhattisgarh', 'Durg': 'Chhattisgarh', 'Janjgir-Champa': 'Chhattisgarh',
+  'Kanker': 'Chhattisgarh', 'Korba': 'Chhattisgarh', 'Mahasamund': 'Chhattisgarh', 'Raigarh': 'Chhattisgarh',
+  'Raipur': 'Chhattisgarh', 'Rajnandgaon': 'Chhattisgarh', 'Surguja': 'Chhattisgarh',
+  'Dadra and Nagar Haveli': 'Dadra and Nagar Haveli and Daman and Diu', 'Daman and Diu': 'Dadra and Nagar Haveli and Daman and Diu',
+  'Chandni Chowk': 'Delhi', 'East Delhi': 'Delhi', 'New Delhi': 'Delhi', 'North East Delhi': 'Delhi',
+  'North West Delhi': 'Delhi', 'South Delhi': 'Delhi', 'West Delhi': 'Delhi',
+  'North Goa': 'Goa', 'South Goa': 'Goa',
+  'Ahmedabad East': 'Gujarat', 'Ahmedabad West': 'Gujarat', 'Amreli': 'Gujarat', 'Anand': 'Gujarat',
+  'Banaskantha': 'Gujarat', 'Bardoli': 'Gujarat', 'Bharuch': 'Gujarat', 'Bhavnagar': 'Gujarat',
+  'Chhota Udaipur': 'Gujarat', 'Dahod': 'Gujarat', 'Gandhinagar': 'Gujarat', 'Jamnagar': 'Gujarat',
+  'Junagadh': 'Gujarat', 'Kachchh': 'Gujarat', 'Kheda': 'Gujarat', 'Mehsana': 'Gujarat', 'Navsari': 'Gujarat',
+  'Panchmahal': 'Gujarat', 'Patan': 'Gujarat', 'Porbandar': 'Gujarat', 'Rajkot': 'Gujarat', 'Sabarkantha': 'Gujarat',
+  'Surat': 'Gujarat', 'Surendranagar': 'Gujarat', 'Vadodara': 'Gujarat', 'Valsad': 'Gujarat',
+  'Ambala': 'Haryana', 'Bhiwani-Mahendragarh': 'Haryana', 'Faridabad': 'Haryana', 'Gurgaon': 'Haryana',
+  'Hisar': 'Haryana', 'Karnal': 'Haryana', 'Kurukshetra': 'Haryana', 'Rohtak': 'Haryana', 'Sirsa': 'Haryana', 'Sonipat': 'Haryana',
+  'Hamirpur': 'Himachal Pradesh', 'Kangra': 'Himachal Pradesh', 'Mandi': 'Himachal Pradesh', 'Shimla': 'Himachal Pradesh',
+  'Anantnag-Rajouri': 'Jammu and Kashmir', 'Baramulla': 'Jammu and Kashmir', 'Jammu': 'Jammu and Kashmir',
+  'Srinagar': 'Jammu and Kashmir', 'Udhampur': 'Jammu and Kashmir',
+  'Chatra': 'Jharkhand', 'Dhanbad': 'Jharkhand', 'Dumka': 'Jharkhand', 'Giridih': 'Jharkhand', 'Godda': 'Jharkhand',
+  'Hazaribagh': 'Jharkhand', 'Jamshedpur': 'Jharkhand', 'Khunti': 'Jharkhand', 'Kodarma': 'Jharkhand',
+  'Lohardaga': 'Jharkhand', 'Palamu': 'Jharkhand', 'Rajmahal': 'Jharkhand', 'Ranchi': 'Jharkhand', 'Singhbhum': 'Jharkhand',
+  'Bagalkot': 'Karnataka', 'Bangalore Central': 'Karnataka', 'Bangalore North': 'Karnataka', 'Bangalore Rural': 'Karnataka',
+  'Bangalore South': 'Karnataka', 'Belgaum': 'Karnataka', 'Bellary': 'Karnataka', 'Bidar': 'Karnataka', 'Bijapur': 'Karnataka',
+  'Chamarajanagar': 'Karnataka', 'Chikkballapur': 'Karnataka', 'Chikkodi': 'Karnataka', 'Chitradurga': 'Karnataka',
+  'Dakshina Kannada': 'Karnataka', 'Davanagere': 'Karnataka', 'Dharwad': 'Karnataka', 'Gulbarga': 'Karnataka',
+  'Hassan': 'Karnataka', 'Haveri': 'Karnataka', 'Kolar': 'Karnataka', 'Koppal': 'Karnataka', 'Mandya': 'Karnataka',
+  'Mysore': 'Karnataka', 'Raichur': 'Karnataka', 'Shimoga': 'Karnataka', 'Tumkur': 'Karnataka',
+  'Udupi Chikmagalur': 'Karnataka', 'Uttara Kannada': 'Karnataka',
+  'Alappuzha': 'Kerala', 'Alathur': 'Kerala', 'Attingal': 'Kerala', 'Chalakudy': 'Kerala', 'Ernakulam': 'Kerala',
+  'Idukki': 'Kerala', 'Kannur': 'Kerala', 'Kasaragod': 'Kerala', 'Kollam': 'Kerala', 'Kottayam': 'Kerala',
+  'Kozhikode': 'Kerala', 'Malappuram': 'Kerala', 'Mavelikkara': 'Kerala', 'Palakkad': 'Kerala',
+  'Pathanamthitta': 'Kerala', 'Ponnani': 'Kerala', 'Thiruvananthapuram': 'Kerala', 'Thrissur': 'Kerala',
+  'Vatakara': 'Kerala', 'Wayanad': 'Kerala',
+  'Ladakh': 'Ladakh', 'Lakshadweep': 'Lakshadweep',
+  'Balaghat': 'Madhya Pradesh', 'Betul': 'Madhya Pradesh', 'Bhind': 'Madhya Pradesh', 'Bhopal': 'Madhya Pradesh',
+  'Chhindwara': 'Madhya Pradesh', 'Damoh': 'Madhya Pradesh', 'Dewas': 'Madhya Pradesh', 'Dhar': 'Madhya Pradesh',
+  'Guna': 'Madhya Pradesh', 'Gwalior': 'Madhya Pradesh', 'Hoshangabad': 'Madhya Pradesh', 'Indore': 'Madhya Pradesh',
+  'Jabalpur': 'Madhya Pradesh', 'Khajuraho': 'Madhya Pradesh', 'Khandwa': 'Madhya Pradesh', 'Khargone': 'Madhya Pradesh',
+  'Mandla': 'Madhya Pradesh', 'Mandsaur': 'Madhya Pradesh', 'Morena': 'Madhya Pradesh', 'Rajgarh': 'Madhya Pradesh',
+  'Ratlam': 'Madhya Pradesh', 'Rewa': 'Madhya Pradesh', 'Sagar': 'Madhya Pradesh', 'Satna': 'Madhya Pradesh',
+  'Shahdol': 'Madhya Pradesh', 'Sidhi': 'Madhya Pradesh', 'Tikamgarh': 'Madhya Pradesh', 'Ujjain': 'Madhya Pradesh', 'Vidisha': 'Madhya Pradesh',
+  'Ahmednagar': 'Maharashtra', 'Akola': 'Maharashtra', 'Amravati': 'Maharashtra', 'Baramati': 'Maharashtra',
+  'Beed': 'Maharashtra', 'Bhandara Gondiya': 'Maharashtra', 'Bhiwandi': 'Maharashtra', 'Buldhana': 'Maharashtra',
+  'Chandrapur': 'Maharashtra', 'Dhule': 'Maharashtra', 'Dindori': 'Maharashtra', 'Gadchiroli-Chimur': 'Maharashtra',
+  'Hatkanangle': 'Maharashtra', 'Hingoli': 'Maharashtra', 'Jalgaon': 'Maharashtra', 'Jalna': 'Maharashtra',
+  'Kalyan': 'Maharashtra', 'Kolhapur': 'Maharashtra', 'Latur': 'Maharashtra', 'Madha': 'Maharashtra',
+  'Maval': 'Maharashtra', 'Mumbai North': 'Maharashtra', 'Mumbai North Central': 'Maharashtra',
+  'Mumbai North East': 'Maharashtra', 'Mumbai North West': 'Maharashtra', 'Mumbai South': 'Maharashtra',
+  'Mumbai South Central': 'Maharashtra', 'Nagpur': 'Maharashtra', 'Nanded': 'Maharashtra', 'Nandurbar': 'Maharashtra',
+  'Nashik': 'Maharashtra', 'Osmanabad': 'Maharashtra', 'Palghar': 'Maharashtra', 'Parbhani': 'Maharashtra',
+  'Pune': 'Maharashtra', 'Raigad': 'Maharashtra', 'Ramtek': 'Maharashtra', 'Ratnagiri-Sindhudurg': 'Maharashtra',
+  'Raver': 'Maharashtra', 'Sangli': 'Maharashtra', 'Satara': 'Maharashtra', 'Shirdi': 'Maharashtra',
+  'Shirur': 'Maharashtra', 'Solapur': 'Maharashtra', 'Thane': 'Maharashtra', 'Wardha': 'Maharashtra', 'Yavatmal-Washim': 'Maharashtra',
+  'Inner Manipur': 'Manipur', 'Outer Manipur': 'Manipur',
+  'Shillong': 'Meghalaya', 'Tura': 'Meghalaya',
+  'Mizoram': 'Mizoram', 'Nagaland': 'Nagaland',
+  'Aska': 'Odisha', 'Balasore': 'Odisha', 'Bargarh': 'Odisha', 'Berhampur': 'Odisha', 'Bhadrak': 'Odisha',
+  'Bhubaneswar': 'Odisha', 'Bolangir': 'Odisha', 'Cuttack': 'Odisha', 'Dhenkanal': 'Odisha', 'Jagatsinghpur': 'Odisha',
+  'Jajpur': 'Odisha', 'Kalahandi': 'Odisha', 'Kandhamal': 'Odisha', 'Kendrapara': 'Odisha', 'Keonjhar': 'Odisha',
+  'Koraput': 'Odisha', 'Mayurbhanj': 'Odisha', 'Nabarangpur': 'Odisha', 'Puri': 'Odisha', 'Sambalpur': 'Odisha', 'Sundargarh': 'Odisha',
+  'Puducherry': 'Puducherry',
+  'Amritsar': 'Punjab', 'Anandpur Sahib': 'Punjab', 'Bathinda': 'Punjab', 'Faridkot': 'Punjab',
+  'Fatehgarh Sahib': 'Punjab', 'Firozpur': 'Punjab', 'Gurdaspur': 'Punjab', 'Hoshiarpur': 'Punjab',
+  'Jalandhar': 'Punjab', 'Khadoor Sahib': 'Punjab', 'Ludhiana': 'Punjab', 'Patiala': 'Punjab', 'Sangrur': 'Punjab',
+  'Ajmer': 'Rajasthan', 'Alwar': 'Rajasthan', 'Banswara': 'Rajasthan', 'Barmer': 'Rajasthan',
+  'Bharatpur': 'Rajasthan', 'Bhilwara': 'Rajasthan', 'Bikaner': 'Rajasthan', 'Chittorgarh': 'Rajasthan',
+  'Churu': 'Rajasthan', 'Dausa': 'Rajasthan', 'Ganganagar': 'Rajasthan', 'Jaipur': 'Rajasthan',
+  'Jaipur Rural': 'Rajasthan', 'Jalore': 'Rajasthan', 'Jhalawar-Baran': 'Rajasthan', 'Jhunjhunu': 'Rajasthan',
+  'Jodhpur': 'Rajasthan', 'Karauli-Dholpur': 'Rajasthan', 'Kota': 'Rajasthan', 'Nagaur': 'Rajasthan',
+  'Pali': 'Rajasthan', 'Rajsamand': 'Rajasthan', 'Sikar': 'Rajasthan', 'Tonk-Sawai Madhopur': 'Rajasthan', 'Udaipur': 'Rajasthan',
+  'Sikkim': 'Sikkim',
+  'Arakkonam': 'Tamil Nadu', 'Arani': 'Tamil Nadu', 'Chennai Central': 'Tamil Nadu', 'Chennai North': 'Tamil Nadu',
+  'Chennai South': 'Tamil Nadu', 'Chidambaram': 'Tamil Nadu', 'Coimbatore': 'Tamil Nadu', 'Cuddalore': 'Tamil Nadu',
+  'Dharmapuri': 'Tamil Nadu', 'Dindigul': 'Tamil Nadu', 'Erode': 'Tamil Nadu', 'Kallakurichi': 'Tamil Nadu',
+  'Kancheepuram': 'Tamil Nadu', 'Kanniyakumari': 'Tamil Nadu', 'Karur': 'Tamil Nadu', 'Krishnagiri': 'Tamil Nadu',
+  'Madurai': 'Tamil Nadu', 'Mayiladuthurai': 'Tamil Nadu', 'Nagapattinam': 'Tamil Nadu', 'Namakkal': 'Tamil Nadu',
+  'Nilgiris': 'Tamil Nadu', 'Perambalur': 'Tamil Nadu', 'Pollachi': 'Tamil Nadu', 'Ramanathapuram': 'Tamil Nadu',
+  'Salem': 'Tamil Nadu', 'Sivaganga': 'Tamil Nadu', 'Sriperumbudur': 'Tamil Nadu', 'Tenkasi': 'Tamil Nadu',
+  'Thanjavur': 'Tamil Nadu', 'Theni': 'Tamil Nadu', 'Thiruvallur': 'Tamil Nadu', 'Thoothukkudi': 'Tamil Nadu',
+  'Tiruchirappalli': 'Tamil Nadu', 'Tirunelveli': 'Tamil Nadu', 'Tiruppur': 'Tamil Nadu', 'Tiruvannamalai': 'Tamil Nadu',
+  'Vellore': 'Tamil Nadu', 'Viluppuram': 'Tamil Nadu', 'Virudhunagar': 'Tamil Nadu',
+  'Adilabad': 'Telangana', 'Bhongir': 'Telangana', 'Chevella': 'Telangana', 'Hyderabad': 'Telangana',
+  'Karimnagar': 'Telangana', 'Khammam': 'Telangana', 'Mahabubabad': 'Telangana', 'Mahbubnagar': 'Telangana',
+  'Medak': 'Telangana', 'Nagarkurnool': 'Telangana', 'Nalgonda': 'Telangana', 'Nizamabad': 'Telangana',
+  'Peddapalle': 'Telangana', 'Secunderabad': 'Telangana', 'Warangal': 'Telangana', 'Zahirabad': 'Telangana',
+  'Tripura East': 'Tripura', 'Tripura West': 'Tripura',
+  'Agra': 'Uttar Pradesh', 'Aligarh': 'Uttar Pradesh', 'Allahabad': 'Uttar Pradesh', 'Ambedkar Nagar': 'Uttar Pradesh',
+  'Amethi': 'Uttar Pradesh', 'Amroha': 'Uttar Pradesh', 'Aonla': 'Uttar Pradesh', 'Azamgarh': 'Uttar Pradesh',
+  'Badaun': 'Uttar Pradesh', 'Baghpat': 'Uttar Pradesh', 'Bahraich': 'Uttar Pradesh', 'Ballia': 'Uttar Pradesh',
+  'Banda': 'Uttar Pradesh', 'Bansgaon': 'Uttar Pradesh', 'Barabanki': 'Uttar Pradesh', 'Bareilly': 'Uttar Pradesh',
+  'Basti': 'Uttar Pradesh', 'Bhadohi': 'Uttar Pradesh', 'Bijnor': 'Uttar Pradesh', 'Bulandshahr': 'Uttar Pradesh',
+  'Chandauli': 'Uttar Pradesh', 'Deoria': 'Uttar Pradesh', 'Dhaurahra': 'Uttar Pradesh', 'Domariyaganj': 'Uttar Pradesh',
+  'Etah': 'Uttar Pradesh', 'Etawah': 'Uttar Pradesh', 'Faizabad': 'Uttar Pradesh', 'Farrukhabad': 'Uttar Pradesh',
+  'Fatehpur': 'Uttar Pradesh', 'Fatehpur Sikri': 'Uttar Pradesh', 'Firozabad': 'Uttar Pradesh',
+  'Gautam Buddha Nagar': 'Uttar Pradesh', 'Ghaziabad': 'Uttar Pradesh', 'Ghazipur': 'Uttar Pradesh', 'Ghosi': 'Uttar Pradesh',
+  'Gonda': 'Uttar Pradesh', 'Gorakhpur': 'Uttar Pradesh', 'Hardoi': 'Uttar Pradesh', 'Hathras': 'Uttar Pradesh',
+  'Jalaun': 'Uttar Pradesh', 'Jaunpur': 'Uttar Pradesh', 'Jhansi': 'Uttar Pradesh', 'Kairana': 'Uttar Pradesh',
+  'Kaiserganj': 'Uttar Pradesh', 'Kannauj': 'Uttar Pradesh', 'Kanpur': 'Uttar Pradesh', 'Kaushambi': 'Uttar Pradesh',
+  'Kheri': 'Uttar Pradesh', 'Kushi Nagar': 'Uttar Pradesh', 'Lalganj': 'Uttar Pradesh', 'Lucknow': 'Uttar Pradesh',
+  'Machhlishahr': 'Uttar Pradesh', 'Mainpuri': 'Uttar Pradesh', 'Mathura': 'Uttar Pradesh', 'Meerut': 'Uttar Pradesh',
+  'Mirzapur': 'Uttar Pradesh', 'Misrikh': 'Uttar Pradesh', 'Mohanlalganj': 'Uttar Pradesh', 'Moradabad': 'Uttar Pradesh',
+  'Muzaffarnagar': 'Uttar Pradesh', 'Nagina': 'Uttar Pradesh', 'Phulpur': 'Uttar Pradesh', 'Pilibhit': 'Uttar Pradesh',
+  'Pratapgarh': 'Uttar Pradesh', 'Rae Bareli': 'Uttar Pradesh', 'Rampur': 'Uttar Pradesh', 'Robertsganj': 'Uttar Pradesh',
+  'Saharanpur': 'Uttar Pradesh', 'Salempur': 'Uttar Pradesh', 'Sambhal': 'Uttar Pradesh', 'Sant Kabir Nagar': 'Uttar Pradesh',
+  'Shahjahanpur': 'Uttar Pradesh', 'Shrawasti': 'Uttar Pradesh', 'Siddharthnagar': 'Uttar Pradesh', 'Sitapur': 'Uttar Pradesh',
+  'Sultanpur': 'Uttar Pradesh', 'Unnao': 'Uttar Pradesh', 'Varanasi': 'Uttar Pradesh',
+  'Almora': 'Uttarakhand', 'Garhwal': 'Uttarakhand', 'Haridwar': 'Uttarakhand', 'Nainital-Udhamsingh Nagar': 'Uttarakhand', 'Tehri Garhwal': 'Uttarakhand',
+  'Alipurduars': 'West Bengal', 'Arambagh': 'West Bengal', 'Asansol': 'West Bengal', 'Baharampur': 'West Bengal',
+  'Balurghat': 'West Bengal', 'Bangaon': 'West Bengal', 'Bankura': 'West Bengal', 'Barasat': 'West Bengal',
+  'Bardhaman Durgapur': 'West Bengal', 'Bardhaman Purba': 'West Bengal', 'Barrackpore': 'West Bengal',
+  'Basirhat': 'West Bengal', 'Birbhum': 'West Bengal', 'Bishnupur': 'West Bengal', 'Bolpur': 'West Bengal',
+  'Cooch Behar': 'West Bengal', 'Darjeeling': 'West Bengal', 'Diamond Harbour': 'West Bengal', 'Dum Dum': 'West Bengal',
+  'Ghatal': 'West Bengal', 'Hooghly': 'West Bengal', 'Howrah': 'West Bengal', 'Jadavpur': 'West Bengal',
+  'Jalpaiguri': 'West Bengal', 'Jangipur': 'West Bengal', 'Jaynagar': 'West Bengal', 'Jhargram': 'West Bengal',
+  'Kanthi': 'West Bengal', 'Kolkata Dakshin': 'West Bengal', 'Kolkata Uttar': 'West Bengal', 'Krishnanagar': 'West Bengal',
+  'Maldaha Dakshin': 'West Bengal', 'Maldaha Uttar': 'West Bengal', 'Mathurapur': 'West Bengal', 'Medinipur': 'West Bengal',
+  'Murshidabad': 'West Bengal', 'Purulia': 'West Bengal', 'Raiganj': 'West Bengal', 'Ranaghat': 'West Bengal',
+  'Sreerampur': 'West Bengal', 'Tamluk': 'West Bengal', 'Uluberia': 'West Bengal'
+};
+
 const ALL_543_SEATS: string[] = [
-  'Andaman and Nicobar Islands', 'Amalapuram', 'Anakapalli', 'Anantapur', 'Araku', 'Bapatla', 'Chittoor', 'Eluru', 'Guntur', 'Hindupur', 'Kadapa', 'Kakinada', 'Kurnool', 'Machilipatnam', 'Nandyal', 'Narasaraopet', 'Narsapuram', 'Nellore', 'Ongole', 'Rajahmundry', 'Rajampet', 'Srikakulam', 'Tirupati', 'Vijayawada', 'Visakhapatnam', 'Vizianagaram',
+  'Amalapuram', 'Anakapalli', 'Anantapur', 'Andaman and Nicobar Islands', 'Araku', 'Bapatla', 'Chittoor', 'Eluru', 'Guntur', 'Hindupur', 'Kadapa', 'Kakinada', 'Kurnool', 'Machilipatnam', 'Nandyal', 'Narasaraopet', 'Narsapuram', 'Nellore', 'Ongole', 'Rajahmundry', 'Rajampet', 'Srikakulam', 'Tirupati', 'Vijayawada', 'Visakhapatnam', 'Vizianagaram',
   'Arunachal East', 'Arunachal West', 'Barpeta', 'Darrang-Udalguri', 'Dhubri', 'Dibrugarh', 'Diphu', 'Guwahati', 'Kaziranga', 'Kokrajhar', 'Lakhimpur', 'Nagaon', 'Silchar', 'Sonitpur',
   'Araria', 'Arrah', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Buxar', 'Darbhanga', 'Gaya', 'Gopalganj', 'Hajipur', 'Jahanabad', 'Jamui', 'Jhanjharpur', 'Karakat', 'Katihar', 'Khagaria', 'Kishanganj', 'Madhepura', 'Madhubani', 'Maharajganj', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Paschim Champaran', 'Pataliputra', 'Patna Sahib', 'Purnia', 'Purvi Champaran', 'Samastipur', 'Saran', 'Sasaram', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Ujiarpur', 'Vaishali', 'Valmiki Nagar',
   'Chandigarh', 'Bastar', 'Bilaspur', 'Durg', 'Janjgir-Champa', 'Kanker', 'Korba', 'Mahasamund', 'Raigarh', 'Raipur', 'Rajnandgaon', 'Surguja',
@@ -50,14 +191,14 @@ const ALL_543_SEATS: string[] = [
   'Bagalkot', 'Bangalore Central', 'Bangalore North', 'Bangalore Rural', 'Bangalore South', 'Belgaum', 'Bellary', 'Bidar', 'Bijapur', 'Chamarajanagar', 'Chikkballapur', 'Chikkodi', 'Chitradurga', 'Dakshina Kannada', 'Davanagere', 'Dharwad', 'Gulbarga', 'Hassan', 'Haveri', 'Kolar', 'Koppal', 'Mandya', 'Mysore', 'Raichur', 'Shimoga', 'Tumkur', 'Udupi Chikmagalur', 'Uttara Kannada',
   'Alappuzha', 'Alathur', 'Attingal', 'Chalakudy', 'Ernakulam', 'Idukki', 'Kannur', 'Kasaragod', 'Kollam', 'Kottayam', 'Kozhikode', 'Malappuram', 'Mavelikkara', 'Palakkad', 'Pathanamthitta', 'Ponnani', 'Thiruvananthapuram', 'Thrissur', 'Vatakara', 'Wayanad', 'Ladakh', 'Lakshadweep',
   'Balaghat', 'Betul', 'Bhind', 'Bhopal', 'Chhindwara', 'Damoh', 'Dewas', 'Dhar', 'Guna', 'Gwalior', 'Hoshangabad', 'Indore', 'Jabalpur', 'Khajuraho', 'Khandwa', 'Khargone', 'Mandla', 'Mandsaur', 'Morena', 'Rajgarh', 'Ratlam', 'Rewa', 'Sagar', 'Satna', 'Shahdol', 'Sidhi', 'Tikamgarh', 'Ujjain', 'Vidisha',
-  'Ahmednagar', 'Akola', 'Amravati', 'Aurangabad', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim',
+  'Ahmednagar', 'Akola', 'Amravati', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim',
   'Inner Manipur', 'Outer Manipur', 'Shillong', 'Tura', 'Mizoram', 'Nagaland',
   'Aska', 'Balasore', 'Bargarh', 'Berhampur', 'Bhadrak', 'Bhubaneswar', 'Bolangir', 'Cuttack', 'Dhenkanal', 'Jagatsinghpur', 'Jajpur', 'Kalahandi', 'Kandhamal', 'Kendrapara', 'Keonjhar', 'Koraput', 'Mayurbhanj', 'Nabarangpur', 'Puri', 'Sambalpur', 'Sundargarh', 'Puducherry',
   'Amritsar', 'Anandpur Sahib', 'Bathinda', 'Faridkot', 'Fatehgarh Sahib', 'Firozpur', 'Gurdaspur', 'Hoshiarpur', 'Jalandhar', 'Khadoor Sahib', 'Ludhiana', 'Patiala', 'Sangrur',
   'Ajmer', 'Alwar', 'Banswara', 'Barmer', 'Bharatpur', 'Bhilwara', 'Bikaner', 'Chittorgarh', 'Churu', 'Dausa', 'Ganganagar', 'Jaipur', 'Jaipur Rural', 'Jalore', 'Jhalawar-Baran', 'Jhunjhunu', 'Jodhpur', 'Karauli-Dholpur', 'Kota', 'Nagaur', 'Pali', 'Rajsamand', 'Sikar', 'Tonk-Sawai Madhopur', 'Udaipur', 'Sikkim',
   'Arakkonam', 'Arani', 'Chennai Central', 'Chennai North', 'Chennai South', 'Chidambaram', 'Coimbatore', 'Cuddalore', 'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kancheepuram', 'Kanniyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai', 'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pollachi', 'Ramanathapuram', 'Salem', 'Sivaganga', 'Sriperumbudur', 'Tenkasi', 'Thanjavur', 'Theni', 'Thiruvallur', 'Thoothukkudi', 'Tiruchirappalli', 'Tirunelveli', 'Tiruppur', 'Tiruvannamalai', 'Vellore', 'Viluppuram', 'Virudhunagar',
   'Adilabad', 'Bhongir', 'Chevella', 'Hyderabad', 'Karimnagar', 'Khammam', 'Mahabubabad', 'Mahbubnagar', 'Medak', 'Nagarkurnool', 'Nalgonda', 'Nizamabad', 'Peddapalle', 'Secunderabad', 'Warangal', 'Zahirabad', 'Tripura East', 'Tripura West',
-  'Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hamirpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Maharajganj', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi',
+  'Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi',
   'Almora', 'Garhwal', 'Haridwar', 'Nainital-Udhamsingh Nagar', 'Tehri Garhwal',
   'Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia'
 ];
@@ -91,6 +232,7 @@ export default function AdminAuditPanel() {
   const [simState, setSimState] = useState('Bihar');
   const [simOption, setSimOption] = useState(0);
   const [simMessage, setSimMessage] = useState('');
+  const [simSeatSearch, setSimSeatSearch] = useState('');
 
   // Cycle Roll-Over State
   const [cycleSimStatus, setCycleSimStatus] = useState('');
@@ -333,7 +475,6 @@ export default function AdminAuditPanel() {
     const confirmText = prompt(`Type "DELETE" to permanently destroy poll "${selectedPoll.title_en}" and its ballot records:`);
     if (confirmText !== 'DELETE') return;
     await supabase.from('ballot_box').delete().eq('poll_id', selectedPoll.id);
-    await supabase.from('participations').delete().eq('poll_id', selectedPoll.id);
     await supabase.from('voter_participations').delete().eq('poll_id', selectedPoll.id);
     await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPoll.id);
     await supabase.from('poll_totals').delete().eq('poll_id', selectedPoll.id);
@@ -384,7 +525,9 @@ export default function AdminAuditPanel() {
 
   const handleSeatChange = (seat: string) => {
     setSimSeat(seat);
-    if (QUICK_SEATS[seat]) {
+    if (SEAT_TO_STATE_MAP[seat]) {
+      setSimState(SEAT_TO_STATE_MAP[seat]);
+    } else if (QUICK_SEATS[seat]) {
       setSimState(QUICK_SEATS[seat]);
     }
   };
@@ -442,7 +585,6 @@ export default function AdminAuditPanel() {
     if (isAllPollsSelected) {
       if (!confirm('CAUTION: You have selected [ALL POLLS]. Reset all votes across the platform?')) return;
       await supabase.from('ballot_box').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('participations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('voter_participations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('constituency_tallies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('poll_totals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -450,7 +592,6 @@ export default function AdminAuditPanel() {
     } else {
       if (!confirm(`Reset all votes for poll ${selectedPollId}?`)) return;
       await supabase.from('ballot_box').delete().eq('poll_id', selectedPollId);
-      await supabase.from('participations').delete().eq('poll_id', selectedPollId);
       await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
       await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
       await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
@@ -574,7 +715,7 @@ export default function AdminAuditPanel() {
               {isPlatformFrozen ? '▶ Unfreeze Platform' : '🚨 Freeze Platform'}
             </button>
             <button
-              onClick={() => setActiveAdminTab(activeAdminTab === 'AUDIT' ? 'CREATE_POLL' : 'AUDIT')}
+              onClick={() => setActiveAdminTab(activeAdminTab === 'CREATE_POLL' ? 'CREATE_POLL' : 'AUDIT')}
               style={{ padding: '8px 16px', backgroundColor: activeAdminTab === 'CREATE_POLL' ? '#0f172a' : '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
             >
               {activeAdminTab === 'CREATE_POLL' ? '← Back to Live Audit' : '＋ Deploy New Poll'}
@@ -807,8 +948,8 @@ export default function AdminAuditPanel() {
                 <span style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Total Civic Ballots</span>
                 <div style={{ fontSize: '20px', fontWeight: 900, color: '#0284c7', marginTop: '4px' }}>{ballotBoxTotalCount} Cast</div>
               </div>
-              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>Top Hotspot</span>
+              <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '12px', border: '1px solid #b45309', textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#b45309' }}>Top Hotspot</span>
                 <div style={{ fontSize: '16px', fontWeight: 900, color: '#b45309', marginTop: '6px' }}>
                   {topHotspots[0] ? `${topHotspots[0].constituency_name} (${topHotspots[0].total_votes})` : 'Awaiting Data'}
                 </div>
@@ -1009,10 +1150,15 @@ export default function AdminAuditPanel() {
               </div>
             </div>
 
-            {/* Sandbox Live Ballot Injector & Cycle Controls */}
+            {/* Sandbox Live Ballot Injector with ALL 543 Lok Sabha Seats */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Realtime Testing & Cadence Controls</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Realtime Testing (543 Lok Sabha Seats)</h3>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '3px 0 0 0' }}>
+                    Inject test ballots into any of India&apos;s 543 constituencies to verify map choropleth &amp; tallies.
+                  </p>
+                </div>
                 {isAllPollsSelected && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Target Poll:</span>
@@ -1029,16 +1175,30 @@ export default function AdminAuditPanel() {
                 )}
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 2fr auto', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.6fr auto', gap: '10px', alignItems: 'center' }}>
+                {/* 543-Seat Select with Quick Picks & Search Filtering */}
                 <select
                   value={simSeat}
                   onChange={(e) => handleSeatChange(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, backgroundColor: '#ffffff', color: '#0f172a' }}
                 >
-                  {Object.keys(QUICK_SEATS).map((s) => (
-                    <option key={s} value={s}>{s} ({QUICK_SEATS[s]})</option>
-                  ))}
+                  <optgroup label="⚡ Quick Test Seats">
+                    {Object.keys(QUICK_SEATS).map((s) => (
+                      <option key={`quick-${s}`} value={s}>
+                        {s} ({QUICK_SEATS[s]})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="🇮🇳 All 543 Lok Sabha Constituencies">
+                    {ALL_543_SEATS.map((s) => (
+                      <option key={`all-${s}`} value={s}>
+                        {s} {SEAT_TO_STATE_MAP[s] ? `(${SEAT_TO_STATE_MAP[s]})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
+
+                {/* State Input - Auto populates, but editable */}
                 <input
                   type="text"
                   placeholder="State"
@@ -1046,6 +1206,8 @@ export default function AdminAuditPanel() {
                   onChange={(e) => setSimState(e.target.value)}
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 />
+
+                {/* Option Selector */}
                 <select
                   value={simOption}
                   onChange={(e) => setSimOption(Number(e.target.value))}
@@ -1061,9 +1223,10 @@ export default function AdminAuditPanel() {
                     </option>
                   ))}
                 </select>
+
                 <button
                   onClick={handleSimulateBallot}
-                  style={{ padding: '10px 18px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                  style={{ padding: '10px 18px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
                   Cast Test Vote
                 </button>
