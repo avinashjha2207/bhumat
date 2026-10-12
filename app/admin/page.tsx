@@ -715,7 +715,7 @@ export default function AdminAuditPanel() {
               {isPlatformFrozen ? '▶ Unfreeze Platform' : '🚨 Freeze Platform'}
             </button>
             <button
-              onClick={() => setActiveAdminTab(activeAdminTab === 'CREATE_POLL' ? 'CREATE_POLL' : 'AUDIT')}
+              onClick={() => setActiveAdminTab(activeAdminTab === 'AUDIT' ? 'CREATE_POLL' : 'AUDIT')}
               style={{ padding: '8px 16px', backgroundColor: activeAdminTab === 'CREATE_POLL' ? '#0f172a' : '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
             >
               {activeAdminTab === 'CREATE_POLL' ? '← Back to Live Audit' : '＋ Deploy New Poll'}
