@@ -9,6 +9,49 @@ const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const TIE_COLOR = '#475569';
 const RADAR_GREEN = '#10b981';
 
+// 5-Tier HSL depth map corresponding to option palette indexes [0, 1, 2, 3]
+const TIER_HUE_MAP: Record<number, number> = {
+  0: 24,  // Orange
+  1: 160, // Emerald Green
+  2: 199, // Sky Blue
+  3: 262  // Purple
+};
+
+/**
+ * 5-Tier Logarithmic Depth Scaler
+ * Tiers:
+ * 0: 0 votes -> #e2e8f0
+ * 1: 1 - 9 votes -> 35% Saturation, 88% Lightness (Subtle Early Pulse)
+ * 2: 10 - 24 votes -> 55% Saturation, 75% Lightness (Emerging Trend)
+ * 3: 25 - 49 votes -> 75% Saturation, 60% Lightness (Pre-Quorum)
+ * 4: 50 - 149 votes -> 95% Saturation, 48% Lightness (Fortified Quorum)
+ * 5: 150+ votes -> 100% Saturation, 42% Lightness (Sovereign Hotspot)
+ */
+function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean): string {
+  if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
+  if (isTie) {
+    if (totalVotes >= 50) return '#334155';
+    if (totalVotes >= 25) return '#475569';
+    return '#94a3b8';
+  }
+
+  const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
+
+  if (totalVotes >= 150) {
+    return `hsl(${hue}, 100%, 42%)`;
+  }
+  if (totalVotes >= 50) {
+    return `hsl(${hue}, 95%, 48%)`;
+  }
+  if (totalVotes >= 25) {
+    return `hsl(${hue}, 75%, 60%)`;
+  }
+  if (totalVotes >= 10) {
+    return `hsl(${hue}, 55%, 72%)`;
+  }
+  return `hsl(${hue}, 42%, 84%)`;
+}
+
 interface Poll {
   id: string;
   category: string;
@@ -169,7 +212,7 @@ export default function PollExpandedView({
     };
   }, [poll.id]);
 
-  // 2. Fetch GeoJSON
+  // 2. Fetch GeoJSON (Preserving Exact Unskewed Paths)
   useEffect(() => {
     let isMounted = true;
     setIsLoadingGeo(true);
@@ -208,25 +251,21 @@ export default function PollExpandedView({
     let totalBharatVotes = 0;
     const bharatCounts: Record<number, number> = {};
     poll.options.forEach((_, idx) => (bharatCounts[idx] = 0));
-
     let totalStateVotes = 0;
     const stateCounts: Record<number, number> = {};
     poll.options.forEach((_, idx) => (stateCounts[idx] = 0));
-
     let userFound: any = null;
     const grid: any[] = [];
 
     tallies.forEach((row: any) => {
       const counts: Record<number, number> = {};
       let seatTotal = 0;
-
       poll.options.forEach((_, idx) => {
         const c = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
         counts[idx] = c;
         seatTotal += c;
         bharatCounts[idx] = (bharatCounts[idx] || 0) + c;
         totalBharatVotes += c;
-
         if (userState && clean(row.state_name) === clean(userState)) {
           stateCounts[idx] = (stateCounts[idx] || 0) + c;
           totalStateVotes += c;
@@ -236,7 +275,6 @@ export default function PollExpandedView({
       let highestVotes = -1;
       let winningOptIdx: number | null = null;
       let isTie = false;
-
       Object.entries(counts).forEach(([idxStr, count]) => {
         const optIdx = parseInt(idxStr, 10);
         if (count > highestVotes) {
@@ -255,6 +293,10 @@ export default function PollExpandedView({
         ? (lang === 'HI' ? poll.options[winningOptIdx]?.text_hi : poll.options[winningOptIdx]?.text_en) || 'Awaiting'
         : 'Awaiting Ballots';
 
+      let trendLabel = lang === 'HI' ? 'प्रारंभिक' : 'Early Trend';
+      if (seatTotal >= 50) trendLabel = lang === 'HI' ? 'सत्यापित' : 'Fortified Quorum';
+      else if (seatTotal >= 25) trendLabel = lang === 'HI' ? 'प्रगतिशील' : 'Trending Up';
+
       const entry = {
         seatName: row.constituency_name,
         stateName: row.state_name,
@@ -263,7 +305,7 @@ export default function PollExpandedView({
         leadingOptionText: leadingText,
         leadingPercent: leadingPct,
         isTie,
-        trend: seatTotal >= 20 ? (lang === 'HI' ? 'सत्यापित' : 'Fortified') : (lang === 'HI' ? 'रुझान' : 'Early Trend')
+        trend: trendLabel
       };
 
       const key = `${clean(row.constituency_name)}___${clean(row.state_name)}`;
@@ -285,7 +327,6 @@ export default function PollExpandedView({
       let highest = -1;
       let winningIdx: number | null = null;
       let tie = false;
-
       Object.entries(counts).forEach(([idxStr, c]) => {
         const idx = parseInt(idxStr, 10);
         if (c > highest) {
@@ -296,20 +337,17 @@ export default function PollExpandedView({
           tie = true;
         }
       });
-
       const pct = Math.round((highest / total) * 100);
       const text = tie
         ? 'Split Mat (Tie)'
         : winningIdx !== null && highest > 0
         ? (lang === 'HI' ? poll.options[winningIdx]?.text_hi : poll.options[winningIdx]?.text_en) || 'Split Mat'
         : 'Awaiting Ballots';
-
       const color = tie
         ? TIE_COLOR
         : winningIdx !== null
         ? OPTION_PALETTE[winningIdx % OPTION_PALETTE.length]
         : '#64748b';
-
       return { total, text, percent: pct, color };
     };
 
@@ -322,7 +360,7 @@ export default function PollExpandedView({
     };
   }, [tallies, poll.options, userSeatName, userState, lang]);
 
-  // 4. SVG Renderer with Zoom, Traveling Cursor Tooltip, and Search Highlighting
+  // 4. SVG Renderer (Preserving Identity Projection, Adding 5-Tier Fill & Stroke Dynamics)
   useEffect(() => {
     if (viewMode !== 'MAP' || !geoData || !svgRef.current || !containerRef.current) return;
     const width = containerRef.current.clientWidth ? Math.min(containerRef.current.clientWidth - 28, 440) : 380;
@@ -331,10 +369,10 @@ export default function PollExpandedView({
     svg.selectAll('*').remove();
     svg.attr('viewBox', `0 0 ${width} ${height}`);
 
+    // Exact GeoIdentity projection preserving true map proportions
     const projection = d3.geoIdentity()
       .reflectY(true)
       .fitExtent([[12, 12], [width - 12, height - 12]], geoData);
-
     const pathGenerator = d3.geoPath().projection(projection);
 
     const zoomGroup = svg.append('g').attr('class', 'zoom-viewport');
@@ -344,13 +382,12 @@ export default function PollExpandedView({
       .on('zoom', (event: any) => {
         zoomGroup.attr('transform', event.transform);
       });
-
     svg.call(zoom as any);
     zoomBehaviorRef.current = { zoom, svg };
 
     const searchKeyword = clean(searchFilter);
 
-    // Constituencies
+    // Constituencies with 5-Tier Logarithmic Color Intensity
     zoomGroup.selectAll('path.constituency')
       .data(geoData.features || [])
       .enter()
@@ -364,9 +401,7 @@ export default function PollExpandedView({
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const match = tallyMap.get(`${seat}___${state}`);
         if (!match || match.totalVotes === 0) return UNPOLLED_SEAT_COLOR;
-        if (match.isTie) return TIE_COLOR;
-        if (match.leadingOptionIdx !== null) return OPTION_PALETTE[match.leadingOptionIdx % OPTION_PALETTE.length];
-        return UNPOLLED_SEAT_COLOR;
+        return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.isTie);
       })
       .attr('stroke', (d: any) => {
         const props = d.properties || {};
@@ -375,7 +410,9 @@ export default function PollExpandedView({
         if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
           return '#0f172a';
         }
-        return '#ffffff';
+        const match = tallyMap.get(`${seat}___${state}`);
+        if (match && match.totalVotes >= 50) return '#ffffff'; // Clean white boundary for fortified seats
+        return '#cbd5e1'; // Subtle distinct outline for unpolled/early seats
       })
       .attr('stroke-width', (d: any) => {
         const props = d.properties || {};
@@ -384,17 +421,20 @@ export default function PollExpandedView({
         if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
           return 2.0;
         }
-        return 0.4;
+        const match = tallyMap.get(`${seat}___${state}`);
+        if (match && match.totalVotes >= 50) return 0.9;
+        return 0.35;
       })
       .attr('opacity', (d: any) => {
         if (!searchKeyword) return 1;
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
-        return seat.includes(searchKeyword) || state.includes(searchKeyword) ? 1 : 0.35;
+        return seat.includes(searchKeyword) || state.includes(searchKeyword) ? 1 : 0.3;
       })
       .style('cursor', 'pointer')
-      .on('mousemove touchmove', function (event: any, d: any) {
+      .on('click touchstart', function (event: any, d: any) {
+        event.stopPropagation();
         const props = d.properties || {};
         const seatName = props.PC_NAME || props.pc_name || props.name || 'Unknown';
         const stateName = props.ST_NAME || props.st_name || props.state || 'Bharat';
@@ -404,9 +444,9 @@ export default function PollExpandedView({
           seatName,
           stateName,
           leadingOptionText: match ? match.leadingOptionText : 'Awaiting Ballots',
-          totalVotes: match ? match.totalVotes : 0
+          totalVotes: match ? match.totalVotes : 0,
+          trend: match ? match.trend : 'Awaiting'
         });
-
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
           const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
@@ -416,19 +456,11 @@ export default function PollExpandedView({
             y: Math.max(10, clientY - rect.top - 80)
           });
         }
-
         if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
         tooltipTimeoutRef.current = setTimeout(() => {
           setHoveredSeat(null);
           setTooltipPos(null);
-        }, 4000);
-      })
-      .on('mouseleave touchend', function () {
-        if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
-        tooltipTimeoutRef.current = setTimeout(() => {
-          setHoveredSeat(null);
-          setTooltipPos(null);
-        }, 2500);
+        }, 4500);
       });
 
     // Realtime live shockwave rings
@@ -593,7 +625,7 @@ export default function PollExpandedView({
         </div>
       )}
 
-      {/* Clean Sticky Header Centered Within App Bounds */}
+      {/* Clean Sticky Header */}
       <header
         style={{
           height: '56px',
@@ -709,7 +741,7 @@ export default function PollExpandedView({
           </p>
         </div>
 
-        {/* Card 2: Options Breakdown with Generous Spacing & Secret JanMat Handling */}
+        {/* Card 2: Options Breakdown */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '18px', marginBottom: '12px' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '16px', letterSpacing: '0.04em' }}>
             National Preference Breakdown
@@ -725,8 +757,6 @@ export default function PollExpandedView({
               return (
                 <div key={opt.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                   
-                    {/* Bilingual Options */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
                       <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: optColor, marginTop: '4px', flexShrink: 0 }} />
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -740,7 +770,6 @@ export default function PollExpandedView({
                         )}
                       </div>
                     </div>
-                    {/* Stats and User Choice Tag */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginTop: '2px' }}>
                       {isUserChoice && (
                         <span style={{ fontSize: '10px', color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, whiteSpace: 'nowrap' }}>
@@ -761,51 +790,53 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* Card 3: 3-Box Comparison Ledger */}
+        {/* Card 3: 3-Box Comparison Ledger (11px Font Reduction with Box Height Persistence) */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '14px' }}>
           <div
             onClick={(e) => triggerInfoPopup('National Stance', 'Leading stance aggregating verified votes cast across all constituencies.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 6px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '84px', boxSizing: 'border-box' }}
           >
-            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>BHARAT ⓘ</div>
-            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#f97316', marginTop: '4px', lineHeight: 1.25 }}>
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>BHARAT ⓘ</div>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#f97316', margin: '4px 0', lineHeight: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, wordBreak: 'break-word' }}>
               {bharatStats.text}
             </div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
+            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
               {bharatStats.total} {bharatStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
+
           <div
             onClick={(e) => triggerInfoPopup('State Stance', 'Leading stance across all constituencies inside this state jurisdiction.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 6px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '84px', boxSizing: 'border-box' }}
           >
-            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
-              {(userState || 'ANDHRA PRADESH').toUpperCase()} ⓘ
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {(userState || 'STATE').toUpperCase()} ⓘ
             </div>
-            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.25 }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', margin: '4px 0', lineHeight: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, wordBreak: 'break-word' }}>
               {stateStats.text}
             </div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
+            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
               {stateStats.total} {stateStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
+
           <div
             onClick={(e) => triggerInfoPopup('Seat Stance', 'Leading stance strictly within your registered Lok Sabha constituency.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 6px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '84px', boxSizing: 'border-box' }}
           >
-            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
-              {(userSeatName || 'KURNOOL').toUpperCase()} ⓘ
+            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {(userSeatName || 'SEAT').toUpperCase()} ⓘ
             </div>
-            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#0284c7', marginTop: '4px', lineHeight: 1.25 }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', margin: '4px 0', lineHeight: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, wordBreak: 'break-word' }}>
               {userSeatStats?.leadingOptionText || 'Awaiting'}
             </div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
+            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
               {userSeatStats?.totalVotes || 0} Votes
             </div>
           </div>
         </div>
 
-        {/* Public Opinion Trend Active: Full Width & Scrollable Feed */}
+        {/* Public Opinion Trend Active */}
         <div
           style={{
             width: '100%',
@@ -923,12 +954,15 @@ export default function PollExpandedView({
                 ⟲ Reset
               </button>
             </div>
+
             {isLoadingGeo && (
               <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '12px' }}>
                 Rendering Sovereign Drishti Grid...
               </div>
             )}
+
             <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: isLoadingGeo ? 'none' : 'block', touchAction: 'none' }} />
+
             {/* Traveling Cursor Floating Tooltip */}
             {hoveredSeat && tooltipPos && (
               <div
@@ -950,7 +984,9 @@ export default function PollExpandedView({
                 <div style={{ fontWeight: 800, color: '#38bdf8' }}>{hoveredSeat.seatName}</div>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>{hoveredSeat.stateName}</div>
                 <div style={{ marginTop: '2px', fontWeight: 700 }}>{hoveredSeat.leadingOptionText}</div>
-                <div style={{ fontSize: '9.5px', color: '#64748b' }}>Total: {hoveredSeat.totalVotes}</div>
+                <div style={{ fontSize: '9.5px', color: '#64748b' }}>
+                  Total: {hoveredSeat.totalVotes} ({hoveredSeat.trend})
+                </div>
               </div>
             )}
           </div>
@@ -991,6 +1027,7 @@ export default function PollExpandedView({
                 </button>
               )}
             </div>
+
             {/* 5-Column Structured Table */}
             <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '11.5px' }}>
@@ -1026,7 +1063,7 @@ export default function PollExpandedView({
                             {item.leadingOptionText}
                           </td>
                           <td style={{ padding: '8px 6px' }}>
-                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: item.totalVotes >= 20 ? '#ecfdf5' : '#f8fafc', color: item.totalVotes >= 20 ? '#059669' : '#64748b', fontWeight: 700 }}>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: item.totalVotes >= 50 ? '#ecfdf5' : '#f8fafc', color: item.totalVotes >= 50 ? '#059669' : '#64748b', fontWeight: 700 }}>
                               {item.trend}
                             </span>
                           </td>

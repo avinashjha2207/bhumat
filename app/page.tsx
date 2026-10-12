@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
@@ -15,8 +14,8 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
     </div>
   )
 });
-
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
+const LeaderboardView = dynamic(() => import('./LeaderboardView'), { ssr: false });
 
 const SEAT_CHANGE_COST_DBG = 100;
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
@@ -120,14 +119,38 @@ export default function BhuMatApp() {
   const [activeTab, setActiveTab] = useState<'search' | 'vote' | 'schedule' | 'profile'>('vote');
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [pillarFilter, setPillarFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
-
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
-
   const [username] = useState('CitizenBharat');
-  const [dbgPoints, setDbgPoints] = useState(100);
+
+  const [dbgPoints, setDbgPoints] = useState<number>(() => {
+    try {
+      const saved = safeStorage.getItem('bhumat_dbg_balance');
+      return saved !== null && !isNaN(Number(saved)) ? Number(saved) : 100;
+    } catch (e) {
+      return 100;
+    }
+  });
+
+  const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
+
+  async function fetchLedger(token: string) {
+    try {
+      const { data } = await supabase
+        .from('civic_credit_ledger')
+        .select('*')
+        .eq('voter_token', token)
+        .order('created_at', { ascending: false });
+      if (data) setLedgerEntries(data);
+    } catch (err) {
+      console.warn('Ledger fetch error:', err);
+    }
+  }
+
   const [referralCode, setReferralCode] = useState('BM78491');
   const [janmatAuditsCount, setJanmatAuditsCount] = useState(0);
   const [lokmatPollsCount, setLokmatPollsCount] = useState(0);
@@ -136,20 +159,16 @@ export default function BhuMatApp() {
   const [prevMonthVotesCount, setPrevMonthVotesCount] = useState(0);
   const [deviceHash, setDeviceHash] = useState<string>('');
   const [votingSinceDate, setVotingSinceDate] = useState('2026-10-11');
-
   const [selectedSeat, setSelectedSeat] = useState<{ name: string; state: string } | null>(null);
   const [tentativeSeat, setTentativeSeat] = useState<{ name: string; state: string } | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isChangeSeatModalOpen, setIsChangeSeatModalOpen] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
-
   const [pollSearchQuery, setPollSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
-
   const [polls, setPolls] = useState<Poll[]>([]);
   const [cachedTalliesByPoll, setCachedTalliesByPoll] = useState<Record<string, any[]>>({});
   const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
-
   const [sessionBallotChoices, setSessionBallotChoices] = useState<Record<string, number>>({});
   const [votedCycleKeys, setVotedCycleKeys] = useState<string[]>([]);
   const [voteTimestamps, setVoteTimestamps] = useState<Record<string, string>>({});
@@ -158,7 +177,6 @@ export default function BhuMatApp() {
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
     let x = screenW / 2;
     let y = 140;
-
     if (e) {
       if ('clientX' in e && e.clientX) {
         x = Math.max(20, Math.min(e.clientX, screenW - 20));
@@ -168,7 +186,6 @@ export default function BhuMatApp() {
         y = e.touches[0].clientY - 40;
       }
     }
-
     setToast({ msg, x, y: Math.max(y, 60) });
     setTimeout(() => setToast(null), 3200);
   };
@@ -176,14 +193,11 @@ export default function BhuMatApp() {
   const triggerInfoPopup = (title: string, desc: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (infoPopupTimeoutRef.current) clearTimeout(infoPopupTimeoutRef.current);
-
     const rect = e.currentTarget.getBoundingClientRect();
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
     const clampedX = Math.max(14, Math.min(rect.left - 70, screenW - 215));
     const clampedY = Math.max(65, rect.bottom + 8);
-
     setActiveTooltip({ title, desc, x: clampedX, y: clampedY });
-
     infoPopupTimeoutRef.current = setTimeout(() => {
       setActiveTooltip(null);
     }, 3500);
@@ -224,7 +238,6 @@ export default function BhuMatApp() {
         setCachedTalliesByPoll((prev) => ({ ...prev, [poll.id]: data }));
       }
     } catch (e) {}
-
     window.history.pushState({ modal: 'expanded' }, '');
     setExpandedPoll(poll);
   };
@@ -241,17 +254,13 @@ export default function BhuMatApp() {
     try {
       const activeToken = token || safeStorage.getItem('bhumat_voter_token') || getOrCreateVoterToken();
       
-      // Calculate local fallbacks directly from voter's stored session ballots
       let localTotal = 0;
       let localJanMat = 0;
       let localLokMat = 0;
-
       try {
         const storedCyclesRaw = safeStorage.getItem('bhumat_voted_cycles');
         const storedCycles: string[] = storedCyclesRaw ? JSON.parse(storedCyclesRaw) : [];
         localTotal = storedCycles.length;
-
-        // Count category breakdown using polls state
         storedCycles.forEach((cycleKey) => {
           const pollId = cycleKey.split('___')[0];
           const matchedPoll = polls.find((p) => p.id === pollId);
@@ -265,21 +274,22 @@ export default function BhuMatApp() {
       });
 
       if (data && !error && data.success) {
-        setDbgPoints(data.dbg_balance ?? 100);
+        const verifiedDbg = data.dbg_balance !== undefined ? data.dbg_balance : 100;
+        setDbgPoints(verifiedDbg);
+        try {
+          safeStorage.setItem('bhumat_dbg_balance', String(verifiedDbg));
+        } catch (e) {}
         setReferralCode(data.referral_code ?? 'BM78491');
         
-        // Take maximum of DB and local tally to prevent race condition zeroes
         const verifiedTotal = Math.max(Number(data.total_votes) || 0, localTotal);
         const verifiedJanMat = Math.max(Number(data.janmat_votes) || 0, localJanMat);
         const verifiedLokMat = Math.max(Number(data.lokmat_votes) || 0, localLokMat);
-
         setTotalVotesCount(verifiedTotal);
         setJanmatAuditsCount(verifiedJanMat);
         setLokmatPollsCount(verifiedLokMat);
         setMonthlyVotesCount(verifiedTotal);
         if (data.voting_since) setVotingSinceDate(data.voting_since);
       } else {
-        // Offline or RPC fallback
         if (localTotal > 0) {
           setTotalVotesCount(localTotal);
           setJanmatAuditsCount(localJanMat);
@@ -287,6 +297,7 @@ export default function BhuMatApp() {
           setMonthlyVotesCount(localTotal);
         }
       }
+
       const { data: mData } = await supabase.rpc('check_monthly_milestone', {
         p_voter_token: token
       });
@@ -307,19 +318,16 @@ export default function BhuMatApp() {
     const token = getOrCreateVoterToken();
     setDeviceHash(token);
     syncWallet(token);
-
     try {
       const savedSeat = safeStorage.getItem('bhumat_user_seat');
       const savedState = safeStorage.getItem('bhumat_user_state');
       const savedCycles = safeStorage.getItem('bhumat_voted_cycles');
       const savedChoices = safeStorage.getItem('bhumat_voted_polls');
       const savedTimestamps = safeStorage.getItem('bhumat_vote_timestamps');
-
       if (savedSeat && savedState) {
         setSelectedSeat({ name: savedSeat, state: savedState });
         setIsConfirmed(true);
       }
-
       if (savedCycles) setVotedCycleKeys(JSON.parse(savedCycles));
       if (savedChoices) setSessionBallotChoices(JSON.parse(savedChoices));
       if (savedTimestamps) setVoteTimestamps(JSON.parse(savedTimestamps));
@@ -332,7 +340,6 @@ export default function BhuMatApp() {
         .from('polls')
         .select('*')
         .order('starts_at', { ascending: false });
-
       if (data && data.length > 0 && !error) {
         const formatted = data.map((d: any) => ({
           id: d.id,
@@ -364,15 +371,17 @@ export default function BhuMatApp() {
   const handleConfirmSeat = async () => {
     const seatToConfirm = tentativeSeat || selectedSeat;
     if (!seatToConfirm) return;
-
     if (typeof document !== 'undefined' && document.activeElement) {
       (document.activeElement as HTMLElement)?.blur();
     }
-
-   if (isConfirmed && selectedSeat && selectedSeat.name !== seatToConfirm.name) {
+    if (isConfirmed && selectedSeat && selectedSeat.name !== seatToConfirm.name) {
       const activeToken = deviceHash || safeStorage.getItem('bhumat_voter_token') || getOrCreateVoterToken();
       const { data, error } = await supabase.rpc('deduct_seat_change_fee', {
-        p_voter_token: activeToken
+        p_voter_token: activeToken,
+        p_from_seat: selectedSeat.name,
+        p_to_seat: seatToConfirm.name,
+        p_from_state: selectedSeat.state,
+        p_to_state: seatToConfirm.state
       });
       if (error || !data?.success) {
         const errMsg = error?.message || data?.error || 'Insufficient DBG balance';
@@ -381,21 +390,21 @@ export default function BhuMatApp() {
       }
       if (data?.new_balance !== undefined) {
         setDbgPoints(data.new_balance);
+        try {
+          safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
+        } catch (e) {}
       }
       setFlippedOverrides({});
     }
-
     setSelectedSeat(seatToConfirm);
     setIsConfirmed(true);
     setIsChangeSeatModalOpen(false);
     setTentativeSeat(null);
     setSeatSearchInput('');
-
     try {
       safeStorage.setItem('bhumat_user_seat', seatToConfirm.name);
       safeStorage.setItem('bhumat_user_state', seatToConfirm.state);
     } catch (e) {}
-
     syncWallet(deviceHash);
   };
 
@@ -409,28 +418,24 @@ export default function BhuMatApp() {
 
   const handleCastVote = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
-
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
-    const seatSlug = selectedSeat.name.toLowerCase().trim();
     
-    const scopedCycleVoteKey = `${poll.id}___${dynamicCycle}___${seatSlug}`;
-    const scopedChoiceKey = `${poll.id}___${seatSlug}`;
-
-    if (votedCycleKeys.includes(scopedCycleVoteKey)) {
+    // Strict Lock: Tied strictly to user's ballot on this poll for this cycle
+    const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
+    const choiceKey = `${poll.id}___${dynamicCycle}`;
+    
+    if (votedCycleKeys.includes(cycleVoteKey)) {
       showPointerToast(getFrequencyRevoteMessage(poll.recurrence), e);
       return;
     }
 
-    const updatedKeys = [...votedCycleKeys, scopedCycleVoteKey];
+    const updatedKeys = [...votedCycleKeys, cycleVoteKey];
     setVotedCycleKeys(updatedKeys);
-
-    const updatedChoices = { ...sessionBallotChoices, [scopedChoiceKey]: optionIdx };
+    const updatedChoices = { ...sessionBallotChoices, [choiceKey]: optionIdx };
     setSessionBallotChoices(updatedChoices);
-
     const nowIso = new Date().toISOString();
-    const updatedTimestamps = { ...voteTimestamps, [scopedChoiceKey]: nowIso };
+    const updatedTimestamps = { ...voteTimestamps, [choiceKey]: nowIso };
     setVoteTimestamps(updatedTimestamps);
-
     setTotalVotesCount((prev) => prev + 1);
     setMonthlyVotesCount((prev) => prev + 1);
     if (poll.category === 'JanMat') {
@@ -438,7 +443,6 @@ export default function BhuMatApp() {
     } else {
       setLokmatPollsCount((prev) => prev + 1);
     }
-
     setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
 
     try {
@@ -446,6 +450,20 @@ export default function BhuMatApp() {
       safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
       safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedChoices));
     } catch (err) {}
+
+    // Record Seasonal Civic XP Gamification
+    try {
+      await supabase.rpc('record_vote_gamification', {
+        p_voter_token: deviceHash,
+        p_category: poll.category,
+        p_state_name: selectedSeat.state,
+        p_constituency_name: selectedSeat.name,
+        p_season_id: '2026-10'
+      });
+      setProfileRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      console.warn('Gamification XP logging error:', err);
+    }
 
     await supabase.rpc('cast_ballot_transaction', {
       p_poll_id: poll.id,
@@ -455,7 +473,6 @@ export default function BhuMatApp() {
       p_constituency_name: selectedSeat.name,
       p_selected_option: optionIdx
     });
-
     syncWallet(deviceHash);
   };
 
@@ -467,13 +484,14 @@ export default function BhuMatApp() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
-
-    return polls.filter((p) => {
-      if (!p.starts_at) return false;
-      const d = new Date(p.starts_at);
-      const isCurrentSeason = d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-      return isCurrentSeason && d.getTime() > now.getTime();
-    });
+    return polls
+      .filter((p) => {
+        if (!p.starts_at) return false;
+        const d = new Date(p.starts_at);
+        const isCurrentSeason = d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        return isCurrentSeason && d.getTime() > now.getTime();
+      })
+      .sort((a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime());
   }, [polls]);
 
   const allFlattenedSeats = useMemo(() => {
@@ -518,25 +536,14 @@ export default function BhuMatApp() {
       .slice(0, 5);
   }, [seatSearchInput, allFlattenedSeats, tentativeSeat]);
 
-  const formatRecurrenceBadge = (recurrence?: string) => {
-    const r = (recurrence || 'monthly').toLowerCase();
-    if (r === 'lifetime' || r === 'one_time') return 'One-time';
-    if (r.includes('day')) return 'Daily';
-    if (r.includes('week')) return 'Weekly';
-    if (r.includes('quarter')) return 'Quarterly';
-    if (r.includes('year')) return 'Yearly';
-    return 'Monthly';
-  };
-
   const recognitionTier = resolveCivicRecognitionTier(prevMonthVotesCount);
   const displayMonthlyVotes = Math.max(monthlyVotesCount, totalVotesCount);
 
   if (!mounted) return null;
 
   if (expandedPoll) {
-    const currentSeatSlug = selectedSeat?.name.toLowerCase().trim() || '';
-    const scopedUserChoice = sessionBallotChoices[`${expandedPoll.id}___${currentSeatSlug}`] ?? null;
-
+    const dynamicCycle = expandedPoll.participation_mode === 'recurring' ? getCurrentCycleId(expandedPoll.recurrence) : 'lifetime';
+    const scopedUserChoice = sessionBallotChoices[`${expandedPoll.id}___${dynamicCycle}`] ?? null;
     return (
       <PollExpandedView
         poll={expandedPoll}
@@ -558,7 +565,6 @@ export default function BhuMatApp() {
       <Head>
         <title>BhuMat — Bharat's Sovereign Public Opinion Grid</title>
       </Head>
-
       <style>{`
         @keyframes gentleLiveBlink {
           0% { opacity: 0.35; transform: scale(0.92); }
@@ -573,7 +579,6 @@ export default function BhuMatApp() {
           display: inline-block;
           animation: gentleLiveBlink 2.4s infinite ease-in-out;
         }
-
         @keyframes drishtiActiveBlink {
           0% { opacity: 0.65; transform: scale(0.96); }
           50% { opacity: 1; transform: scale(1.04); }
@@ -581,12 +586,6 @@ export default function BhuMatApp() {
         }
         .drishti-active-chip {
           animation: drishtiActiveBlink 2.6s infinite ease-in-out;
-        }
-
-        @keyframes pulseBreathing {
-          0% { opacity: 0.7; }
-          50% { opacity: 1; }
-          100% { opacity: 0.7; }
         }
         @keyframes headerRadarWave {
           0% { transform: scale(0.6); opacity: 0.9; }
@@ -625,7 +624,7 @@ export default function BhuMatApp() {
         </div>
       )}
 
-      {/* Compact Info Popup with Auto-Dismiss */}
+      {/* Compact Info Popup */}
       {activeTooltip && (
         <div
           onClick={() => setActiveTooltip(null)}
@@ -653,11 +652,10 @@ export default function BhuMatApp() {
         </div>
       )}
 
-      {/* Header with Centered Max-Width Container */}
+      {/* Sticky Top Header */}
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, width: '100%' }}>
         <div style={{ maxWidth: '460px', margin: '0 auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', userSelect: 'none' }}>
-            {/* Strictly BhuMat text is clickable */}
             <span 
               onClick={handleBrandReset} 
               style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', cursor: 'pointer' }}
@@ -708,7 +706,6 @@ export default function BhuMatApp() {
                 <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>
                   Select your Lok Sabha constituency across all 543 seats to unlock your sovereign ballot:
                 </p>
-
                 <div style={{ position: 'relative', width: '100%', marginBottom: '8px' }}>
                   <input
                     type="text"
@@ -726,7 +723,6 @@ export default function BhuMatApp() {
                     </button>
                   )}
                 </div>
-
                 {quickSeatMatches.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                     {quickSeatMatches.map((m) => (
@@ -746,7 +742,6 @@ export default function BhuMatApp() {
                     ))}
                   </div>
                 )}
-
                 <select
                   value={tentativeSeat ? `${tentativeSeat.name}|||${tentativeSeat.state}` : ''}
                   onChange={(e) => {
@@ -770,7 +765,6 @@ export default function BhuMatApp() {
                     </optgroup>
                   ))}
                 </select>
-
                 <button
                   disabled={!tentativeSeat}
                   onClick={handleConfirmSeat}
@@ -797,31 +791,25 @@ export default function BhuMatApp() {
                     Change Seat ({SEAT_CHANGE_COST_DBG} DBG)
                   </button>
                 </div>
-
                 <div style={{ display: 'flex', gap: '6px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '4px', borderRadius: '12px' }}>
                   <button onClick={() => setPillarFilter('ALL')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'ALL' ? '#0f172a' : 'transparent', color: pillarFilter === 'ALL' ? '#ffffff' : '#64748b', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>All Feeds</button>
                   <button onClick={() => setPillarFilter('JanMat')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'JanMat' ? '#059669' : 'transparent', color: pillarFilter === 'JanMat' ? '#ffffff' : '#059669', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>JanMat</button>
                   <button onClick={() => setPillarFilter('LokMat')} style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: 'none', backgroundColor: pillarFilter === 'LokMat' ? '#d97706' : 'transparent', color: pillarFilter === 'LokMat' ? '#ffffff' : '#d97706', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>LokMat</button>
                 </div>
-
                 {liveAccessiblePolls.map((poll) => {
                   const isJanMat = poll.category === 'JanMat';
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                   
-                  const currentSeatSlug = (selectedSeat?.name || '').toLowerCase().trim();
-                  const scopedVoteCycleKey = `${poll.id}___${dynamicCycle}___${currentSeatSlug}`;
-                  const scopedChoiceKey = `${poll.id}___${currentSeatSlug}`;
-
-                  const hasVotedThisCycle = votedCycleKeys.includes(scopedVoteCycleKey);
+                  const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
+                  const choiceKey = `${poll.id}___${dynamicCycle}`;
+                  const hasVotedThisCycle = votedCycleKeys.includes(cycleVoteKey);
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
-                  const userChoiceIdx = sessionBallotChoices[scopedChoiceKey];
-
+                  const userChoiceIdx = sessionBallotChoices[choiceKey];
                   const optionCount = poll.options.length;
-                  // Auto-expand height when flipped to State Drishti so Explore button never clips
+                  
                   const computedCardHeight = isFlipped
-                    ? Math.max(690, 520 + optionCount * 40)
-                    : Math.max(590, 400 + optionCount * 64);
-
+                    ? Math.max(680, 500 + optionCount * 44)
+                    : Math.max(540, 360 + optionCount * 70);
                   return (
                     <div key={poll.id} style={{ perspective: '1200px', width: '100%', minHeight: `${computedCardHeight}px` }}>
                       <div
@@ -843,7 +831,7 @@ export default function BhuMatApp() {
                             backgroundColor: '#ffffff',
                             border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
                             borderRadius: '24px',
-                            padding: '20px',
+                            padding: '18px 18px 14px 18px',
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
@@ -851,10 +839,10 @@ export default function BhuMatApp() {
                           }}
                         >
                           <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '28px', marginBottom: '10px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span className="live-dot-animated" />
-                                <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em' }}>LIVE</span>
+                                <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', letterSpacing: '0.04em', lineHeight: 1 }}>LIVE</span>
                                 <span
                                   onClick={(e) => triggerInfoPopup(
                                     isJanMat ? 'JanMat Civic Audit' : 'LokMat Cultural Pulse',
@@ -863,43 +851,54 @@ export default function BhuMatApp() {
                                       : 'Open Civic Pulse. Choice attributed to your voter profile to reveal community cultural trends.',
                                     e
                                   )}
-                                  style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  style={{
+                                    backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                                    color: isJanMat ? '#059669' : '#d97706',
+                                    fontSize: '10px',
+                                    fontWeight: 800,
+                                    padding: '3px 8px',
+                                    borderRadius: '999px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    lineHeight: 1
+                                  }}
                                 >
                                   <span>{poll.category}</span>
                                   <span style={{ fontSize: '9px', opacity: 0.6 }}>ⓘ</span>
                                 </span>
                               </div>
                               {hasVotedThisCycle && (
-                                <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))} style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                <button
+                                  onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }))}
+                                  style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}
+                                >
                                   View Drishti ↺
                                 </button>
                               )}
                             </div>
-
-                            <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 6px 0', lineHeight: 1.45, wordBreak: 'break-word' }}>
+                            <h3 style={{ fontSize: '16.5px', fontWeight: 900, margin: '0 0 4px 0', lineHeight: 1.4, wordBreak: 'break-word', color: '#0f172a' }}>
                               {lang === 'EN' ? poll.title_en : poll.title_hi}
                             </h3>
-                            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px 0', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                            <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 12px 0', lineHeight: 1.4, wordBreak: 'break-word', fontWeight: 500 }}>
                               {lang === 'EN' ? poll.title_hi : poll.title_en}
                             </p>
-
-                            <div style={{ margin: '4px 0 14px 0', maxWidth: '100%', boxSizing: 'border-box' }}>
+                            <div style={{ margin: '0 0 12px 0', maxWidth: '100%', boxSizing: 'border-box' }}>
                               <TickerTape activePoll={poll} lang={lang} />
                             </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', marginBottom: '14px' }}>
                               {poll.options.map((opt, idx) => {
                                 const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
                                 const isUserChoice = userChoiceIdx === idx;
                                 const showChoiceTag = !isJanMat && isUserChoice && hasVotedThisCycle;
-
                                 return (
                                   <button
                                     key={opt.id}
                                     onClick={(e) => handleCastVote(poll, idx, e)}
                                     style={{
-                                      padding: '14px 16px',
-                                      borderRadius: '14px',
+                                      padding: '12px 14px',
+                                      borderRadius: '13px',
                                       backgroundColor: showChoiceTag ? '#ecfdf5' : '#ffffff',
                                       border: showChoiceTag ? `2px solid ${optColor}` : `1.5px solid ${optColor}`,
                                       textAlign: 'left',
@@ -908,20 +907,20 @@ export default function BhuMatApp() {
                                       boxSizing: 'border-box',
                                       display: 'flex',
                                       flexDirection: 'column',
-                                      gap: '4px'
+                                      gap: '3px'
                                     }}
                                   >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
-                                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', flex: 1, wordBreak: 'break-word', lineHeight: 1.35 }}>
+                                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', flex: 1, wordBreak: 'break-word', lineHeight: 1.3 }}>
                                         {lang === 'EN' ? opt.text_en : opt.text_hi}
                                       </div>
                                       {showChoiceTag && (
-                                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', backgroundColor: '#d1fae5', border: '1px solid #a7f3d0', padding: '2px 7px', borderRadius: '5px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                           ✓ Your Vote
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ fontSize: '11.5px', color: '#64748b', wordBreak: 'break-word', lineHeight: 1.4 }}>
+                                    <div style={{ fontSize: '11px', color: '#64748b', wordBreak: 'break-word', lineHeight: 1.3, fontWeight: 500 }}>
                                       {lang === 'EN' ? opt.text_hi : opt.text_en}
                                     </div>
                                   </button>
@@ -929,11 +928,10 @@ export default function BhuMatApp() {
                               })}
                             </div>
                           </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>{isJanMat ? '🔒 Cryptographic Secret Ballot' : '🗳️ Open Public Mat'}</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: 'auto' }}>
+                            <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 600 }}>{isJanMat ? '🔒 Cryptographic Secret Ballot' : '🗳️ Open Public Mat'}</span>
                             {hasVotedThisCycle && (
-                              <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '8px 14px', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}>
+                              <button onClick={() => openExpandedView(poll)} style={{ background: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, padding: '7px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                                 Explore Full Drishti ↗
                               </button>
                             )}
@@ -950,43 +948,37 @@ export default function BhuMatApp() {
                             backgroundColor: '#ffffff',
                             border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
                             borderRadius: '24px',
-                            padding: '18px',
+                            padding: '18px 18px 14px 18px',
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
-                            boxSizing: 'border-box',
-                            overflow: 'visible'
+                            boxSizing: 'border-box'
                           }}
                         >
                           <div>
-                            {/* Top Status Bar */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <span className="drishti-active-chip" style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '28px', marginBottom: '8px' }}>
+                              <span className="drishti-active-chip" style={{ backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', color: isJanMat ? '#059669' : '#d97706', fontSize: '10.5px', fontWeight: 800, padding: '3px 8px', borderRadius: '999px', lineHeight: 1 }}>
                                 ✓ DRISHTI MAT ACTIVE
                               </span>
-                              <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}>
+                              <button onClick={() => setFlippedOverrides((prev) => ({ ...prev, [poll.id]: false }))} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '10.5px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>
                                 View Ballot ↻
                               </button>
                             </div>
-
-                            {/* Clean Single Selected-Language Question Title */}
-                            <div style={{ marginBottom: '8px', paddingBottom: '4px' }}>
+                            <div style={{ marginBottom: '8px' }}>
                               <h4 style={{ fontSize: '14.5px', fontWeight: 800, margin: 0, color: '#0f172a', lineHeight: 1.35 }}>
                                 {lang === 'EN' ? poll.title_en : poll.title_hi}
                               </h4>
                             </div>
-
-                            {/* Option Color Legend Strip: Full Width Utilization & Auto-Adjusting Spacing */}
                             <div
                               style={{
                                 display: 'grid',
-                                gridTemplateColumns: poll.options.length <= 2 ? '1fr 1fr' : 'repeat(auto-fit, minmax(180px, 1fr))',
-                                gap: '10px 14px',
+                                gridTemplateColumns: poll.options.length <= 2 ? '1fr 1fr' : 'repeat(auto-fit, minmax(160px, 1fr))',
+                                gap: '8px 10px',
                                 backgroundColor: '#f8fafc',
                                 border: '1px solid #e2e8f0',
                                 borderRadius: '12px',
-                                padding: '10px 12px',
-                                marginBottom: '12px',
+                                padding: '9px 11px',
+                                marginBottom: '10px',
                                 boxSizing: 'border-box',
                                 width: '100%'
                               }}
@@ -999,45 +991,24 @@ export default function BhuMatApp() {
                                     key={opt.id}
                                     style={{
                                       display: 'flex',
-                                      alignItems: 'flex-start',
-                                      gap: '7px',
-                                      fontSize: '11px',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      fontSize: '10.5px',
                                       fontWeight: 700,
                                       color: '#1e293b',
-                                      lineHeight: 1.35
+                                      lineHeight: 1.2
                                     }}
                                   >
-                                    <span
-                                      style={{
-                                        width: '8px',
-                                        height: '8px',
-                                        borderRadius: '50%',
-                                        backgroundColor: optColor,
-                                        marginTop: '3px',
-                                        flexShrink: 0
-                                      }}
-                                    />
-                                    <span style={{ wordBreak: 'break-word', flex: 1 }}>
-                                      {optText}
-                                    </span>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: optColor, flexShrink: 0 }} />
+                                    <span style={{ wordBreak: 'break-word', flex: 1 }}>{optText}</span>
                                   </div>
                                 );
                               })}
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  fontSize: '10.5px',
-                                  color: '#64748b',
-                                  fontWeight: 600
-                                }}
-                              >
-                                <span style={{ fontSize: '11px' }}>⚖️</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                                <span>⚖️</span>
                                 <span>Split Mat (Tie)</span>
                               </div>
                             </div>
-
                             {isFlipped && (
                               <DrishtiMap
                                 selectedConstituencyName={selectedSeat?.name}
@@ -1049,14 +1020,12 @@ export default function BhuMatApp() {
                               />
                             )}
                           </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-                            <button onClick={() => openExpandedView(poll)} style={{ width: '100%', height: '44px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '12px', color: isJanMat ? '#059669' : '#d97706', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                          <div style={{ width: '100%', marginTop: 'auto', paddingTop: '10px' }}>
+                            <button onClick={() => openExpandedView(poll)} style={{ width: '100%', height: '42px', backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb', border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`, borderRadius: '11px', color: isJanMat ? '#059669' : '#d97706', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               Explore Full Drishti (543 Seats) 🔓
                             </button>
                           </div>
                         </div>
-
                       </div>
                     </div>
                   );
@@ -1078,9 +1047,7 @@ export default function BhuMatApp() {
                   ● Live Sovereign Consensus
                 </span>
               </div>
-
               <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '6px 0 12px 0' }}>Search Public Opinion Polls</h2>
-
               <div style={{ position: 'relative', width: '100%' }}>
                 <input
                   ref={searchInputRef}
@@ -1100,8 +1067,6 @@ export default function BhuMatApp() {
                 )}
               </div>
             </div>
-
-            {/* Poll Results List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {searchPollMatches.length === 0 ? (
                 <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', padding: '28px', textAlign: 'center', color: '#64748b', fontSize: '13px', border: '1px solid #e2e8f0' }}>
@@ -1130,11 +1095,9 @@ export default function BhuMatApp() {
           </div>
         )}
 
-        {/* TAB 3: SCHEDULE (Redesigned & Visually Self-Explanatory) */}
+        {/* TAB 3: SCHEDULE */}
         {activeTab === 'schedule' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            
-            {/* Active Season Banner */}
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px' }}>
@@ -1156,13 +1119,10 @@ export default function BhuMatApp() {
               </p>
             </div>
 
-            {/* Daily Drop Rhythm Cards */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
                 Daily Drop Rhythm
               </div>
-
-              {/* JanMat Audit Drop */}
               <div
                 onClick={(e) => triggerInfoPopup('JanMat Drop Rationale', 'Published every evening at 8:00 PM. Features critical civic and policy audits using anonymous secret ballots.', e)}
                 style={{ backgroundColor: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '16px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
@@ -1178,8 +1138,6 @@ export default function BhuMatApp() {
                 </div>
                 <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 800 }}>Active ❯</span>
               </div>
-
-              {/* LokMat Debate Drop */}
               <div
                 onClick={(e) => triggerInfoPopup('LokMat Drop Rationale', 'Published every morning at 8:00 AM. Covers public debates and sports/culture topics with transparent community profiles.', e)}
                 style={{ backgroundColor: '#ffffff', border: '1.5px solid #fde68a', borderRadius: '16px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
@@ -1197,7 +1155,6 @@ export default function BhuMatApp() {
               </div>
             </div>
 
-            {/* How Cycles Work */}
             <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>HOW CADENCE & REVOTING WORK</span>
@@ -1209,18 +1166,16 @@ export default function BhuMatApp() {
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px', color: '#64748b', lineHeight: 1.45 }}>
-                <div>• <strong>Daily Polls:</strong> Re-vote unlocks every 24 hours at 8:00 AM.</div>
-                <div>• <strong>Monthly Polls:</strong> Persist throughout the Ashwin cycle with historical shift tracking.</div>
-                <div>• <strong>Constituency Scoping:</strong> Changing your seat gives you a fresh ballot in your new constituency.</div>
+                <div>• <strong>Daily Mat:</strong> Re-vote unlocks every 24 hours at 8:00 AM / 8:00 PM.</div>
+                <div>• <strong>Monthly Audits:</strong> Persist throughout the active season with historical trend preservation.</div>
+                <div>• <strong>One-Ballot Lock:</strong> One vote per poll cycle. Shifting your seat locks previous cycle votes and applies only to future ballots.</div>
               </div>
             </div>
 
-            {/* Upcoming Drops Section */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
                 Upcoming Queue ({currentSeasonFuturePolls.length})
               </div>
-
               {currentSeasonFuturePolls.length === 0 ? (
                 <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
                   ✓ All scheduled drops for this cycle are live in your Vote feed.
@@ -1243,11 +1198,10 @@ export default function BhuMatApp() {
                 ))
               )}
             </div>
-
           </div>
         )}
 
-        {/* TAB 4: PROFILE (Redesigned Civic Passport) */}
+        {/* TAB 4: PROFILE */}
         {activeTab === 'profile' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '22px', padding: '20px' }}>
@@ -1293,6 +1247,61 @@ export default function BhuMatApp() {
                   <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>Constituency Shift Fee</div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>100 DBG / Shift</div>
                 </div>
+              </div>
+
+              {/* Itemized Civic Ledger Drawer */}
+              <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px', marginTop: '12px' }}>
+                <div 
+                  onClick={() => {
+                    const nextState = !isLedgerOpen;
+                    setIsLedgerOpen(nextState);
+                    if (nextState) fetchLedger(deviceHash);
+                  }}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '13px' }}>📜</span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>Audit Ledger & DBG Receipts</span>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>
+                    {isLedgerOpen ? 'Hide ▲' : 'View History ▼'}
+                  </span>
+                </div>
+                {isLedgerOpen && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                    {ledgerEntries.length === 0 ? (
+                      <div style={{ fontSize: '11.5px', color: '#64748b', textAlign: 'center', padding: '12px 0' }}>
+                        No seat shifts or deductions recorded yet.
+                      </div>
+                    ) : (
+                      ledgerEntries.map((tx) => (
+                        <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#1e293b' }}>
+                              {tx.description}
+                            </span>
+                            <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>
+                              {new Date(tx.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 900, color: tx.delta < 0 ? '#ef4444' : '#10b981', flexShrink: 0 }}>
+                            {tx.delta > 0 ? `+${tx.delta}` : tx.delta} DBG
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Seasonal Citizen Leaderboard & Gamification Engine */}
+              <div style={{ marginTop: '14px' }}>
+                <LeaderboardView
+  userState={selectedSeat?.state || 'Bihar'}
+  userSeat={selectedSeat?.name || 'Karakat'}
+  voterToken={deviceHash}
+  refreshTrigger={profileRefreshKey}
+/>
               </div>
 
               {/* Monthly Season Progress Bar */}
@@ -1448,12 +1457,10 @@ export default function BhuMatApp() {
                 ✕
               </button>
             </div>
-
             <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px 0' }}>Change Lok Sabha Seat</h3>
             <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 14px 0' }}>
               Changing your parliamentary seat costs <strong>100 DBG</strong>. Choose your new constituency below:
             </p>
-
             <div style={{ position: 'relative', width: '100%', marginBottom: '8px' }}>
               <input
                 type="text"
@@ -1471,7 +1478,6 @@ export default function BhuMatApp() {
                 </button>
               )}
             </div>
-
             {quickSeatMatches.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                 {quickSeatMatches.map((m) => (
@@ -1491,7 +1497,6 @@ export default function BhuMatApp() {
                 ))}
               </div>
             )}
-
             <select
               value={tentativeSeat ? `${tentativeSeat.name}|||${tentativeSeat.state}` : ''}
               onChange={(e) => {
@@ -1515,7 +1520,6 @@ export default function BhuMatApp() {
                 </optgroup>
               ))}
             </select>
-
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={() => setIsChangeSeatModalOpen(false)}
@@ -1535,8 +1539,7 @@ export default function BhuMatApp() {
         </div>
       )}
 
-      {/* Fixed Full-Width Wrapper with Centered Content Container */}
-      {/* Streamlined 4-Tab Dock Navigation: Fully Anchored & Centered */}
+      {/* 4-Tab Dock Navigation */}
       <nav
         style={{
           position: 'fixed',
@@ -1573,7 +1576,6 @@ export default function BhuMatApp() {
             <span style={{ fontSize: '18px', lineHeight: 1 }}>🔍</span>
             <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'search' ? 800 : 600, marginTop: '3px' }}>Search</span>
           </button>
-
           <button
             onClick={() => setActiveTab('vote')}
             style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
@@ -1581,7 +1583,6 @@ export default function BhuMatApp() {
             <span style={{ fontSize: '19px', lineHeight: 1 }}>🗳️</span>
             <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'vote' ? 800 : 600, marginTop: '3px' }}>Vote</span>
           </button>
-
           <button
             onClick={() => setActiveTab('schedule')}
             style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
@@ -1589,7 +1590,6 @@ export default function BhuMatApp() {
             <span style={{ fontSize: '18px', lineHeight: 1 }}>📅</span>
             <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'schedule' ? 800 : 600, marginTop: '3px' }}>Schedule</span>
           </button>
-
           <button
             onClick={() => {
               setActiveTab('profile');

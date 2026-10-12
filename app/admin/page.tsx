@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../utils/supabaseClient';
+import { getCurrentCycleId } from '../utils/cycleManager';
 
 interface Poll {
   id: string;
@@ -541,9 +542,14 @@ export default function AdminAuditPanel() {
     }
     setSimMessage('Casting simulated ballot...');
     const fakeToken = 'sim_' + Math.random().toString(36).substring(2, 10);
+    const activePollObj = polls.find((p) => p.id === targetPoll);
+    const targetCycle = activePollObj?.participation_mode === 'recurring' 
+      ? getCurrentCycleId(activePollObj?.recurrence) 
+      : (activePollObj?.current_cycle || '2026-10');
+
     const { data, error } = await supabase.rpc('cast_ballot_transaction', {
       p_poll_id: targetPoll,
-      p_cycle_id: '2026-10',
+      p_cycle_id: targetCycle,
       p_voter_token: fakeToken,
       p_state_name: simState,
       p_constituency_name: simSeat,
@@ -613,6 +619,16 @@ export default function AdminAuditPanel() {
       text_en: opt.text_en.trim(),
       text_hi: (opt.text_hi || opt.text_en).trim()
     }));
+    const computedCycle = newRecurrence === 'lifetime' ? 'lifetime' : getCurrentCycleId(newRecurrence);
+
+    // Compute nominal closes_at based on chosen recurrence cadence
+    const startDate = new Date(newStartsAt);
+    let closeDate = new Date(startDate);
+    if (newRecurrence === 'daily') closeDate.setDate(closeDate.getDate() + 1);
+    else if (newRecurrence === 'weekly') closeDate.setDate(closeDate.getDate() + 7);
+    else if (newRecurrence === 'monthly') closeDate.setMonth(closeDate.getMonth() + 1);
+    else closeDate.setFullYear(closeDate.getFullYear() + 5);
+
     const payload = {
       id: newPollId,
       category: newCategory,
@@ -621,8 +637,9 @@ export default function AdminAuditPanel() {
       options: formattedOptions,
       participation_mode: newRecurrence === 'lifetime' ? 'one_time' : 'recurring',
       recurrence: newRecurrence,
-      current_cycle: '2026-10',
-      starts_at: new Date(newStartsAt).toISOString(),
+      current_cycle: computedCycle,
+      starts_at: startDate.toISOString(),
+      closes_at: closeDate.toISOString(),
       is_active: true,
       target_region_type: newTargetType,
       target_seats: newTargetType === 'CUSTOM_SEATS' ? customTargetSeats : [],

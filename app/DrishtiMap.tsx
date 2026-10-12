@@ -8,6 +8,49 @@ const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const TIE_COLOR = '#475569';
 const RADAR_GREEN = '#10b981';
 
+// 5-Tier HSL depth map corresponding to option palette indexes [0, 1, 2, 3]
+const TIER_HUE_MAP: Record<number, number> = {
+  0: 24,  // Orange
+  1: 160, // Emerald Green
+  2: 199, // Sky Blue
+  3: 262  // Purple
+};
+
+/**
+ * 5-Tier Logarithmic Depth Scaler
+ * Tiers:
+ * 0: 0 votes -> #e2e8f0
+ * 1: 1 - 9 votes -> 42% Saturation, 84% Lightness (Subtle Early Pulse)
+ * 2: 10 - 24 votes -> 55% Saturation, 72% Lightness (Emerging Trend)
+ * 3: 25 - 49 votes -> 75% Saturation, 60% Lightness (Pre-Quorum)
+ * 4: 50 - 149 votes -> 95% Saturation, 48% Lightness (Fortified Quorum)
+ * 5: 150+ votes -> 100% Saturation, 42% Lightness (Sovereign Hotspot)
+ */
+function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean): string {
+  if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
+  if (isTie) {
+    if (totalVotes >= 50) return '#334155';
+    if (totalVotes >= 25) return '#475569';
+    return '#94a3b8';
+  }
+
+  const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
+
+  if (totalVotes >= 150) {
+    return `hsl(${hue}, 100%, 42%)`;
+  }
+  if (totalVotes >= 50) {
+    return `hsl(${hue}, 95%, 48%)`;
+  }
+  if (totalVotes >= 25) {
+    return `hsl(${hue}, 75%, 60%)`;
+  }
+  if (totalVotes >= 10) {
+    return `hsl(${hue}, 55%, 72%)`;
+  }
+  return `hsl(${hue}, 42%, 84%)`;
+}
+
 interface Option {
   id: number;
   text_en: string;
@@ -167,14 +210,8 @@ export default function DrishtiMap({
     );
     const pathGenerator = d3.geoPath().projection(projection);
 
-    const zoomGroup = svg.append('g').attr('class', 'state-zoom-viewport');
-    const zoom = d3.zoom()
-      .scaleExtent([1, 6])
-      .translateExtent([[0, 0], [width, height]])
-      .on('zoom', (event: any) => {
-        zoomGroup.attr('transform', event.transform);
-      });
-    svg.call(zoom as any);
+    // Static clean container (NO d3.zoom applied to preserve mobile scrolling)
+    const mapGroup = svg.append('g').attr('class', 'state-static-viewport');
 
     const tallyLookup = new Map<string, any>();
     tallies.forEach((t) => {
@@ -182,8 +219,71 @@ export default function DrishtiMap({
       tallyLookup.set(seatKey, t);
     });
 
-    // 1. Render Seat Polygons
-    zoomGroup.selectAll('path.constituency')
+    const triggerTooltip = (event: any, d: any, persistTimer = 4500) => {
+      const props = d.properties || {};
+      const sName = props.PC_NAME || props.pc_name || props.name || 'Constituency';
+      const row = tallyLookup.get(clean(sName));
+      let leadText = 'Awaiting Ballots';
+      let stanceColor = '#94a3b8';
+      let totalVotes = 0;
+      let trendBadge = 'Awaiting';
+      let winningOptIdx: number | null = null;
+      let isTie = false;
+
+      if (row) {
+        let highest = -1;
+        options.forEach((_, idx) => {
+          const count = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
+          totalVotes += count;
+          if (count > highest) {
+            highest = count;
+            winningOptIdx = idx;
+            isTie = false;
+          } else if (count === highest && count > 0) {
+            isTie = true;
+          }
+        });
+        if (isTie) {
+          leadText = 'Split Mat (Tie)';
+          stanceColor = TIE_COLOR;
+        } else if (winningOptIdx !== null && highest > 0) {
+          leadText = options[winningOptIdx]?.text_en || 'Leading';
+          stanceColor = OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
+        }
+        if (totalVotes >= 50) trendBadge = '🛡️ Fortified';
+        else if (totalVotes >= 25) trendBadge = '⚡ Trending';
+        else if (totalVotes > 0) trendBadge = '🌱 Early Trend';
+      }
+
+      setHoveredSeat({
+        name: sName,
+        leadingStance: leadText,
+        stanceColor,
+        total: totalVotes,
+        trendBadge,
+      });
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
+        const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 80);
+        setTooltipPos({
+          x: Math.max(12, Math.min(clientX - rect.left - 60, width - 150)),
+          y: Math.max(8, clientY - rect.top - 65),
+        });
+      }
+
+      if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+      if (persistTimer > 0) {
+        tooltipTimeoutRef.current = setTimeout(() => {
+          setHoveredSeat(null);
+          setTooltipPos(null);
+        }, persistTimer);
+      }
+    };
+
+    // 1. Render Seat Polygons with 5-Tier Logarithmic Intensity
+    mapGroup.selectAll('path.constituency')
       .data(stateFeatures)
       .enter()
       .append('path')
@@ -201,7 +301,7 @@ export default function DrishtiMap({
             userVotedOptionIdx !== undefined &&
             clean(selectedConstituencyName || '') === seatName
           ) {
-            return OPTION_PALETTE[userVotedOptionIdx % OPTION_PALETTE.length];
+            return getConstituencyTierColor(userVotedOptionIdx, 1, false);
           }
           return UNPOLLED_SEAT_COLOR;
         }
@@ -220,75 +320,50 @@ export default function DrishtiMap({
             isTie = true;
           }
         });
-        if (total === 0) return UNPOLLED_SEAT_COLOR;
-        if (isTie) return TIE_COLOR;
-        if (winningOptIdx !== null) return OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
-        return UNPOLLED_SEAT_COLOR;
+        return getConstituencyTierColor(winningOptIdx, total, isTie);
       })
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', 0.8)
-      .style('cursor', 'pointer')
-      .on('mousemove touchstart', function (event: any, d: any) {
-        d3.select(this).attr('stroke', '#334155').attr('stroke-width', 1.4);
-        const props = d.properties || {};
-        const sName = props.PC_NAME || props.pc_name || props.name || 'Constituency';
-        const row = tallyLookup.get(clean(sName));
-        let leadText = 'Awaiting Ballots';
-        let stanceColor = '#94a3b8';
-        let totalVotes = 0;
-        let trendBadge = 'Awaiting';
+      .attr('stroke', (d: any) => {
+        const p = d.properties || {};
+        const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
+        const row = tallyLookup.get(seatName);
+        let total = 0;
         if (row) {
-          let highest = -1;
-          let winIdx: number | null = null;
-          let isTie = false;
           options.forEach((_, idx) => {
-            const count = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
-            totalVotes += count;
-            if (count > highest) {
-              highest = count;
-              winIdx = idx;
-              isTie = false;
-            } else if (count === highest && count > 0) {
-              isTie = true;
-            }
-          });
-          if (isTie) {
-            leadText = 'Split Mat (Tie)';
-            stanceColor = TIE_COLOR;
-          } else if (winIdx !== null && highest > 0) {
-            leadText = options[winIdx]?.text_en || 'Leading';
-            stanceColor = OPTION_PALETTE[winIdx % OPTION_PALETTE.length];
-          }
-          if (totalVotes >= 20) trendBadge = '🛡️ Fortified';
-          else if (totalVotes > 0) trendBadge = '🌱 Early Trend';
-        }
-        setHoveredSeat({
-          name: sName,
-          leadingStance: leadText,
-          stanceColor,
-          total: totalVotes,
-          trendBadge,
-        });
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
-          const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 80);
-          setTooltipPos({
-            x: Math.max(12, Math.min(clientX - rect.left - 60, width - 150)),
-            y: Math.max(8, clientY - rect.top - 65),
+            total += Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
           });
         }
-        if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
-        tooltipTimeoutRef.current = setTimeout(() => {
-          setHoveredSeat(null);
-          setTooltipPos(null);
-        }, 3500);
+        return total >= 50 ? '#ffffff' : '#cbd5e1';
       })
-      .on('mouseleave touchend', function () {
-        d3.select(this).attr('stroke', '#ffffff').attr('stroke-width', 0.8);
+      .attr('stroke-width', (d: any) => {
+        const p = d.properties || {};
+        const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
+        const row = tallyLookup.get(seatName);
+        let total = 0;
+        if (row) {
+          options.forEach((_, idx) => {
+            total += Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
+          });
+        }
+        return total >= 50 ? 1.0 : 0.6;
+      })
+      .style('cursor', 'pointer')
+      // Dual listener: Desktop mousemove + Mobile click/touchstart
+      .on('mousemove', function (event: any, d: any) {
+        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.4);
+        triggerTooltip(event, d, 0); // Active tracking while mouse is over
+      })
+      .on('mouseleave', function () {
+        d3.select(this).attr('stroke', '#cbd5e1').attr('stroke-width', 0.6);
+        setHoveredSeat(null);
+        setTooltipPos(null);
+      })
+      .on('click touchstart', function (event: any, d: any) {
+        event.stopPropagation();
+        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.5);
+        triggerTooltip(event, d, 4500); // 4.5s sticky persistence on tap
       });
 
-    // 2. Realtime Incoming Vote Shockwave Rings (Active across any constituency in this state)
+    // 2. Realtime Incoming Vote Shockwave Rings
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
       const feat = stateFeatures.find((f: any) => {
         const p = f.properties || {};
@@ -297,7 +372,7 @@ export default function DrishtiMap({
       if (feat) {
         const centroid = pathGenerator.centroid(feat);
         if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
-          zoomGroup.append('circle')
+          mapGroup.append('circle')
             .attr('cx', centroid[0])
             .attr('cy', centroid[1])
             .attr('r', 8)
@@ -320,7 +395,7 @@ export default function DrishtiMap({
       if (homeFeat) {
         const centroid = pathGenerator.centroid(homeFeat);
         if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
-          zoomGroup.append('circle')
+          mapGroup.append('circle')
             .attr('cx', centroid[0])
             .attr('cy', centroid[1])
             .attr('r', 16)
@@ -329,7 +404,7 @@ export default function DrishtiMap({
             .attr('stroke-width', 2.5)
             .attr('class', 'state-calm-radar')
             .attr('pointer-events', 'none');
-          zoomGroup.append('circle')
+          mapGroup.append('circle')
             .attr('cx', centroid[0])
             .attr('cy', centroid[1])
             .attr('r', 5)
@@ -374,9 +449,37 @@ export default function DrishtiMap({
           animation: stateShockwavePulseRing 1.8s infinite ease-out;
         }
       `}</style>
-      <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: 'block', touchAction: 'none' }} />
+
+      {/* Dynamic State View Label on Top-Left */}
+      {selectedState && (
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'flex-start',
+          padding: '0 8px 4px 8px',
+          boxSizing: 'border-box'
+        }}>
+          <span style={{
+            fontSize: '10.5px',
+            fontWeight: 800,
+            color: '#475569',
+            backgroundColor: '#f1f5f9',
+            border: '1px solid #cbd5e1',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase'
+          }}>
+            📍 {selectedState.toUpperCase()} {geoData?.features ? `(${geoData.features.filter((f: any) => clean(f.properties?.ST_NAME || f.properties?.st_name || f.properties?.state || '') === clean(selectedState)).length} SEATS)` : ''}
+          </span>
+        </div>
+      )}
+
+      <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: 'block', touchAction: 'pan-y' }} />
+
       {hoveredSeat && tooltipPos && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
             left: `${tooltipPos.x}px`,
@@ -386,7 +489,6 @@ export default function DrishtiMap({
             padding: '8px 12px',
             borderRadius: '10px',
             fontSize: '11px',
-            pointerEvents: 'none',
             zIndex: 30,
             boxShadow: '0 8px 22px rgba(0,0,0,0.35)',
             border: '1px solid #334155',
@@ -396,7 +498,7 @@ export default function DrishtiMap({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '12px' }}>{hoveredSeat.name}</span>
             {hoveredSeat.total > 0 && (
-              <span style={{ fontSize: '9px', fontWeight: 700, color: hoveredSeat.total >= 20 ? '#10b981' : '#f59e0b', backgroundColor: '#1e293b', padding: '1px 5px', borderRadius: '4px' }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: hoveredSeat.total >= 50 ? '#10b981' : '#f59e0b', backgroundColor: '#1e293b', padding: '1px 5px', borderRadius: '4px' }}>
                 {hoveredSeat.trendBadge}
               </span>
             )}
