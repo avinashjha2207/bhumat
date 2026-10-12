@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import { supabase, safeStorage } from './utils/supabaseClient';
@@ -50,7 +49,7 @@ export default function PollExpandedView({
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
   const [activeInfoPopup, setActiveInfoPopup] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
-
+  const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const gridSectionRef = useRef<HTMLDivElement>(null);
@@ -61,11 +60,15 @@ export default function PollExpandedView({
 
   const triggerInfoPopup = (title: string, desc: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (infoPopupTimeoutRef.current) clearTimeout(infoPopupTimeoutRef.current);
     const rect = e.currentTarget.getBoundingClientRect();
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
-    const clampedX = Math.max(16, Math.min(rect.left - 80, screenW - 250));
-    const clampedY = Math.max(70, rect.bottom + 8);
+    const clampedX = Math.max(14, Math.min(rect.left - 70, screenW - 215));
+    const clampedY = Math.max(65, rect.bottom + 8);
     setActiveInfoPopup({ title, desc, x: clampedX, y: clampedY });
+    infoPopupTimeoutRef.current = setTimeout(() => {
+      setActiveInfoPopup(null);
+    }, 3500);
   };
 
   const handleSwitchToGrid = () => {
@@ -82,12 +85,10 @@ export default function PollExpandedView({
         .from('constituency_tallies')
         .select('*')
         .eq('poll_id', poll.id);
-
       if (!error && data) {
         setTallies(data);
       }
     }
-
     fetchTallies();
 
     const tallyChannel = supabase
@@ -172,7 +173,6 @@ export default function PollExpandedView({
   useEffect(() => {
     let isMounted = true;
     setIsLoadingGeo(true);
-
     fetch('/india_pc_2019_simplified.geojson')
       .then((res) => {
         if (!res.ok) throw new Error('Primary geojson not found');
@@ -197,7 +197,6 @@ export default function PollExpandedView({
             if (isMounted) setIsLoadingGeo(false);
           });
       });
-
     return () => {
       isMounted = false;
     };
@@ -225,7 +224,6 @@ export default function PollExpandedView({
         const c = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
         counts[idx] = c;
         seatTotal += c;
-
         bharatCounts[idx] = (bharatCounts[idx] || 0) + c;
         totalBharatVotes += c;
 
@@ -327,10 +325,8 @@ export default function PollExpandedView({
   // 4. SVG Renderer with Zoom, Traveling Cursor Tooltip, and Search Highlighting
   useEffect(() => {
     if (viewMode !== 'MAP' || !geoData || !svgRef.current || !containerRef.current) return;
-
     const width = containerRef.current.clientWidth ? Math.min(containerRef.current.clientWidth - 28, 440) : 380;
     const height = Math.round(width * 1.25);
-
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     svg.attr('viewBox', `0 0 ${width} ${height}`);
@@ -342,7 +338,6 @@ export default function PollExpandedView({
     const pathGenerator = d3.geoPath().projection(projection);
 
     const zoomGroup = svg.append('g').attr('class', 'zoom-viewport');
-
     const zoom = d3.zoom()
       .scaleExtent([1, 8])
       .translateExtent([[0, 0], [width, height]])
@@ -366,10 +361,8 @@ export default function PollExpandedView({
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         if (livePulses[seat]) return livePulses[seat].color;
-
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const match = tallyMap.get(`${seat}___${state}`);
-
         if (!match || match.totalVotes === 0) return UNPOLLED_SEAT_COLOR;
         if (match.isTie) return TIE_COLOR;
         if (match.leadingOptionIdx !== null) return OPTION_PALETTE[match.leadingOptionIdx % OPTION_PALETTE.length];
@@ -407,7 +400,6 @@ export default function PollExpandedView({
         const stateName = props.ST_NAME || props.st_name || props.state || 'Bharat';
         const key = `${clean(seatName)}___${clean(stateName)}`;
         const match = tallyMap.get(key);
-
         setHoveredSeat({
           seatName,
           stateName,
@@ -505,13 +497,11 @@ export default function PollExpandedView({
     const shareSeat = userSeatName || 'Bharat';
     const shareRef = safeStorage.getItem('bhumat_voter_token')?.slice(-6) || 'BM01';
     const targetUrl = `https://vote.bhumat.com?ref=${shareRef}`;
-
     const messageText =
       `🇮🇳 *BhuMat Sovereign Audit — ${shareSeat}*\n\n` +
       `*Question:* ${poll.title_en}\n` +
       `📍 Leading Stance: ${userSeatStats?.leadingOptionText || bharatStats.text}\n\n` +
       `Cast your ballot across all 543 Lok Sabha seats:\n${targetUrl}`;
-
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
   };
 
@@ -575,28 +565,29 @@ export default function PollExpandedView({
         }
       `}</style>
 
-      {/* Info Context Popup */}
+      {/* Compact Info Context Popup with Auto-Dismiss */}
       {activeInfoPopup && (
         <div
-          onClick={(e) => e.stopPropagation()}
+          onClick={() => setActiveInfoPopup(null)}
           style={{
             position: 'fixed',
             left: `${activeInfoPopup.x}px`,
             top: `${activeInfoPopup.y}px`,
-            zIndex: 130,
+            zIndex: 140,
             backgroundColor: '#0f172a',
             color: '#ffffff',
-            padding: '12px 14px',
-            borderRadius: '12px',
-            maxWidth: '240px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-            border: '1px solid #334155'
+            padding: '10px 12px',
+            borderRadius: '10px',
+            maxWidth: '200px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            border: '1px solid #334155',
+            cursor: 'pointer'
           }}
         >
-          <div style={{ fontSize: '12px', fontWeight: 800, color: '#38bdf8', marginBottom: '4px' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#38bdf8', marginBottom: '3px' }}>
             {activeInfoPopup.title}
           </div>
-          <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>
+          <div style={{ fontSize: '10.5px', color: '#cbd5e1', lineHeight: 1.4 }}>
             {activeInfoPopup.desc}
           </div>
         </div>
@@ -632,7 +623,6 @@ export default function PollExpandedView({
           >
             ← Back
           </button>
-
           <span
             onClick={(e) => triggerInfoPopup(
               `${poll.category} Sovereign Audit`,
@@ -658,7 +648,6 @@ export default function PollExpandedView({
             <span>● {poll.category} AUDIT • 543 SEATS</span>
             <span style={{ fontSize: '10px', opacity: 0.6 }}>ⓘ</span>
           </span>
-
           <div style={{ display: 'flex', gap: '4px' }}>
             <button
               onClick={() => setViewMode('MAP')}
@@ -701,7 +690,7 @@ export default function PollExpandedView({
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '12px 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        
+       
         {/* Card 1: Question Header & Recurrence Window */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '18px', marginBottom: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
@@ -712,7 +701,6 @@ export default function PollExpandedView({
               {getNextWindowText()}
             </span>
           </div>
-
           <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '0 0 8px 0', lineHeight: 1.45, color: '#0f172a' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
           </h2>
@@ -726,22 +714,19 @@ export default function PollExpandedView({
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '16px', letterSpacing: '0.04em' }}>
             National Preference Breakdown
           </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             {poll.options.map((opt, idx) => {
               const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
               const optCount = tallies.reduce((sum, r) => sum + (Number(r[`option_${idx}_votes`] ?? r[`opt_${idx}_votes`]) || 0), 0);
               const optPct = bharatStats.total > 0 ? Math.round((optCount / bharatStats.total) * 100) : 0;
               const isUserChoice = poll.category !== 'JanMat' && userVotedOptionIdx === idx;
-
               const primaryText = lang === 'EN' ? opt.text_en : opt.text_hi;
               const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;
-
               return (
                 <div key={opt.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                    
-                    {/* Bilingual Options with 6px Spacing */}
+                   
+                    {/* Bilingual Options */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
                       <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: optColor, marginTop: '4px', flexShrink: 0 }} />
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -755,7 +740,6 @@ export default function PollExpandedView({
                         )}
                       </div>
                     </div>
-
                     {/* Stats and User Choice Tag */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginTop: '2px' }}>
                       {isUserChoice && (
@@ -768,7 +752,6 @@ export default function PollExpandedView({
                       </span>
                     </div>
                   </div>
-
                   <div style={{ width: '100%', height: '6px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
                     <div style={{ width: `${optPct}%`, height: '100%', backgroundColor: optColor, transition: 'width 0.4s ease' }} />
                   </div>
@@ -778,64 +761,98 @@ export default function PollExpandedView({
           </div>
         </div>
 
-        {/* Card 3: 3-Box Geo-Comparison Ledger */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
-          {/* BHARAT */}
+        {/* Card 3: 3-Box Comparison Ledger */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '14px' }}>
           <div
-            onClick={(e) => triggerInfoPopup('Bharat Consensus', 'Aggregated tally across all 543 Lok Sabha seats nationwide.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+            onClick={(e) => triggerInfoPopup('National Stance', 'Leading stance aggregating verified votes cast across all constituencies.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
           >
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>BHARAT ⓘ</div>
-            <div style={{ fontSize: '11.5px', fontWeight: 900, color: bharatStats.color, marginTop: '5px', lineHeight: 1.35 }}>
+            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>BHARAT ⓘ</div>
+            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#f97316', marginTop: '4px', lineHeight: 1.25 }}>
               {bharatStats.text}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
               {bharatStats.total} {bharatStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
-
-          {/* STATE */}
           <div
-            onClick={(e) => triggerInfoPopup('State Jurisdiction', 'Consensus aggregated strictly within your registered state boundary.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+            onClick={(e) => triggerInfoPopup('State Stance', 'Leading stance across all constituencies inside this state jurisdiction.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
           >
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>
-              {userState ? userState.toUpperCase() : 'STATE'} ⓘ
+            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
+              {(userState || 'ANDHRA PRADESH').toUpperCase()} ⓘ
             </div>
-            <div style={{ fontSize: '11.5px', fontWeight: 900, color: stateStats.color, marginTop: '5px', lineHeight: 1.35 }}>
+            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.25 }}>
               {stateStats.text}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
               {stateStats.total} {stateStats.total === 1 ? 'Vote' : 'Votes'}
             </div>
           </div>
-
-          {/* YOUR SEAT */}
           <div
-            onClick={(e) => triggerInfoPopup('Constituency Sentiment', 'Direct sovereign tally for your specific parliamentary seat.', e)}
-            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+            onClick={(e) => triggerInfoPopup('Seat Stance', 'Leading stance strictly within your registered Lok Sabha constituency.', e)}
+            style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '12px 8px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer' }}
           >
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>
-              {userSeatName ? userSeatName.toUpperCase() : 'YOUR SEAT'} ⓘ
+            <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
+              {(userSeatName || 'KURNOOL').toUpperCase()} ⓘ
             </div>
-            <div
-              style={{
-                fontSize: '11.5px',
-                fontWeight: 900,
-                color: userSeatStats?.isTie
-                  ? TIE_COLOR
-                  : userSeatStats?.leadingOptionIdx !== null && userSeatStats?.leadingOptionIdx !== undefined
-                  ? OPTION_PALETTE[userSeatStats.leadingOptionIdx % OPTION_PALETTE.length]
-                  : '#64748b',
-                marginTop: '5px',
-                lineHeight: 1.35
-              }}
-            >
+            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#0284c7', marginTop: '4px', lineHeight: 1.25 }}>
               {userSeatStats?.leadingOptionText || 'Awaiting'}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>
-              {userSeatStats?.totalVotes || 0} {userSeatStats?.totalVotes === 1 ? 'Vote' : 'Votes'}
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', fontWeight: 600 }}>
+              {userSeatStats?.totalVotes || 0} Votes
             </div>
+          </div>
+        </div>
+
+        {/* Public Opinion Trend Active: Full Width & Scrollable Feed */}
+        <div
+          style={{
+            width: '100%',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '12px 16px',
+            marginBottom: '14px',
+            boxSizing: 'border-box',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            maxHeight: '94px',
+            overflowY: 'auto'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '15px', lineHeight: 1 }}>📊</span>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                {bharatStats?.total >= 5 ? 'Public Opinion Trend Active' : 'Establishing Baseline'}
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: 800,
+                color: bharatStats?.total >= 5 ? '#059669' : '#0284c7',
+                backgroundColor: bharatStats?.total >= 5 ? '#ecfdf5' : '#f0f9ff',
+                border: `1px solid ${bharatStats?.total >= 5 ? '#a7f3d0' : '#bae6fd'}`,
+                padding: '2px 8px',
+                borderRadius: '6px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {bharatStats?.total >= 5 ? '▲ Live Shift' : '🌱 Cycle Baseline'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: '#475569', lineHeight: 1.4 }}>
+            <div>
+              {bharatStats?.total >= 5
+                ? `• National Lead: ${bharatStats.text} (${bharatStats.percent}%) across polled constituencies`
+                : '• Initial cycle ballots forming the historic baseline'}
+            </div>
+            {stateStats && Number(stateStats.total) > 0 && (
+              <div style={{ color: '#0284c7' }}>
+                • State Level: {stateStats.text} ({stateStats.percent}%)
+              </div>
+            )}
           </div>
         </div>
 
@@ -888,7 +905,6 @@ export default function PollExpandedView({
                   </button>
                 )}
               </div>
-
               <button
                 onClick={handleZoomReset}
                 title="Reset Map Zoom & Pan"
@@ -907,15 +923,12 @@ export default function PollExpandedView({
                 ⟲ Reset
               </button>
             </div>
-
             {isLoadingGeo && (
               <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '12px' }}>
                 Rendering Sovereign Drishti Grid...
               </div>
             )}
-
             <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: isLoadingGeo ? 'none' : 'block', touchAction: 'none' }} />
-
             {/* Traveling Cursor Floating Tooltip */}
             {hoveredSeat && tooltipPos && (
               <div
@@ -978,7 +991,6 @@ export default function PollExpandedView({
                 </button>
               )}
             </div>
-
             {/* 5-Column Structured Table */}
             <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '11.5px' }}>
@@ -1005,7 +1017,6 @@ export default function PollExpandedView({
                         : item.leadingOptionIdx !== null && item.leadingOptionIdx !== undefined
                         ? OPTION_PALETTE[item.leadingOptionIdx % OPTION_PALETTE.length]
                         : '#64748b';
-
                       return (
                         <tr key={`${item.seatName}_${item.stateName}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '8px 6px', fontWeight: 800, color: '#0f172a' }}>{item.seatName}</td>
