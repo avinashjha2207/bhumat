@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { supabase } from './utils/supabaseClient';
@@ -51,7 +50,6 @@ export default function DrishtiMap({
         if (isMounted) setGeoData(data);
       })
       .catch((err) => console.error('GeoJSON fetch error:', err));
-
     return () => {
       isMounted = false;
     };
@@ -63,12 +61,10 @@ export default function DrishtiMap({
         .from('constituency_tallies')
         .select('*')
         .eq('poll_id', pollId);
-
       if (!error && data) {
         setTallies(data);
       }
     }
-
     fetchTallies();
 
     const tallyChannel = supabase
@@ -151,19 +147,16 @@ export default function DrishtiMap({
 
   useEffect(() => {
     if (!geoData || !selectedState || !svgRef.current || !containerRef.current) return;
-
     const cleanTargetState = clean(selectedState);
     const stateFeatures = (geoData.features || []).filter((f: any) => {
       const p = f.properties || {};
       const st = clean(p.ST_NAME || p.st_name || p.state || '');
       return st === cleanTargetState;
     });
-
     if (stateFeatures.length === 0) return;
 
     const width = containerRef.current.clientWidth ? Math.min(containerRef.current.clientWidth - 20, 420) : 360;
     const height = Math.round(width * 0.95);
-
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     svg.attr('viewBox', `0 0 ${width} ${height}`);
@@ -172,18 +165,15 @@ export default function DrishtiMap({
       [[16, 16], [width - 16, height - 16]],
       { type: 'FeatureCollection', features: stateFeatures } as any
     );
-
     const pathGenerator = d3.geoPath().projection(projection);
 
     const zoomGroup = svg.append('g').attr('class', 'state-zoom-viewport');
-
     const zoom = d3.zoom()
       .scaleExtent([1, 6])
       .translateExtent([[0, 0], [width, height]])
       .on('zoom', (event: any) => {
         zoomGroup.attr('transform', event.transform);
       });
-
     svg.call(zoom as any);
 
     const tallyLookup = new Map<string, any>();
@@ -202,9 +192,7 @@ export default function DrishtiMap({
       .attr('fill', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
-
         if (livePulses[seatName]) return livePulses[seatName].color;
-
         const row = tallyLookup.get(seatName);
         if (!row) {
           if (
@@ -217,12 +205,10 @@ export default function DrishtiMap({
           }
           return UNPOLLED_SEAT_COLOR;
         }
-
         let highestVotes = -1;
         let winningOptIdx: number | null = null;
         let isTie = false;
         let total = 0;
-
         options.forEach((_, idx) => {
           const c = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
           total += c;
@@ -234,7 +220,6 @@ export default function DrishtiMap({
             isTie = true;
           }
         });
-
         if (total === 0) return UNPOLLED_SEAT_COLOR;
         if (isTie) return TIE_COLOR;
         if (winningOptIdx !== null) return OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
@@ -248,12 +233,10 @@ export default function DrishtiMap({
         const props = d.properties || {};
         const sName = props.PC_NAME || props.pc_name || props.name || 'Constituency';
         const row = tallyLookup.get(clean(sName));
-
         let leadText = 'Awaiting Ballots';
         let stanceColor = '#94a3b8';
         let totalVotes = 0;
         let trendBadge = 'Awaiting';
-
         if (row) {
           let highest = -1;
           let winIdx: number | null = null;
@@ -269,7 +252,6 @@ export default function DrishtiMap({
               isTie = true;
             }
           });
-
           if (isTie) {
             leadText = 'Split Mat (Tie)';
             stanceColor = TIE_COLOR;
@@ -277,11 +259,9 @@ export default function DrishtiMap({
             leadText = options[winIdx]?.text_en || 'Leading';
             stanceColor = OPTION_PALETTE[winIdx % OPTION_PALETTE.length];
           }
-
           if (totalVotes >= 20) trendBadge = '🛡️ Fortified';
           else if (totalVotes > 0) trendBadge = '🌱 Early Trend';
         }
-
         setHoveredSeat({
           name: sName,
           leadingStance: leadText,
@@ -289,7 +269,6 @@ export default function DrishtiMap({
           total: totalVotes,
           trendBadge,
         });
-
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
           const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
@@ -299,7 +278,6 @@ export default function DrishtiMap({
             y: Math.max(8, clientY - rect.top - 65),
           });
         }
-
         if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
         tooltipTimeoutRef.current = setTimeout(() => {
           setHoveredSeat(null);
@@ -310,7 +288,28 @@ export default function DrishtiMap({
         d3.select(this).attr('stroke', '#ffffff').attr('stroke-width', 0.8);
       });
 
-    
+    // 2. Realtime Incoming Vote Shockwave Rings (Active across any constituency in this state)
+    Object.keys(livePulses).forEach((pulsingSeatKey) => {
+      const feat = stateFeatures.find((f: any) => {
+        const p = f.properties || {};
+        return clean(p.PC_NAME || p.pc_name || p.name || '') === pulsingSeatKey;
+      });
+      if (feat) {
+        const centroid = pathGenerator.centroid(feat);
+        if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+          zoomGroup.append('circle')
+            .attr('cx', centroid[0])
+            .attr('cy', centroid[1])
+            .attr('r', 8)
+            .attr('fill', 'none')
+            .attr('stroke', livePulses[pulsingSeatKey].color)
+            .attr('stroke-width', 3)
+            .attr('class', 'state-shockwave-pulse')
+            .attr('pointer-events', 'none');
+        }
+      }
+    });
+
     // 3. User's Home Seat Glowing Radar Ring
     if (selectedConstituencyName) {
       const activeClean = clean(selectedConstituencyName);
@@ -318,7 +317,6 @@ export default function DrishtiMap({
         const p = f.properties || {};
         return clean(p.PC_NAME || p.pc_name || p.name || '') === activeClean;
       });
-
       if (homeFeat) {
         const centroid = pathGenerator.centroid(homeFeat);
         if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
@@ -331,7 +329,6 @@ export default function DrishtiMap({
             .attr('stroke-width', 2.5)
             .attr('class', 'state-calm-radar')
             .attr('pointer-events', 'none');
-
           zoomGroup.append('circle')
             .attr('cx', centroid[0])
             .attr('cy', centroid[1])
@@ -369,10 +366,15 @@ export default function DrishtiMap({
         .state-calm-radar {
           animation: stateRadarWave 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
+        @keyframes stateShockwavePulseRing {
+          0% { r: 6px; opacity: 1; stroke-width: 3.5px; }
+          100% { r: 32px; opacity: 0; stroke-width: 0.4px; }
+        }
+        .state-shockwave-pulse {
+          animation: stateShockwavePulseRing 1.8s infinite ease-out;
+        }
       `}</style>
-
       <svg ref={svgRef} style={{ width: '100%', height: 'auto', display: 'block', touchAction: 'none' }} />
-
       {hoveredSeat && tooltipPos && (
         <div
           style={{
