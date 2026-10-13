@@ -122,13 +122,14 @@ export default function LeaderboardView({
       return;
     }
     setUsernameStatus('Saving alias...');
-    const { error } = await supabase
-      .from('citizen_profiles')
-      .update({ username: cleanName })
-      .eq('voter_token', voterToken);
 
-    if (error) {
-      setUsernameStatus(error.message.includes('unique') ? 'Alias already taken.' : 'Update failed.');
+    const { data, error } = await supabase.rpc('update_citizen_username', {
+      p_voter_token: voterToken,
+      p_new_username: cleanName
+    });
+
+    if (error || !data?.success) {
+      setUsernameStatus(data?.error || error?.message || 'Update failed.');
     } else {
       setUserProfile((prev: any) => ({ ...prev, username: cleanName }));
       setIsEditingUsername(false);

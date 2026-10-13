@@ -1204,8 +1204,8 @@ export default function AdminAuditPanel() {
                 )}
               </div>
               
+              {/* Clean 4-Column Injection Bar */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.6fr auto', gap: '10px', alignItems: 'center' }}>
-                {/* 543-Seat Select with Quick Picks & Search Filtering */}
                 <select
                   value={simSeat}
                   onChange={(e) => handleSeatChange(e.target.value)}
@@ -1227,7 +1227,6 @@ export default function AdminAuditPanel() {
                   </optgroup>
                 </select>
 
-                {/* State Input - Auto populates, but editable */}
                 <input
                   type="text"
                   placeholder="State"
@@ -1236,7 +1235,6 @@ export default function AdminAuditPanel() {
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 />
 
-                {/* Option Selector */}
                 <select
                   value={simOption}
                   onChange={(e) => setSimOption(Number(e.target.value))}
@@ -1261,11 +1259,79 @@ export default function AdminAuditPanel() {
                 </button>
               </div>
 
-              {simMessage && (
-                <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: 700, color: simMessage.startsWith('✓') ? '#059669' : '#dc2626' }}>
-                  {simMessage}
-                </div>
-              )}
+              {/* Multi-Persona Citizen Switcher (0-SIM Testing) */}
+  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+      👥 Fast Citizen Persona Switcher (Testing Sandbox):
+    </span>
+    <p style={{ fontSize: '11px', color: '#64748b', margin: '2px 0 8px 0' }}>
+      Switch browser state to different mock citizen passports instantly:
+    </p>
+    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      {[
+        { label: 'Citizen A (Karakat, BR)', phone: '9999900001', seat: 'Karakat', state: 'Bihar' },
+        { label: 'Citizen B (Darbhanga, BR)', phone: '9999900002', seat: 'Darbhanga', state: 'Bihar' },
+        { label: 'Citizen C (Nagpur, MH)', phone: '9999900003', seat: 'Nagpur', state: 'Maharashtra' }
+      ].map((persona) => (
+        <button
+          key={persona.phone}
+          type="button"
+          onClick={async () => {
+            try {
+              const { data, error } = await supabase.rpc('verify_phone_otp', {
+                p_phone: persona.phone,
+                p_otp: '123456',
+                p_state: persona.state,
+                p_seat: persona.seat
+              });
+
+              if (error) {
+                alert(`Persona switch error: ${error.message}`);
+                console.error(error);
+                return;
+              }
+
+              if (data?.voter_token) {
+                // 1. Clear stale session ballot memory so the new citizen gets a clean ballot
+                localStorage.removeItem('bhumat_voted_cycles');
+                localStorage.removeItem('bhumat_voted_polls');
+                localStorage.removeItem('bhumat_vote_timestamps');
+                localStorage.removeItem('bhumat_dbg_balance');
+                sessionStorage.clear();
+
+                // 2. Set new persona identity keys
+                localStorage.setItem('bhumat_voter_token', data.voter_token);
+                localStorage.setItem('bhumat_user_seat', persona.seat);
+                localStorage.setItem('bhumat_user_state', persona.state);
+                localStorage.setItem('bhumat_user_phone', persona.phone);
+
+                alert(`Switched to ${persona.label}!\nToken: ${data.voter_token}\n\nGo to the main app tab and refresh.`);
+              } else {
+                alert(`Failed: ${data?.error || 'No voter token returned'}`);
+              }
+            } catch (err: any) {
+              alert(`Execution error: ${err.message}`);
+            }
+          }}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '8px',
+            border: '1.5px solid #cbd5e1',
+            backgroundColor: '#ffffff',
+            color: '#0f172a',
+            fontSize: '11.5px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}
+        >
+          🎭 {persona.label}
+        </button>
+      ))}
+    </div>
+  </div>
+
+
 
               {/* Cycle Advance Simulator Trigger */}
               <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

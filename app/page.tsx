@@ -6,6 +6,7 @@ import { supabase, safeStorage } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 import { getCurrentCycleId } from './utils/cycleManager';
 
+const PhoneAuthModal = dynamic(() => import('./PhoneAuthModal'), { ssr: false });
 const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
   ssr: false,
   loading: () => (
@@ -137,6 +138,10 @@ export default function BhuMatApp() {
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [profileRefreshKey, setProfileRefreshKey] = useState(0);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
+  return typeof window !== 'undefined' ? safeStorage.getItem('bhumat_user_phone') : null;
+});
 
   async function fetchLedger(token: string) {
     try {
@@ -1227,6 +1232,26 @@ export default function BhuMatApp() {
                 </span>
               </div>
 
+              {/* Mobile Link / Verified Passport Banner */}
+<div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '12px', backgroundColor: linkedPhone ? '#f0fdf4' : '#fffbeb', border: `1px solid ${linkedPhone ? '#bbf7d0' : '#fde68a'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <div>
+    <span style={{ fontSize: '11px', fontWeight: 800, color: linkedPhone ? '#166534' : '#92400e' }}>
+      {linkedPhone ? `📱 Linked Mobile: +91 ******${linkedPhone.slice(-4)}` : '⚠️ Guest Citizen Mode'}
+    </span>
+    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+      {linkedPhone ? 'Passport sync active across devices' : 'Link phone to preserve DBG & XP across browsers'}
+    </div>
+  </div>
+  {!linkedPhone && (
+    <button
+      onClick={() => setIsAuthModalOpen(true)}
+      style={{ padding: '6px 12px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+    >
+      Link Phone
+    </button>
+  )}
+</div>
+
               {/* DBG Civic Balance Card */}
               <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
@@ -1602,6 +1627,19 @@ export default function BhuMatApp() {
           </button>
         </div>
       </nav>
+      <PhoneAuthModal
+  isOpen={isAuthModalOpen}
+  onClose={() => setIsAuthModalOpen(false)}
+  guestToken={deviceHash}
+  userState={selectedSeat?.state || 'Bihar'}
+  userSeat={selectedSeat?.name || 'Karakat'}
+  onAuthSuccess={(newToken) => {
+    setDeviceHash(newToken);
+    setLinkedPhone(safeStorage.getItem('bhumat_user_phone'));
+    syncWallet(newToken);
+    setProfileRefreshKey((prev) => prev + 1);
+  }}
+/>
     </div>
   );
 }
