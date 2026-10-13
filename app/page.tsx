@@ -361,6 +361,13 @@ export default function BhuMatApp() {
       if (savedChoices) setSessionBallotChoices(JSON.parse(savedChoices));
       if (savedTimestamps) setVoteTimestamps(JSON.parse(savedTimestamps));
     } catch (e) {}
+
+    // Register PWA Service Worker for native mobile install prompt
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.warn('SW registration skipped:', err);
+      });
+    }
   }, []);
 
   async function loadPolls() {

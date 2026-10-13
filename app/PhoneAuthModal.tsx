@@ -32,12 +32,10 @@ export default function PhoneAuthModal({
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
-
     try {
       const { data, error } = await supabase.rpc('request_phone_otp', {
         p_phone: phone
       });
-
       if (error || !data?.success) {
         setErrorMsg(data?.error || error?.message || 'Failed to request OTP');
       } else {
@@ -58,7 +56,6 @@ export default function PhoneAuthModal({
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
-
     try {
       const { data, error } = await supabase.rpc('verify_phone_otp', {
         p_phone: phone,
@@ -67,13 +64,27 @@ export default function PhoneAuthModal({
         p_state: userState,
         p_seat: userSeat
       });
-
       if (error || !data?.success) {
         setErrorMsg(data?.error || error?.message || 'Invalid OTP code');
       } else {
         const verifiedToken = data.voter_token;
         safeStorage.setItem('bhumat_voter_token', verifiedToken);
         safeStorage.setItem('bhumat_user_phone', phone.slice(-10));
+
+        // Unlock pending referral milestone bonuses now that the phone number is verified
+        try {
+          await supabase.rpc('check_and_reward_referral', {
+            p_voter_token: verifiedToken,
+            p_category: 'JanMat'
+          });
+          await supabase.rpc('check_and_reward_referral', {
+            p_voter_token: verifiedToken,
+            p_category: 'LokMat'
+          });
+        } catch (refErr) {
+          console.warn('Pending referral milestone disbursement skipped:', refErr);
+        }
+
         onAuthSuccess(verifiedToken);
         onClose();
       }
@@ -122,7 +133,6 @@ export default function PhoneAuthModal({
             ✕
           </button>
         </div>
-
         <h3 style={{ fontSize: '18px', fontWeight: 900, margin: '8px 0 4px 0', color: '#0f172a' }}>
           {step === 'PHONE' ? 'Signup' : 'Enter Sovereign OTP'}
         </h3>
@@ -131,7 +141,6 @@ export default function PhoneAuthModal({
             ? 'Bind your civic XP, seasonal streaks, and DBG wallet to your mobile. Keeps your ballots completely secret while preserving your profile across devices.'
             : `Enter the 6-digit code sent to +91 ${phone.slice(-10)}`}
         </p>
-
         {step === 'PHONE' ? (
           <form onSubmit={handleRequestOtp} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -147,9 +156,7 @@ export default function PhoneAuthModal({
                 style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #0284c7', fontSize: '13px', fontWeight: 700, outline: 'none' }}
               />
             </div>
-
             {errorMsg && <div style={{ fontSize: '11.5px', color: '#ef4444', fontWeight: 700 }}>{errorMsg}</div>}
-
             <button
               type="submit"
               disabled={loading}
@@ -174,7 +181,6 @@ export default function PhoneAuthModal({
                 ⚡ Test Mode: OTP is <strong>{devOtpHint}</strong>
               </div>
             )}
-
             <input
               type="text"
               required
@@ -184,9 +190,7 @@ export default function PhoneAuthModal({
               onChange={(e) => setOtp(e.target.value)}
               style={{ padding: '12px', borderRadius: '10px', border: '1.5px solid #0284c7', fontSize: '18px', fontWeight: 800, textAlign: 'center', letterSpacing: '0.2em', outline: 'none' }}
             />
-
             {errorMsg && <div style={{ fontSize: '11.5px', color: '#ef4444', fontWeight: 700 }}>{errorMsg}</div>}
-
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
