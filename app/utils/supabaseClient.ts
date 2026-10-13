@@ -9,26 +9,32 @@ export const supabase = createClient(supabaseUrl, rawKey.trim());
 // Safe in-memory fallback for iOS Safari Private Browsing
 const memoryStore = new Map<string, string>();
 
+const memoryFallback: Record<string, string> = {};
+
 export const safeStorage = {
   getItem: (key: string): string | null => {
+    if (typeof window === 'undefined') return null;
     try {
-      return localStorage.getItem(key);
-    } catch {
-      return memoryStore.get(key) || null;
+      const val = window.localStorage.getItem(key);
+      return val !== null ? val : (memoryFallback[key] || null);
+    } catch (e) {
+      return memoryFallback[key] || null;
     }
   },
   setItem: (key: string, value: string): void => {
+    if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(key, value);
-    } catch {
-      memoryStore.set(key, value);
+      window.localStorage.setItem(key, value);
+    } catch (e) {
+      // In-memory fallback if incognito blocks localStorage
     }
+    memoryFallback[key] = value;
   },
   removeItem: (key: string): void => {
+    if (typeof window === 'undefined') return;
     try {
-      localStorage.removeItem(key);
-    } catch {
-      memoryStore.delete(key);
-    }
+      window.localStorage.removeItem(key);
+    } catch (e) {}
+    delete memoryFallback[key];
   }
 };

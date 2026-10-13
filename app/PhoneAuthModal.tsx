@@ -124,7 +124,7 @@ export default function PhoneAuthModal({
         </div>
 
         <h3 style={{ fontSize: '18px', fontWeight: 900, margin: '8px 0 4px 0', color: '#0f172a' }}>
-          {step === 'PHONE' ? 'Link Phone Number' : 'Enter Sovereign OTP'}
+          {step === 'PHONE' ? 'Signup' : 'Enter Sovereign OTP'}
         </h3>
         <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0', lineHeight: 1.45 }}>
           {step === 'PHONE'

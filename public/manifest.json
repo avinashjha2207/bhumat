@@ -1,21 +1,24 @@
 {
-  "name": "BhuMat — Sovereign Civic Consensus",
+  "name": "BhuMat — Bharat's Sovereign Public Opinion Grid",
   "short_name": "BhuMat",
-  "description": "Spatially mapping public sentiment across 543 Lok Sabha seats.",
+  "description": "Sovereign public opinion consensus platform across all 543 Lok Sabha seats.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#f8fafc",
   "theme_color": "#0284c7",
+  "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "/icon.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

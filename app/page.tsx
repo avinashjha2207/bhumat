@@ -125,7 +125,6 @@ export default function BhuMatApp() {
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
   const [username] = useState('CitizenBharat');
-
   const [dbgPoints, setDbgPoints] = useState<number>(() => {
     try {
       const saved = safeStorage.getItem('bhumat_dbg_balance');
@@ -134,14 +133,22 @@ export default function BhuMatApp() {
       return 100;
     }
   });
-
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [profileRefreshKey, setProfileRefreshKey] = useState(0);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
-  return typeof window !== 'undefined' ? safeStorage.getItem('bhumat_user_phone') : null;
-});
+  
+  const [guestVotesCast, setGuestVotesCast] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = safeStorage.getItem('bhumat_guest_vote_count');
+      return stored ? parseInt(stored, 10) : 0;
+    }
+    return 0;
+  });
+
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
+    return typeof window !== 'undefined' ? safeStorage.getItem('bhumat_user_phone') : null;
+  });
 
   async function fetchLedger(token: string) {
     try {
@@ -277,7 +284,6 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
       const { data, error } = await supabase.rpc('get_or_create_voter_wallet', {
         p_voter_token: activeToken
       });
-
       if (data && !error && data.success) {
         const verifiedDbg = data.dbg_balance !== undefined ? data.dbg_balance : 100;
         setDbgPoints(verifiedDbg);
@@ -323,6 +329,24 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
     const token = getOrCreateVoterToken();
     setDeviceHash(token);
     syncWallet(token);
+    // Auto-Capture ?ref= from WhatsApp / Peer links
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref');
+    if (refParam && refParam.trim()) {
+      const cleanRef = refParam.trim().toUpperCase();
+      safeStorage.setItem('bhumat_pending_ref_code', cleanRef);
+      supabase.rpc('bind_invite_code', {
+        p_invited_token: token,
+        p_code: cleanRef
+      }).then(({ data }) => {
+        if (data?.success) {
+          console.log(`Bound to inviter code: ${cleanRef}`);
+        }
+      });
+    }
+  }
+  // ... existing local storage reads ...
     try {
       const savedSeat = safeStorage.getItem('bhumat_user_seat');
       const savedState = safeStorage.getItem('bhumat_user_state');
@@ -421,8 +445,27 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
     return 'You already voted in this constituency.';
   };
 
+  // --- SINGLE, ROBUST handleCastVote ---
   const handleCastVote = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
+
+    // --- 1. DIRECT & SYNCHRONOUS GUEST VERIFICATION CHECK ---
+    const rawPhone = safeStorage.getItem('bhumat_user_phone');
+    const isUserVerified = Boolean(
+      (linkedPhone && linkedPhone.trim() !== '' && linkedPhone !== 'null' && linkedPhone !== 'undefined') ||
+      (rawPhone && rawPhone.trim() !== '' && rawPhone !== 'null' && rawPhone !== 'undefined')
+    );
+
+    // Read directly from storage to eliminate closure lag
+    const storedCountRaw = safeStorage.getItem('bhumat_guest_vote_count');
+    const currentCount = storedCountRaw ? parseInt(storedCountRaw, 10) : guestVotesCast;
+
+    if (!isUserVerified && currentCount >= 3) {
+      showPointerToast('🔒 Guest quota reached (3/3). Signup to continue.', e);
+      setIsAuthModalOpen(true);
+      return;
+    }
+
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
     
     // Strict Lock: Tied strictly to user's ballot on this poll for this cycle
@@ -443,12 +486,30 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
     setVoteTimestamps(updatedTimestamps);
     setTotalVotesCount((prev) => prev + 1);
     setMonthlyVotesCount((prev) => prev + 1);
+
     if (poll.category === 'JanMat') {
       setJanmatAuditsCount((prev) => prev + 1);
     } else {
       setLokmatPollsCount((prev) => prev + 1);
     }
     setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
+
+    // --- 2. SYNCHRONOUS INCREMENT & NOTIFICATION ---
+    if (!isUserVerified) {
+      const nextCount = currentCount + 1;
+      setGuestVotesCast(nextCount);
+      safeStorage.setItem('bhumat_guest_vote_count', String(nextCount));
+
+      const xpGained = poll.category === 'JanMat' ? '+40 XP' : '+30 XP';
+      if (nextCount < 3) {
+        showPointerToast(`✓ Ballot logged! ${xpGained} • Guest Ballot ${nextCount} of 3`, e);
+      } else {
+        showPointerToast(`✓ 3rd Guest Ballot Cast! Signup to lock your votes.`, e);
+      }
+    } else {
+      const xpGained = poll.category === 'JanMat' ? '+40 XP' : '+30 XP';
+      showPointerToast(`✓ Ballot logged for ${selectedSeat.name}! ${xpGained}`, e);
+    }
 
     try {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
@@ -478,6 +539,21 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
       p_constituency_name: selectedSeat.name,
       p_selected_option: optionIdx
     });
+    // Check and award two-step milestone bonus (+100 DBG each for 1st JanMat and 1st LokMat)
+try {
+  const { data: refReward } = await supabase.rpc('check_and_reward_referral', {
+    p_voter_token: deviceHash,
+    p_category: poll.category
+  });
+  if (refReward?.rewarded) {
+    setDbgPoints(refReward.new_balance);
+    safeStorage.setItem('bhumat_dbg_balance', String(refReward.new_balance));
+    showPointerToast(`🎉 +${refReward.bonus} DBG Referral Milestone Unlocked!`, e);
+  }
+} catch (err) {
+  console.warn('Referral milestone trigger error:', err);
+}
+
     syncWallet(deviceHash);
   };
 
@@ -568,8 +644,14 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
       style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}
     >
       <Head>
-        <title>BhuMat — Bharat's Sovereign Public Opinion Grid</title>
-      </Head>
+  <title>BhuMat - Bharat's Sovereign Public Opinion </title>
+  <meta name="description" content="Sovereign consensus grid across 543 Lok Sabha seats. Vote on daily civic audits and cultural pulses." />
+  <meta property="og:title" content="BhuMat - Bharat's Sovereign Public Opinion Engine" />
+  <meta property="og:description" content="Cast your vote on today's national JanMat audit and LokMat pulse across all 543 parliamentary seats." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://vote.bhumat.com" />
+  <meta name="twitter:card" content="summary_large_image" />
+</Head>
       <style>{`
         @keyframes gentleLiveBlink {
           0% { opacity: 0.35; transform: scale(0.92); }
@@ -1123,7 +1205,6 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
                 National ballots follow scheduled drops. Once cast, your vote is recorded in your Lok Sabha seat's tally for this cycle.
               </p>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
                 Daily Drop Rhythm
@@ -1159,7 +1240,6 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
                 <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 800 }}>Active ❯</span>
               </div>
             </div>
-
             <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>HOW CADENCE & REVOTING WORK</span>
@@ -1176,7 +1256,6 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
                 <div>• <strong>One-Ballot Lock:</strong> One vote per poll cycle. Shifting your seat locks previous cycle votes and applies only to future ballots.</div>
               </div>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
                 Upcoming Queue ({currentSeasonFuturePolls.length})
@@ -1233,24 +1312,30 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
               </div>
 
               {/* Mobile Link / Verified Passport Banner */}
-<div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '12px', backgroundColor: linkedPhone ? '#f0fdf4' : '#fffbeb', border: `1px solid ${linkedPhone ? '#bbf7d0' : '#fde68a'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-  <div>
-    <span style={{ fontSize: '11px', fontWeight: 800, color: linkedPhone ? '#166534' : '#92400e' }}>
-      {linkedPhone ? `📱 Linked Mobile: +91 ******${linkedPhone.slice(-4)}` : '⚠️ Guest Citizen Mode'}
-    </span>
-    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-      {linkedPhone ? 'Passport sync active across devices' : 'Link phone to preserve DBG & XP across browsers'}
-    </div>
-  </div>
-  {!linkedPhone && (
-    <button
-      onClick={() => setIsAuthModalOpen(true)}
-      style={{ padding: '6px 12px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-    >
-      Link Phone
-    </button>
-  )}
-</div>
+              <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '12px', backgroundColor: linkedPhone ? '#f0fdf4' : '#fffbeb', border: `1px solid ${linkedPhone ? '#bbf7d0' : '#fde68a'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: linkedPhone ? '#166534' : '#92400e' }}>
+                    {linkedPhone 
+                      ? `📱 Linked Mobile: +91 ******${linkedPhone.slice(-4)}` 
+                      : `⚠️ Guest Citizen (${guestVotesCast}/3 Ballots Used)`}
+                  </span>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                    {linkedPhone 
+                      ? 'Passport sync active across devices' 
+                      : guestVotesCast >= 3 
+                        ? 'Guest quota reached! Signup to continue voting' 
+                        : `${3 - guestVotesCast} guest ballot${3 - guestVotesCast === 1 ? '' : 's'} remaining before mobile verification`}
+                  </div>
+                </div>
+                {!linkedPhone && (
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    style={{ padding: '6px 12px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Link Phone
+                  </button>
+                )}
+              </div>
 
               {/* DBG Civic Balance Card */}
               <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', padding: '16px', marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1322,11 +1407,11 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
               {/* Seasonal Citizen Leaderboard & Gamification Engine */}
               <div style={{ marginTop: '14px' }}>
                 <LeaderboardView
-  userState={selectedSeat?.state || 'Bihar'}
-  userSeat={selectedSeat?.name || 'Karakat'}
-  voterToken={deviceHash}
-  refreshTrigger={profileRefreshKey}
-/>
+                  userState={selectedSeat?.state || 'Bihar'}
+                  userSeat={selectedSeat?.name || 'Karakat'}
+                  voterToken={deviceHash}
+                  refreshTrigger={profileRefreshKey}
+                />
               </div>
 
               {/* Monthly Season Progress Bar */}
@@ -1627,19 +1712,20 @@ const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
           </button>
         </div>
       </nav>
+
       <PhoneAuthModal
-  isOpen={isAuthModalOpen}
-  onClose={() => setIsAuthModalOpen(false)}
-  guestToken={deviceHash}
-  userState={selectedSeat?.state || 'Bihar'}
-  userSeat={selectedSeat?.name || 'Karakat'}
-  onAuthSuccess={(newToken) => {
-    setDeviceHash(newToken);
-    setLinkedPhone(safeStorage.getItem('bhumat_user_phone'));
-    syncWallet(newToken);
-    setProfileRefreshKey((prev) => prev + 1);
-  }}
-/>
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        guestToken={deviceHash}
+        userState={selectedSeat?.state || 'Bihar'}
+        userSeat={selectedSeat?.name || 'Karakat'}
+        onAuthSuccess={(newToken) => {
+          setDeviceHash(newToken);
+          setLinkedPhone(safeStorage.getItem('bhumat_user_phone'));
+          syncWallet(newToken);
+          setProfileRefreshKey((prev) => prev + 1);
+        }}
+      />
     </div>
   );
 }

@@ -1,33 +1,47 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+
+export const viewport: Viewport = {
+  themeColor: '#0284c7',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || 'https://bhumat.vercel.app'
   ),
-  title: 'BhuMat — Spatially Mapping Public Sentiment Across 543 Lok Sabha Seats',
-  description: 'Bharat’s sovereign civic consensus platform. Verified secret ballot audits across every parliamentary seat.',
+  title: "BhuMat — Spatially Mapping Public Sentiment Across 543 Lok Sabha Seats",
+  description: "Bharat's sovereign civic consensus platform. Verified secret ballot audits across 543 parliamentary seats.",
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'BhuMat',
+  },
   openGraph: {
     title: 'BhuMat — Drishti Pan-Bharat Scoreboard',
     description: 'Track real-time Lok Sabha consensus audits across 543 parliamentary seats.',
-    url: 'https://bhumat.vercel.app',
+    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://bhumat.vercel.app',
     siteName: 'BhuMat',
     images: [
       {
         url: '/api/og?seat=Bharat&state=National&verdict=Live%20Consensus&pct=64',
         width: 1200,
         height: 630,
-        alt: 'BhuMat Pan-Bharat Consensus Scoreboard'
-      }
+        alt: 'BhuMat Pan-Bharat Consensus Scoreboard',
+      },
     ],
     locale: 'en_IN',
-    type: 'website'
+    type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'BhuMat — Drishti Pan-Bharat Scoreboard',
     description: 'Track real-time Lok Sabha consensus audits across 543 parliamentary seats.',
-    images: ['/api/og?seat=Bharat&state=National&verdict=Live%20Consensus&pct=64']
-  }
+    images: ['/api/og?seat=Bharat&state=National&verdict=Live%20Consensus&pct=64'],
+  },
 };
 
 export default function RootLayout({
