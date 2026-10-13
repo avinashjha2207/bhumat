@@ -80,7 +80,7 @@ const SEAT_TO_STATE_MAP: Record<string, string> = {
   'Srinagar': 'Jammu and Kashmir', 'Udhampur': 'Jammu and Kashmir',
   'Chatra': 'Jharkhand', 'Dhanbad': 'Jharkhand', 'Dumka': 'Jharkhand', 'Giridih': 'Jharkhand', 'Godda': 'Jharkhand',
   'Hazaribagh': 'Jharkhand', 'Jamshedpur': 'Jharkhand', 'Khunti': 'Jharkhand', 'Kodarma': 'Jharkhand',
-  'Lohardaga': 'Jharkhand', 'Palamu': 'Jharkhand', 'Rajmapal': 'Jharkhand', 'Ranchi': 'Jharkhand', 'Singhbhum': 'Jharkhand',
+  'Lohardaga': 'Jharkhand', 'Palamu': 'Jharkhand', 'Rajmahal': 'Jharkhand', 'Ranchi': 'Jharkhand', 'Singhbhum': 'Jharkhand',
   'Bagalkot': 'Karnataka', 'Bangalore Central': 'Karnataka', 'Bangalore North': 'Karnataka', 'Bangalore Rural': 'Karnataka',
   'Bangalore South': 'Karnataka', 'Belgaum': 'Karnataka', 'Bellary': 'Karnataka', 'Bidar': 'Karnataka', 'Bijapur': 'Karnataka',
   'Chamarajanagar': 'Karnataka', 'Chikkballapur': 'Karnataka', 'Chikkodi': 'Karnataka', 'Chitradurga': 'Karnataka',
@@ -211,8 +211,8 @@ export default function AdminAuditPanel() {
   const [activeAdminTab, setActiveAdminTab] = useState<'AUDIT' | 'CREATE_POLL'>('AUDIT');
   const [polls, setPolls] = useState<Poll[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<string>('ALL');
-  
-  // Scoped Audit State (Target Poll or Aggregated All)
+
+  // Scoped Audit State
   const [scopedParticipations, setScopedParticipations] = useState<number>(0);
   const [scopedBallots, setScopedBallots] = useState<number>(0);
   const [scopedSampleRows, setScopedSampleRows] = useState<any[]>([]);
@@ -221,14 +221,29 @@ export default function AdminAuditPanel() {
   const [scopedHotspotVotes, setScopedHotspotVotes] = useState<number>(0);
   const [talliesRows, setTalliesRows] = useState<any[]>([]);
 
-  // Pan-Bharat Macro Telemetry State
+  // Macro Platform Telemetry
   const [platformTotalBallots, setPlatformTotalBallots] = useState<number>(0);
   const [janmatTotalBallots, setJanmatTotalBallots] = useState<number>(0);
   const [lokmatTotalBallots, setLokmatTotalBallots] = useState<number>(0);
+
+  // New Temporal Breakups: BhuMat / LokMat / JanMat
+  const [todayTotalBallots, setTodayTotalBallots] = useState<number>(0);
+  const [todayLokmatBallots, setTodayLokmatBallots] = useState<number>(0);
+  const [todayJanmatBallots, setTodayJanmatBallots] = useState<number>(0);
+
+  const [monthTotalBallots, setMonthTotalBallots] = useState<number>(0);
+  const [monthLokmatBallots, setMonthLokmatBallots] = useState<number>(0);
+  const [monthJanmatBallots, setMonthJanmatBallots] = useState<number>(0);
+
+  // Operations Metrics
+  const [newUsersToday, setNewUsersToday] = useState<number>(0);
+  const [weeklyBallots, setWeeklyBallots] = useState<number>(0);
+
   const [topJanmatState, setTopJanmatState] = useState<string>('Awaiting Data');
   const [topJanmatSeat, setTopJanmatSeat] = useState<string>('Awaiting Data');
   const [topLokmatState, setTopLokmatState] = useState<string>('Awaiting Data');
   const [topLokmatSeat, setTopLokmatSeat] = useState<string>('Awaiting Data');
+
   const [totalWallets, setTotalWallets] = useState<number>(0);
   const [verifiedPhones, setVerifiedPhones] = useState<number>(0);
   const [guestCitizens, setGuestCitizens] = useState<number>(0);
@@ -243,13 +258,14 @@ export default function AdminAuditPanel() {
   const [isPlatformFrozen, setIsPlatformFrozen] = useState(false);
   const [blackoutSeatInput, setBlackoutSeatInput] = useState('');
   const [blackoutActionStatus, setBlackoutActionStatus] = useState('');
-  
+
   // Sandbox Single Test
   const [simTargetPollId, setSimTargetPollId] = useState('');
   const [simSeat, setSimSeat] = useState('Muzaffarpur');
-  const [simState, setSimState] = useState('Bihar');
   const [simOption, setSimOption] = useState(0);
   const [simMessage, setSimMessage] = useState('');
+  const [batchCount, setBatchCount] = useState<number>(10);
+  const [injectAsVerified, setInjectAsVerified] = useState<boolean>(true);
   const [cycleSimStatus, setCycleSimStatus] = useState('');
   const [tallyFilter, setTallyFilter] = useState<'ALL' | 'FORTIFIED' | 'ACTIVE'>('ALL');
 
@@ -336,42 +352,51 @@ export default function AdminAuditPanel() {
     setLoading(true);
     try {
       const cleanPollId = (!pollId || pollId === 'ALL') ? 'ALL' : pollId;
-      
-      // 1. Fetch constituency tallies for Table 4
+
       const isAll = cleanPollId === 'ALL';
       let tQuery = supabase.from('constituency_tallies').select('*');
       if (!isAll) tQuery = tQuery.eq('poll_id', cleanPollId);
       const { data: tallies } = await tQuery.order('total_votes', { ascending: false });
       setTalliesRows(tallies || []);
 
-      // 2. Query dual-scoped RPC
       const { data: auditData, error: auditError } = await supabase.rpc('get_admin_audit_metrics', {
         p_poll_id: cleanPollId
       });
 
       if (auditError) {
         console.error('Audit RPC Error:', auditError);
-        alert(`Audit Ledger Warning: ${auditError.message}`);
+        alert(`Audit Error: ${auditError.message}`);
         return;
       }
 
       if (auditData) {
-        // Scoped Metrics (Target Poll)
         setScopedParticipations(Number(auditData.scoped_participations) || 0);
         setScopedBallots(Number(auditData.scoped_ballots) || 0);
-        setScopedSampleRows(auditData.scoped_sample || []);
+        setScopedSampleRows(Array.isArray(auditData.scoped_sample) ? auditData.scoped_sample : []);
         setScopedHotspotSeat(auditData.scoped_hotspot_seat || 'Awaiting Data');
         setScopedHotspotState(auditData.scoped_hotspot_state || 'Awaiting Data');
         setScopedHotspotVotes(Number(auditData.scoped_hotspot_votes) || 0);
 
-        // Pan-Bharat Macro Metrics
         setPlatformTotalBallots(Number(auditData.platform_total_ballots) || 0);
         setJanmatTotalBallots(Number(auditData.janmat_total_ballots) || 0);
         setLokmatTotalBallots(Number(auditData.lokmat_total_ballots) || 0);
+
+        setTodayTotalBallots(Number(auditData.today_total_ballots) || 0);
+        setTodayLokmatBallots(Number(auditData.today_lokmat_ballots) || 0);
+        setTodayJanmatBallots(Number(auditData.today_janmat_ballots) || 0);
+
+        setMonthTotalBallots(Number(auditData.month_total_ballots) || 0);
+        setMonthLokmatBallots(Number(auditData.month_lokmat_ballots) || 0);
+        setMonthJanmatBallots(Number(auditData.month_janmat_ballots) || 0);
+
+        setNewUsersToday(Number(auditData.new_users_today) || 0);
+        setWeeklyBallots(Number(auditData.weekly_ballots) || 0);
+
         setTopJanmatState(auditData.top_janmat_state || 'Awaiting Data');
         setTopJanmatSeat(auditData.top_janmat_seat || 'Awaiting Data');
         setTopLokmatState(auditData.top_lokmat_state || 'Awaiting Data');
         setTopLokmatSeat(auditData.top_lokmat_seat || 'Awaiting Data');
+
         setTotalWallets(Number(auditData.total_wallets) || 0);
         setVerifiedPhones(Number(auditData.verified_phones) || 0);
         setGuestCitizens(Number(auditData.guest_citizens) || 0);
@@ -381,7 +406,6 @@ export default function AdminAuditPanel() {
         setActiveStatesCount(Number(auditData.active_states) || 0);
         setFortifiedSeatsFromRpc(Number(auditData.fortified_seats) || 0);
 
-        // Verification of Zero PII Leakage
         if (auditData.scoped_sample && auditData.scoped_sample.length > 0) {
           const sample = auditData.scoped_sample[0];
           const hasLeak = 'voter_token' in sample || 'user_id' in sample || 'ip_address' in sample;
@@ -421,7 +445,6 @@ export default function AdminAuditPanel() {
   const isAllPollsSelected = selectedPollId === 'ALL';
   const isScopedReconciled = scopedBallots === scopedParticipations;
 
-  // De-duplicated Aggregated Rollup for Table 4 in [ALL POLLS] mode
   const aggregatedTallies = useMemo(() => {
     if (!isAllPollsSelected) {
       return talliesRows;
@@ -434,15 +457,16 @@ export default function AdminAuditPanel() {
           constituency_name: row.constituency_name,
           state_name: row.state_name,
           total_votes: 0,
+          verified_total_votes: 0,
           opt_0_votes: 0,
           opt_1_votes: 0,
           opt_2_votes: 0,
           opt_3_votes: 0,
-          leading_option: row.leading_option,
           is_fortified: false
         };
       }
       map[key].total_votes += Number(row.total_votes || 0);
+      map[key].verified_total_votes += Number(row.verified_total_votes || 0);
       map[key].opt_0_votes += Number(row.opt_0_votes || row.option_0_votes || 0);
       map[key].opt_1_votes += Number(row.opt_1_votes || row.option_1_votes || 0);
       map[key].opt_2_votes += Number(row.opt_2_votes || row.option_2_votes || 0);
@@ -456,12 +480,18 @@ export default function AdminAuditPanel() {
     fortifiedSeatsFromRpc,
     aggregatedTallies.filter((r) => r.is_fortified || r.total_votes >= 50).length
   );
-  
+
   const filteredTallies = aggregatedTallies.filter((r) => {
     if (tallyFilter === 'FORTIFIED') return r.is_fortified || r.total_votes >= 50;
     if (tallyFilter === 'ACTIVE') return r.total_votes > 0;
     return true;
   });
+
+  // Calculate live selected seat count in Sandbox
+  const sandboxTargetPollObj = isAllPollsSelected ? polls.find((p) => p.id === simTargetPollId) : selectedPoll;
+  const currentSeatTally = talliesRows.find(
+    (t) => t.constituency_name === simSeat && (!sandboxTargetPollObj || t.poll_id === sandboxTargetPollObj.id)
+  );
 
   const handleTogglePlatformFreeze = async () => {
     const nextState = !isPlatformFrozen;
@@ -555,39 +585,34 @@ export default function AdminAuditPanel() {
     }
   };
 
-  const handleSeatChange = (seat: string) => {
-    setSimSeat(seat);
-    if (SEAT_TO_STATE_MAP[seat]) {
-      setSimState(SEAT_TO_STATE_MAP[seat]);
-    } else if (QUICK_SEATS[seat]) {
-      setSimState(QUICK_SEATS[seat]);
-    }
-  };
-
   const handleSimulateBallot = async () => {
     const targetPoll = isAllPollsSelected ? simTargetPollId : selectedPollId;
     if (!targetPoll) {
       alert('Please choose a valid poll target for injection.');
       return;
     }
-    setSimMessage('Casting simulated ballot...');
-    const fakeToken = 'sim_' + Math.random().toString(36).substring(2, 10);
+    setSimMessage(`Casting batch of ${batchCount} ballots...`);
     const activePollObj = polls.find((p) => p.id === targetPoll);
     const targetCycle = activePollObj?.participation_mode === 'recurring' 
       ? getCurrentCycleId(activePollObj?.recurrence) 
       : (activePollObj?.current_cycle || '2026-10');
-    const { data, error } = await supabase.rpc('cast_ballot_transaction', {
+    
+    const derivedState = SEAT_TO_STATE_MAP[simSeat] || QUICK_SEATS[simSeat] || 'Bihar';
+
+    const { data, error } = await supabase.rpc('admin_batch_cast_ballots', {
       p_poll_id: targetPoll,
       p_cycle_id: targetCycle,
-      p_voter_token: fakeToken,
-      p_state_name: simState,
       p_constituency_name: simSeat,
-      p_selected_option: Number(simOption)
+      p_state_name: derivedState,
+      p_selected_option: Number(simOption),
+      p_vote_count: Number(batchCount),
+      p_as_verified: Boolean(injectAsVerified)
     });
+
     if (error || !data?.success) {
       setSimMessage(`❌ Error: ${error?.message || data?.error}`);
     } else {
-      setSimMessage(`✓ Ballot Logged: Seat total is now ${data.constituency_total}. Total audit ledger is ${data.total_poll_votes}.`);
+      setSimMessage(`✓ Injected +${data.votes_added} ballots! Seat total: ${data.constituency_total} (${data.verified_total} verified).`);
       runComprehensiveAudit(selectedPollId);
     }
   };
@@ -719,7 +744,7 @@ export default function AdminAuditPanel() {
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', padding: '24px', fontFamily: 'system-ui', color: '#0f172a' }}>
-      <div style={{ maxWidth: '1140px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1160px', margin: '0 auto' }}>
         
         {/* Header with Emergency Freeze Button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -976,7 +1001,7 @@ export default function AdminAuditPanel() {
         ) : (
           /* AUDIT & GOVERNANCE SUITE */
           <>
-            {/* SECTION A: PAN-BHARAT PLATFORM MACRO TELEMETRY (ALL 12 METRICS PRESERVED & CATEGORIZED) */}
+            {/* SECTION A: PAN-BHARAT PLATFORM MACRO TELEMETRY (EXPANDED TO COMPREHENSIVE OPERATIONS DASHBOARD) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '18px 20px', marginBottom: '22px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1028,15 +1053,13 @@ export default function AdminAuditPanel() {
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#064e3b', marginTop: '3px' }}>{janmatTotalBallots} Ballots</div>
                   <div style={{ fontSize: '10.5px', color: '#059669', marginTop: '2px' }}>Strict secret ballot audits</div>
                 </div>
-
                 <div style={{ backgroundColor: '#f0fdf4', padding: '12px 14px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>JanMat Hotspot Region</span>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#166534', marginTop: '4px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 900, color: '#166534', marginTop: '4px' }}>
                     {topJanmatSeat !== 'Awaiting Data' ? `${topJanmatSeat} (${topJanmatState})` : 'Awaiting Data'}
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#15803d', marginTop: '2px' }}>Leading civic policy engagement</div>
                 </div>
-
                 <div style={{ backgroundColor: '#fffbeb', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #fde68a' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '10px', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>🌅 LokMat Pulses</span>
@@ -1047,24 +1070,73 @@ export default function AdminAuditPanel() {
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#78350f', marginTop: '3px' }}>{lokmatTotalBallots} Ballots</div>
                   <div style={{ fontSize: '10.5px', color: '#d97706', marginTop: '2px' }}>Open cultural public sentiment</div>
                 </div>
-
                 <div style={{ backgroundColor: '#fffdf5', padding: '12px 14px', borderRadius: '12px', border: '1px solid #fef08a' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#854d0e', textTransform: 'uppercase' }}>LokMat Hotspot Region</span>
-                  <div style={{ fontSize: '16px', fontWeight: 900, color: '#854d0e', marginTop: '4px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 900, color: '#854d0e', marginTop: '4px' }}>
                     {topLokmatSeat !== 'Awaiting Data' ? `${topLokmatSeat} (${topLokmatState})` : 'Awaiting Data'}
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#a16207', marginTop: '2px' }}>Leading cultural debate pulse</div>
                 </div>
               </div>
 
-              {/* Row 3: Growth Funnel, Economy & Geographic Reach */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-                <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Citizen Passports</span>
-                  <div style={{ fontSize: '17px', fontWeight: 900, color: '#0f172a', marginTop: '3px' }}>
-                    {verifiedPhones} Verified <span style={{ fontSize: '12px', color: '#94a3b8' }}>/ {totalWallets} Total</span>
+              {/* Row 3: Dedicated State Hotspots & Velocity Metrics (NEW) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                <div style={{ backgroundColor: '#f0fdf4', padding: '12px 14px', borderRadius: '12px', border: '1px solid #86efac' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>JanMat Leading State</span>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#15803d', marginTop: '3px' }}>
+                    🏛️ {topJanmatState}
                   </div>
-                  <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>{guestCitizens} Guest runway sessions</div>
+                  <div style={{ fontSize: '10.5px', color: '#166534', marginTop: '2px' }}>State with highest JanMat votes</div>
+                </div>
+
+                <div style={{ backgroundColor: '#fffdf5', padding: '12px 14px', borderRadius: '12px', border: '1px solid #fde047' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#854d0e', textTransform: 'uppercase' }}>LokMat Leading State</span>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#a16207', marginTop: '3px' }}>
+                    🏛️ {topLokmatState}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#854d0e', marginTop: '2px' }}>State with highest LokMat votes</div>
+                </div>
+
+                {/* Current Day Ballot Pulse (BhuMat / LokMat / JanMat) */}
+                <div style={{ backgroundColor: '#eff6ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #bfdbfe' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase' }}>⚡ Today&apos;s Ballot Pulse</span>
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#1d4ed8', backgroundColor: '#dbeafe', padding: '1px 5px', borderRadius: '4px' }}>Live 24h</span>
+                  </div>
+                  <div style={{ fontSize: '17px', fontWeight: 900, color: '#1e3a8a', marginTop: '3px' }}>
+                    {todayTotalBallots} <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Total</span>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#2563eb', marginTop: '2px', fontWeight: 700 }}>
+                    BhuMat: {todayTotalBallots} • L: {todayLokmatBallots} • J: {todayJanmatBallots}
+                  </div>
+                </div>
+
+                {/* Current Month Cycle Pulse (BhuMat / LokMat / JanMat) */}
+                <div style={{ backgroundColor: '#faf5ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #e9d5ff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#6b21a8', textTransform: 'uppercase' }}>📅 Monthly Cycle Pulse</span>
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#7e22ce', backgroundColor: '#f3e8ff', padding: '1px 5px', borderRadius: '4px' }}>Season 10</span>
+                  </div>
+                  <div style={{ fontSize: '17px', fontWeight: 900, color: '#581c87', marginTop: '3px' }}>
+                    {monthTotalBallots} <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Total</span>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#7e22ce', marginTop: '2px', fontWeight: 700 }}>
+                    BhuMat: {monthTotalBallots} • L: {monthLokmatBallots} • J: {monthJanmatBallots}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 4: Growth Funnel, Economy & Operations Velocity */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                {/* Total Users & New Users Added Today */}
+                <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Citizen Passports (Users)</span>
+                  <div style={{ fontSize: '17px', fontWeight: 900, color: '#0f172a', marginTop: '3px' }}>
+                    {totalWallets} <span style={{ fontSize: '12px', color: '#059669' }}>({verifiedPhones} OTP)</span>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#0284c7', marginTop: '2px', fontWeight: 700 }}>
+                    +{newUsersToday} New Users Joined Today
+                  </div>
                 </div>
 
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1072,7 +1144,7 @@ export default function AdminAuditPanel() {
                   <div style={{ fontSize: '19px', fontWeight: 900, color: '#0284c7', marginTop: '3px' }}>
                     {totalWallets > 0 ? `${Math.round((verifiedPhones / totalWallets) * 100)}%` : '0%'}
                   </div>
-                  <div style={{ fontSize: '10.5px', color: '#0369a1', marginTop: '2px' }}>Guest &rarr; OTP verified rate</div>
+                  <div style={{ fontSize: '10.5px', color: '#0369a1', marginTop: '2px' }}>{guestCitizens} Guest runway sessions</div>
                 </div>
 
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1080,18 +1152,19 @@ export default function AdminAuditPanel() {
                   <div style={{ fontSize: '19px', fontWeight: 900, color: '#d97706', marginTop: '3px' }}>
                     {totalDbgCirculating} DBG
                   </div>
-                  <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '2px' }}>Genesis + referral credits</div>
+                  <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '2px' }}>Standardized 1 DBG denomination</div>
                 </div>
 
+                {/* Operations 7-Day Velocity & Regional Footprint */}
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #10b981' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>Referral Milestones</span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>7-Day Rolling Velocity</span>
                     <span style={{ fontSize: '10px', fontWeight: 800, color: '#047857' }}>
                       {activeSeatsCount} / 543 Seats
                     </span>
                   </div>
                   <div style={{ fontSize: '19px', fontWeight: 900, color: '#059669', marginTop: '3px' }}>
-                    {referralBonusesCount} Claimed
+                    {weeklyBallots} Ballots / 7d
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#047857', marginTop: '2px' }}>Across {activeStatesCount} States &amp; UTs</div>
                 </div>
@@ -1296,70 +1369,43 @@ export default function AdminAuditPanel() {
               </div>
             )}
 
-            {/* Reconciliation Comparison Meters */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
-              <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 1: Participations (Gating)</div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: '#0f172a', marginTop: '6px' }}>{scopedParticipations}</div>
-                <div style={{ fontSize: '11px', color: '#059669', marginTop: '4px' }}>
-                  {isAllPollsSelected ? 'Platform tokens registered' : 'Voter tokens on this target'}
-                </div>
-              </div>
-              <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Table 2: Blind Ballot Box</div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>{scopedBallots}</div>
-                <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '4px' }}>
-                  {isAllPollsSelected ? 'Total decoupled ballots' : 'Anonymous ballots cast for target'}
-                </div>
-              </div>
-              <div style={{ backgroundColor: isScopedReconciled ? '#ecfdf5' : '#fef2f2', padding: '16px', borderRadius: '14px', border: `1.5px solid ${isScopedReconciled ? '#a7f3d0' : '#fecaca'}` }}>
-                <div style={{ fontSize: '10px', color: isScopedReconciled ? '#065f46' : '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Reconciliation Status</div>
-                <div style={{ fontSize: '18px', fontWeight: 900, color: isScopedReconciled ? '#059669' : '#dc2626', marginTop: '8px' }}>
-                  {isScopedReconciled ? '✓ 100% Reconciled' : '⚠ Discrepancy Found'}
-                </div>
-                <div style={{ fontSize: '11px', color: isScopedReconciled ? '#047857' : '#b91c1c', marginTop: '4px' }}>
-                  {scopedBallots} ballots == {scopedParticipations} tokens
-                </div>
-              </div>
-              <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>Pan-Bharat Quorum Radar</div>
-                <div style={{ fontSize: '26px', fontWeight: 900, color: fortifiedSeatsCount > 0 ? '#10b981' : '#64748b', marginTop: '6px' }}>
-                  {fortifiedSeatsCount} / 543
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Seats fortified (&ge; 50 votes)</div>
-              </div>
-            </div>
-
-            {/* Sandbox Live Ballot Injector with ALL 543 Lok Sabha Seats */}
+            {/* SECTION C: SANDBOX REALTIME TESTING (ERGONOMICS OVERHAUL) */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                <div>
-                  <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Realtime Testing (543 Lok Sabha Seats)</h3>
-                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '3px 0 0 0' }}>
-                    Inject test ballots into any of India&apos;s 543 constituencies to verify map choropleth &amp; tallies.
-                  </p>
-                </div>
-                {isAllPollsSelected && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569' }}>Target Poll:</span>
-                    <select
-                      value={simTargetPollId}
-                      onChange={(e) => setSimTargetPollId(e.target.value)}
-                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #0284c7', fontSize: '12px', fontWeight: 700 }}
-                    >
-                      {polls.map((p) => (
-                        <option key={p.id} value={p.id}>[{p.category}] {p.title_en.slice(0, 30)}...</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+              <div style={{ marginBottom: '14px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Realtime Testing (543 Lok Sabha Seats)</h3>
+                <p style={{ fontSize: '11.5px', color: '#64748b', margin: '3px 0 0 0' }}>
+                  Inject test ballots into any of India&apos;s 543 constituencies to verify map choropleth &amp; tallies.
+                </p>
               </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1.6fr auto', gap: '10px', alignItems: 'center' }}>
+
+              {/* Full-Width Target Poll Selector (No More Truncation) */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', marginBottom: '14px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  🎯 Target Poll for Injection:
+                </label>
+                <select
+                  value={isAllPollsSelected ? simTargetPollId : selectedPollId}
+                  onChange={(e) => {
+                    if (isAllPollsSelected) setSimTargetPollId(e.target.value);
+                    else setSelectedPollId(e.target.value);
+                  }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #0284c7', fontSize: '13px', fontWeight: 700, backgroundColor: '#ffffff', color: '#0f172a' }}
+                >
+                  {polls.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [{p.category}] {p.title_en} — ({p.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Batch Ingestion Grid: Constituency, Option, Quantity Batch, Verified Toggle, Current Votes & Cast */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.4fr auto auto auto auto', gap: '8px', alignItems: 'center' }}>
+                {/* 1. Constituency */}
                 <select
                   value={simSeat}
-                  onChange={(e) => handleSeatChange(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, backgroundColor: '#ffffff', color: '#0f172a' }}
+                  onChange={(e) => setSimSeat(e.target.value)}
+                  style={{ padding: '10px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, backgroundColor: '#ffffff', color: '#0f172a' }}
                 >
                   <optgroup label="⚡ Quick Test Seats">
                     {Object.keys(QUICK_SEATS).map((s) => (
@@ -1376,17 +1422,12 @@ export default function AdminAuditPanel() {
                     ))}
                   </optgroup>
                 </select>
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={simState}
-                  onChange={(e) => setSimState(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
-                />
+
+                {/* 2. Option */}
                 <select
                   value={simOption}
                   onChange={(e) => setSimOption(Number(e.target.value))}
-                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+                  style={{ padding: '10px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 >
                   {((isAllPollsSelected ? polls.find((p) => p.id === simTargetPollId)?.options : selectedPoll?.options) || [
                     { id: 0, text_en: 'Option 1' },
@@ -1394,17 +1435,58 @@ export default function AdminAuditPanel() {
                     { id: 2, text_en: 'Option 3' }
                   ]).map((opt: any, idx: number) => (
                     <option key={opt.id || idx} value={idx}>
-                      Option {idx}: {opt.text_en}
+                      Opt {idx}: {opt.text_en.slice(0, 24)}
                     </option>
                   ))}
                 </select>
+
+                {/* 3. Batch Quantity Selector */}
+                <select
+                  value={batchCount}
+                  onChange={(e) => setBatchCount(Number(e.target.value))}
+                  style={{ padding: '10px 8px', borderRadius: '8px', border: '1px solid #0284c7', backgroundColor: '#f0f9ff', color: '#0369a1', fontSize: '12px', fontWeight: 800 }}
+                >
+                  <option value={1}>+1 Vote</option>
+                  <option value={5}>+5 Votes</option>
+                  <option value={10}>+10 (Tier 2)</option>
+                  <option value={25}>+25 (Tier 3)</option>
+                  <option value={50}>+50 (Fortify)</option>
+                  <option value={150}>+150 (Hotspot)</option>
+                </select>
+
+                {/* 4. Verified Checkbox */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <input
+                    type="checkbox"
+                    checked={injectAsVerified}
+                    onChange={(e) => setInjectAsVerified(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>🛡️ Verified</span>
+                </label>
+
+                {/* 5. Live Seat Votes Badge */}
+                <div style={{ padding: '7px 10px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 800, color: '#64748b' }}>SEAT TOTAL</div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 900, color: '#0284c7' }}>
+                    {currentSeatTally?.total_votes || 0} <span style={{ fontSize: '10px', color: '#059669' }}>({currentSeatTally?.verified_total_votes || 0}v)</span>
+                  </div>
+                </div>
+
+                {/* 6. Batch Action Button */}
                 <button
                   onClick={handleSimulateBallot}
-                  style={{ padding: '10px 18px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  style={{ padding: '10px 16px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
-                  Cast Test Vote
+                  ⚡ Inject {batchCount}
                 </button>
               </div>
+
+              {simMessage && (
+                <div style={{ marginTop: '10px', fontSize: '11.5px', fontWeight: 700, color: simMessage.startsWith('✓') ? '#059669' : '#dc2626' }}>
+                  {simMessage}
+                </div>
+              )}
 
               {/* Fast Citizen Persona Switcher */}
               <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
@@ -1441,7 +1523,6 @@ export default function AdminAuditPanel() {
                             localStorage.removeItem('bhumat_vote_timestamps');
                             localStorage.removeItem('bhumat_dbg_balance');
                             sessionStorage.clear();
-
                             localStorage.setItem('bhumat_voter_token', data.voter_token);
                             localStorage.setItem('bhumat_user_seat', persona.seat);
                             localStorage.setItem('bhumat_user_state', persona.state);
@@ -1516,6 +1597,7 @@ export default function AdminAuditPanel() {
                       <th style={{ padding: '10px' }}>Constituency</th>
                       <th style={{ padding: '10px' }}>State</th>
                       <th style={{ padding: '10px' }}>Total Ballots</th>
+                      <th style={{ padding: '10px' }}>Verified (OTP)</th>
                       <th style={{ padding: '10px' }}>Opt 0 (Orange)</th>
                       <th style={{ padding: '10px' }}>Opt 1 (Green)</th>
                       <th style={{ padding: '10px' }}>Opt 2 (Sky Blue)</th>
@@ -1526,7 +1608,7 @@ export default function AdminAuditPanel() {
                   <tbody>
                     {filteredTallies.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
+                        <td colSpan={9} style={{ padding: '18px', textAlign: 'center', color: '#94a3b8' }}>
                           No seats matching filter.
                         </td>
                       </tr>
@@ -1536,6 +1618,7 @@ export default function AdminAuditPanel() {
                           <td style={{ padding: '10px', fontWeight: 800 }}>{row.constituency_name}</td>
                           <td style={{ padding: '10px', color: '#64748b' }}>{row.state_name}</td>
                           <td style={{ padding: '10px', fontWeight: 900, color: '#0284c7' }}>{row.total_votes}</td>
+                          <td style={{ padding: '10px', fontWeight: 800, color: '#059669' }}>{row.verified_total_votes || 0}</td>
                           <td style={{ padding: '10px', color: '#f97316', fontWeight: 700 }}>{row.opt_0_votes}</td>
                           <td style={{ padding: '10px', color: '#10b981', fontWeight: 700 }}>{row.opt_1_votes}</td>
                           <td style={{ padding: '10px', color: '#0ea5e9', fontWeight: 700 }}>{row.opt_2_votes}</td>

@@ -8,7 +8,6 @@ const UNPOLLED_SEAT_COLOR = '#e2e8f0';
 const TIE_COLOR = '#475569';
 const RADAR_GREEN = '#10b981';
 
-// 5-Tier HSL depth map corresponding to option palette indexes [0, 1, 2, 3]
 const TIER_HUE_MAP: Record<number, number> = {
   0: 24,  // Orange
   1: 160, // Emerald Green
@@ -16,16 +15,6 @@ const TIER_HUE_MAP: Record<number, number> = {
   3: 262  // Purple
 };
 
-/**
- * 5-Tier Logarithmic Depth Scaler
- * Tiers:
- * 0: 0 votes -> #e2e8f0
- * 1: 1 - 9 votes -> 42% Saturation, 84% Lightness (Subtle Early Pulse)
- * 2: 10 - 24 votes -> 55% Saturation, 72% Lightness (Emerging Trend)
- * 3: 25 - 49 votes -> 75% Saturation, 60% Lightness (Pre-Quorum)
- * 4: 50 - 149 votes -> 95% Saturation, 48% Lightness (Fortified Quorum)
- * 5: 150+ votes -> 100% Saturation, 42% Lightness (Sovereign Hotspot)
- */
 function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean): string {
   if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
   if (isTie) {
@@ -33,21 +22,11 @@ function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isT
     if (totalVotes >= 25) return '#475569';
     return '#94a3b8';
   }
-
   const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
-
-  if (totalVotes >= 150) {
-    return `hsl(${hue}, 100%, 42%)`;
-  }
-  if (totalVotes >= 50) {
-    return `hsl(${hue}, 95%, 48%)`;
-  }
-  if (totalVotes >= 25) {
-    return `hsl(${hue}, 75%, 60%)`;
-  }
-  if (totalVotes >= 10) {
-    return `hsl(${hue}, 55%, 72%)`;
-  }
+  if (totalVotes >= 150) return `hsl(${hue}, 100%, 42%)`;
+  if (totalVotes >= 50)  return `hsl(${hue}, 95%, 48%)`;
+  if (totalVotes >= 25)  return `hsl(${hue}, 75%, 60%)`;
+  if (totalVotes >= 10)  return `hsl(${hue}, 55%, 72%)`;
   return `hsl(${hue}, 42%, 84%)`;
 }
 
@@ -64,6 +43,8 @@ interface DrishtiMapProps {
   userVotedOptionIdx?: number | null;
   options: Option[];
   optimisticLocalVote?: boolean;
+  lang?: 'EN' | 'HI';
+  verifiedOnly?: boolean;
 }
 
 export default function DrishtiMap({
@@ -73,6 +54,8 @@ export default function DrishtiMap({
   userVotedOptionIdx,
   options,
   optimisticLocalVote = false,
+  lang = 'EN',
+  verifiedOnly = true,
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -80,6 +63,7 @@ export default function DrishtiMap({
   const [tallies, setTallies] = useState<any[]>([]);
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
   const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
+  const [activeTappedSeat, setActiveTappedSeat] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -190,12 +174,14 @@ export default function DrishtiMap({
 
   useEffect(() => {
     if (!geoData || !selectedState || !svgRef.current || !containerRef.current) return;
+
     const cleanTargetState = clean(selectedState);
     const stateFeatures = (geoData.features || []).filter((f: any) => {
       const p = f.properties || {};
       const st = clean(p.ST_NAME || p.st_name || p.state || '');
       return st === cleanTargetState;
     });
+
     if (stateFeatures.length === 0) return;
 
     const width = containerRef.current.clientWidth ? Math.min(containerRef.current.clientWidth - 20, 420) : 360;
@@ -204,15 +190,14 @@ export default function DrishtiMap({
     svg.selectAll('*').remove();
     svg.attr('viewBox', `0 0 ${width} ${height}`);
 
+    // Preserving exact unskewed Mercator projection bounded to state boundaries
     const projection = d3.geoMercator().fitExtent(
       [[16, 16], [width - 16, height - 16]],
       { type: 'FeatureCollection', features: stateFeatures } as any
     );
     const pathGenerator = d3.geoPath().projection(projection);
 
-    // Static clean container (NO d3.zoom applied to preserve mobile scrolling)
     const mapGroup = svg.append('g').attr('class', 'state-static-viewport');
-
     const tallyLookup = new Map<string, any>();
     tallies.forEach((t) => {
       const seatKey = clean(t.constituency_name);
@@ -221,19 +206,24 @@ export default function DrishtiMap({
 
     const triggerTooltip = (event: any, d: any, persistTimer = 4500) => {
       const props = d.properties || {};
-      const sName = props.PC_NAME || props.pc_name || props.name || 'Constituency';
+      const sName = props.PC_NAME || props.pc_name || props.name || (lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency');
       const row = tallyLookup.get(clean(sName));
-      let leadText = 'Awaiting Ballots';
+
+      let leadText = lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots';
       let stanceColor = '#94a3b8';
       let totalVotes = 0;
-      let trendBadge = 'Awaiting';
+      let trendBadge = lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting';
       let winningOptIdx: number | null = null;
       let isTie = false;
 
       if (row) {
         let highest = -1;
         options.forEach((_, idx) => {
-          const count = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
+          // Segregated metric lookup: verified vs raw
+          const count = verifiedOnly
+            ? (Number(row[`verified_opt_${idx}_votes`] ?? row[`verified_option_${idx}_votes`]) || 0)
+            : (Number(row[`opt_${idx}_votes`] ?? row[`option_${idx}_votes`]) || 0);
+
           totalVotes += count;
           if (count > highest) {
             highest = count;
@@ -243,16 +233,18 @@ export default function DrishtiMap({
             isTie = true;
           }
         });
+
         if (isTie) {
-          leadText = 'Split Mat (Tie)';
+          leadText = lang === 'HI' ? 'खंडित मत (टाई)' : 'Split Mat (Tie)';
           stanceColor = TIE_COLOR;
         } else if (winningOptIdx !== null && highest > 0) {
-          leadText = options[winningOptIdx]?.text_en || 'Leading';
+          leadText = (lang === 'HI' ? options[winningOptIdx]?.text_hi : options[winningOptIdx]?.text_en) || (lang === 'HI' ? 'अग्रणी' : 'Leading');
           stanceColor = OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
         }
-        if (totalVotes >= 50) trendBadge = '🛡️ Fortified';
-        else if (totalVotes >= 25) trendBadge = '⚡ Trending';
-        else if (totalVotes > 0) trendBadge = '🌱 Early Trend';
+
+        if (totalVotes >= 50) trendBadge = lang === 'HI' ? '🛡️ सत्यापित कोरम' : '🛡️ Fortified';
+        else if (totalVotes >= 25) trendBadge = lang === 'HI' ? '⚡ प्रगतिशील' : '⚡ Trending';
+        else if (totalVotes > 0) trendBadge = lang === 'HI' ? '🌱 प्रारंभिक रुझान' : '🌱 Early Trend';
       }
 
       setHoveredSeat({
@@ -278,11 +270,26 @@ export default function DrishtiMap({
         tooltipTimeoutRef.current = setTimeout(() => {
           setHoveredSeat(null);
           setTooltipPos(null);
+          setActiveTappedSeat(null);
+          // Reset stroke states on timeout
+          mapGroup.selectAll('path.constituency')
+            .attr('stroke', (dt: any) => {
+              const p = dt.properties || {};
+              const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+              const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+              return tot >= 50 ? '#ffffff' : '#cbd5e1';
+            })
+            .attr('stroke-width', (dt: any) => {
+              const p = dt.properties || {};
+              const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+              const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+              return tot >= 50 ? 1.0 : 0.6;
+            });
         }, persistTimer);
       }
     };
 
-    // 1. Render Seat Polygons with 5-Tier Logarithmic Intensity
+    // Render Seat Polygons
     mapGroup.selectAll('path.constituency')
       .data(stateFeatures)
       .enter()
@@ -293,6 +300,7 @@ export default function DrishtiMap({
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
         if (livePulses[seatName]) return livePulses[seatName].color;
+
         const row = tallyLookup.get(seatName);
         if (!row) {
           if (
@@ -305,12 +313,17 @@ export default function DrishtiMap({
           }
           return UNPOLLED_SEAT_COLOR;
         }
+
         let highestVotes = -1;
         let winningOptIdx: number | null = null;
         let isTie = false;
         let total = 0;
+
         options.forEach((_, idx) => {
-          const c = Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
+          const c = verifiedOnly
+            ? (Number(row[`verified_opt_${idx}_votes`] ?? row[`verified_option_${idx}_votes`]) || 0)
+            : (Number(row[`opt_${idx}_votes`] ?? row[`option_${idx}_votes`]) || 0);
+
           total += c;
           if (c > highestVotes) {
             highestVotes = c;
@@ -320,50 +333,88 @@ export default function DrishtiMap({
             isTie = true;
           }
         });
+
         return getConstituencyTierColor(winningOptIdx, total, isTie);
       })
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
         const row = tallyLookup.get(seatName);
-        let total = 0;
-        if (row) {
-          options.forEach((_, idx) => {
-            total += Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
-          });
-        }
+        const total = verifiedOnly ? (Number(row?.verified_total_votes) || 0) : (Number(row?.total_votes) || 0);
         return total >= 50 ? '#ffffff' : '#cbd5e1';
       })
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
         const row = tallyLookup.get(seatName);
-        let total = 0;
-        if (row) {
-          options.forEach((_, idx) => {
-            total += Number(row[`option_${idx}_votes`] ?? row[`opt_${idx}_votes`]) || 0;
-          });
-        }
+        const total = verifiedOnly ? (Number(row?.verified_total_votes) || 0) : (Number(row?.total_votes) || 0);
         return total >= 50 ? 1.0 : 0.6;
       })
       .style('cursor', 'pointer')
-      // Dual listener: Desktop mousemove + Mobile click/touchstart
+      // Desktop mousemove
       .on('mousemove', function (event: any, d: any) {
-        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.4);
-        triggerTooltip(event, d, 0); // Active tracking while mouse is over
+        mapGroup.selectAll('path.constituency')
+          .attr('stroke', (dt: any) => {
+            const p = dt.properties || {};
+            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? '#ffffff' : '#cbd5e1';
+          })
+          .attr('stroke-width', (dt: any) => {
+            const p = dt.properties || {};
+            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? 1.0 : 0.6;
+          });
+        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.8);
+        triggerTooltip(event, d, 0);
       })
       .on('mouseleave', function () {
-        d3.select(this).attr('stroke', '#cbd5e1').attr('stroke-width', 0.6);
+        mapGroup.selectAll('path.constituency')
+          .attr('stroke', (dt: any) => {
+            const p = dt.properties || {};
+            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? '#ffffff' : '#cbd5e1';
+          })
+          .attr('stroke-width', (dt: any) => {
+            const p = dt.properties || {};
+            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? 1.0 : 0.6;
+          });
         setHoveredSeat(null);
         setTooltipPos(null);
       })
+      // Mobile tap: Enforce strictly single active highlighted seat
       .on('click touchstart', function (event: any, d: any) {
         event.stopPropagation();
-        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.5);
-        triggerTooltip(event, d, 4500); // 4.5s sticky persistence on tap
+        const p = d.properties || {};
+        const sName = clean(p.PC_NAME || p.pc_name || p.name || '');
+
+        setActiveTappedSeat(sName);
+
+        // Reset all paths first to eliminate persistent mobile outlines
+        mapGroup.selectAll('path.constituency')
+          .attr('stroke', (dt: any) => {
+            const dp = dt.properties || {};
+            const r = tallyLookup.get(clean(dp.PC_NAME || dp.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? '#ffffff' : '#cbd5e1';
+          })
+          .attr('stroke-width', (dt: any) => {
+            const dp = dt.properties || {};
+            const r = tallyLookup.get(clean(dp.PC_NAME || dp.pc_name || ''));
+            const tot = verifiedOnly ? (Number(r?.verified_total_votes) || 0) : (Number(r?.total_votes) || 0);
+            return tot >= 50 ? 1.0 : 0.6;
+          });
+
+        // Highlight ONLY the single selected path
+        d3.select(this).attr('stroke', '#0284c7').attr('stroke-width', 2.4);
+        triggerTooltip(event, d, 4500);
       });
 
-    // 2. Realtime Incoming Vote Shockwave Rings
+    // Realtime Incoming Vote Shockwave Rings
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
       const feat = stateFeatures.find((f: any) => {
         const p = f.properties || {};
@@ -385,7 +436,7 @@ export default function DrishtiMap({
       }
     });
 
-    // 3. User's Home Seat Glowing Radar Ring
+    // User's Home Seat Glowing Radar Ring
     if (selectedConstituencyName) {
       const activeClean = clean(selectedConstituencyName);
       const homeFeat = stateFeatures.find((f: any) => {
@@ -415,7 +466,7 @@ export default function DrishtiMap({
         }
       }
     }
-  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, userVotedOptionIdx, optimisticLocalVote, options]);
+  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, userVotedOptionIdx, optimisticLocalVote, options, lang, verifiedOnly]);
 
   return (
     <div
@@ -423,6 +474,7 @@ export default function DrishtiMap({
       onClick={() => {
         setHoveredSeat(null);
         setTooltipPos(null);
+        setActiveTappedSeat(null);
       }}
       style={{
         position: 'relative',
@@ -450,13 +502,14 @@ export default function DrishtiMap({
         }
       `}</style>
 
-      {/* Dynamic State View Label on Top-Left */}
+      {/* Dynamic State View Label & Active Consensus Pill */}
       {selectedState && (
         <div style={{
           width: '100%',
           display: 'flex',
-          justifyContent: 'flex-start',
-          padding: '0 8px 4px 8px',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0 8px 6px 8px',
           boxSizing: 'border-box'
         }}>
           <span style={{
@@ -470,7 +523,18 @@ export default function DrishtiMap({
             letterSpacing: '0.04em',
             textTransform: 'uppercase'
           }}>
-            📍 {selectedState.toUpperCase()} {geoData?.features ? `(${geoData.features.filter((f: any) => clean(f.properties?.ST_NAME || f.properties?.st_name || f.properties?.state || '') === clean(selectedState)).length} SEATS)` : ''}
+            📍 {selectedState.toUpperCase()} {geoData?.features ? `(${geoData.features.filter((f: any) => clean(f.properties?.ST_NAME || f.properties?.st_name || f.properties?.state || '') === clean(selectedState)).length} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
+          </span>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 800,
+            color: verifiedOnly ? '#059669' : '#d97706',
+            backgroundColor: verifiedOnly ? '#ecfdf5' : '#fffbeb',
+            border: `1px solid ${verifiedOnly ? '#a7f3d0' : '#fde68a'}`,
+            padding: '2px 7px',
+            borderRadius: '6px'
+          }}>
+            {verifiedOnly ? (lang === 'HI' ? '🛡️ सत्यापित कोरम' : '🛡️ Verified Consensus') : (lang === 'HI' ? '🌱 कुल पल्स' : '🌱 Raw Pulse')}
           </span>
         </div>
       )}
@@ -508,7 +572,7 @@ export default function DrishtiMap({
             <span>{hoveredSeat.leadingStance}</span>
           </div>
           <div style={{ fontSize: '9.5px', color: '#94a3b8', marginTop: '3px' }}>
-            {hoveredSeat.total} {hoveredSeat.total === 1 ? 'Vote' : 'Votes'}
+            {hoveredSeat.total} {hoveredSeat.total === 1 ? (lang === 'HI' ? 'मत' : 'Vote') : (lang === 'HI' ? 'मत' : 'Votes')} {verifiedOnly && (lang === 'HI' ? '(सत्यापित)' : '(Verified)')}
           </div>
         </div>
       )}
