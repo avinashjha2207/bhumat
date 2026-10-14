@@ -226,7 +226,7 @@ export default function AdminAuditPanel() {
   const [janmatTotalBallots, setJanmatTotalBallots] = useState<number>(0);
   const [lokmatTotalBallots, setLokmatTotalBallots] = useState<number>(0);
 
-  // New Temporal Breakups: BhuMat / LokMat / JanMat
+  // Temporal Breakups: BhuMat / LokMat / JanMat
   const [todayTotalBallots, setTodayTotalBallots] = useState<number>(0);
   const [todayLokmatBallots, setTodayLokmatBallots] = useState<number>(0);
   const [todayJanmatBallots, setTodayJanmatBallots] = useState<number>(0);
@@ -258,6 +258,9 @@ export default function AdminAuditPanel() {
   const [isPlatformFrozen, setIsPlatformFrozen] = useState(false);
   const [blackoutSeatInput, setBlackoutSeatInput] = useState('');
   const [blackoutActionStatus, setBlackoutActionStatus] = useState('');
+
+  // Citizen Proposals Queue (Funded by 10 DBG burn)
+  const [proposals, setProposals] = useState<any[]>([]);
 
   // Sandbox Single Test
   const [simTargetPollId, setSimTargetPollId] = useState('');
@@ -328,6 +331,18 @@ export default function AdminAuditPanel() {
     }
   }
 
+  async function fetchProposals() {
+    try {
+      const { data } = await supabase
+        .from('citizen_poll_proposals')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (data) setProposals(data);
+    } catch (err) {
+      console.warn('Citizen proposals fetch notice:', err);
+    }
+  }
+
   async function fetchPlatformSettings() {
     try {
       const { data } = await supabase
@@ -344,6 +359,7 @@ export default function AdminAuditPanel() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchPolls();
+      fetchProposals();
       fetchPlatformSettings();
     }
   }, [isAuthenticated]);
@@ -352,7 +368,6 @@ export default function AdminAuditPanel() {
     setLoading(true);
     try {
       const cleanPollId = (!pollId || pollId === 'ALL') ? 'ALL' : pollId;
-
       const isAll = cleanPollId === 'ALL';
       let tQuery = supabase.from('constituency_tallies').select('*');
       if (!isAll) tQuery = tQuery.eq('poll_id', cleanPollId);
@@ -434,6 +449,7 @@ export default function AdminAuditPanel() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_participations' }, () => runComprehensiveAudit(selectedPollId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, () => fetchPolls())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'citizen_poll_proposals' }, () => fetchProposals())
         .subscribe();
       return () => {
         supabase.removeChannel(channel);
@@ -487,7 +503,6 @@ export default function AdminAuditPanel() {
     return true;
   });
 
-  // Calculate live selected seat count in Sandbox
   const sandboxTargetPollObj = isAllPollsSelected ? polls.find((p) => p.id === simTargetPollId) : selectedPoll;
   const currentSeatTally = talliesRows.find(
     (t) => t.constituency_name === simSeat && (!sandboxTargetPollObj || t.poll_id === sandboxTargetPollObj.id)
@@ -598,7 +613,6 @@ export default function AdminAuditPanel() {
       : (activePollObj?.current_cycle || '2026-10');
     
     const derivedState = SEAT_TO_STATE_MAP[simSeat] || QUICK_SEATS[simSeat] || 'Bihar';
-
     const { data, error } = await supabase.rpc('admin_batch_cast_ballots', {
       p_poll_id: targetPoll,
       p_cycle_id: targetCycle,
@@ -608,7 +622,6 @@ export default function AdminAuditPanel() {
       p_vote_count: Number(batchCount),
       p_as_verified: Boolean(injectAsVerified)
     });
-
     if (error || !data?.success) {
       setSimMessage(`❌ Error: ${error?.message || data?.error}`);
     } else {
@@ -997,11 +1010,53 @@ export default function AdminAuditPanel() {
                   : '🚀 Publish & Broadcast to 543 Seats'}
               </button>
             </form>
+
+            {/* Citizen Proposals Queue (10 DBG Burn Submissions) */}
+            <div style={{ backgroundColor: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '16px', marginTop: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
+                  💡 Citizen Proposals Queue ({proposals.filter(p => p.status === 'PENDING').length} Pending)
+                </span>
+                <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 700 }}>
+                  Funded by 10 DBG Citizen Burn
+                </span>
+              </div>
+              {proposals.length === 0 ? (
+                <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '14px 0' }}>
+                  No citizen proposals submitted yet.
+                </div>
+              ) : (
+                proposals.map((prop) => (
+                  <div key={prop.id} style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: prop.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: prop.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', padding: '2px 6px', borderRadius: '4px' }}>
+                        ● {prop.category}
+                      </span>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>{prop.title_en}</div>
+                      <div style={{ fontSize: '10.5px', color: '#64748b' }}>By token: {prop.voter_token.slice(0, 10)}... • 10 DBG Burned</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => {
+                          setNewCategory(prop.category);
+                          setNewTitleEn(prop.title_en);
+                          setNewTitleHi(prop.title_hi || prop.title_en);
+                          alert('Copied proposal to deployment form above! Edit details and click Publish.');
+                        }}
+                        style={{ padding: '6px 10px', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        Deploy ❯
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         ) : (
           /* AUDIT & GOVERNANCE SUITE */
           <>
-            {/* SECTION A: PAN-BHARAT PLATFORM MACRO TELEMETRY (EXPANDED TO COMPREHENSIVE OPERATIONS DASHBOARD) */}
+            {/* SECTION A: PAN-BHARAT PLATFORM MACRO TELEMETRY */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '18px 20px', marginBottom: '22px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1079,7 +1134,7 @@ export default function AdminAuditPanel() {
                 </div>
               </div>
 
-              {/* Row 3: Dedicated State Hotspots & Velocity Metrics (NEW) */}
+              {/* Row 3: Dedicated State Hotspots & Velocity Metrics */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
                 <div style={{ backgroundColor: '#f0fdf4', padding: '12px 14px', borderRadius: '12px', border: '1px solid #86efac' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>JanMat Leading State</span>
@@ -1088,7 +1143,6 @@ export default function AdminAuditPanel() {
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#166534', marginTop: '2px' }}>State with highest JanMat votes</div>
                 </div>
-
                 <div style={{ backgroundColor: '#fffdf5', padding: '12px 14px', borderRadius: '12px', border: '1px solid #fde047' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#854d0e', textTransform: 'uppercase' }}>LokMat Leading State</span>
                   <div style={{ fontSize: '18px', fontWeight: 900, color: '#a16207', marginTop: '3px' }}>
@@ -1096,7 +1150,6 @@ export default function AdminAuditPanel() {
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#854d0e', marginTop: '2px' }}>State with highest LokMat votes</div>
                 </div>
-
                 {/* Current Day Ballot Pulse (BhuMat / LokMat / JanMat) */}
                 <div style={{ backgroundColor: '#eff6ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #bfdbfe' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1110,7 +1163,6 @@ export default function AdminAuditPanel() {
                     BhuMat: {todayTotalBallots} • L: {todayLokmatBallots} • J: {todayJanmatBallots}
                   </div>
                 </div>
-
                 {/* Current Month Cycle Pulse (BhuMat / LokMat / JanMat) */}
                 <div style={{ backgroundColor: '#faf5ff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #e9d5ff' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1128,7 +1180,6 @@ export default function AdminAuditPanel() {
 
               {/* Row 4: Growth Funnel, Economy & Operations Velocity */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-                {/* Total Users & New Users Added Today */}
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Citizen Passports (Users)</span>
                   <div style={{ fontSize: '17px', fontWeight: 900, color: '#0f172a', marginTop: '3px' }}>
@@ -1138,7 +1189,6 @@ export default function AdminAuditPanel() {
                     +{newUsersToday} New Users Joined Today
                   </div>
                 </div>
-
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>Mobile Verification Rate</span>
                   <div style={{ fontSize: '19px', fontWeight: 900, color: '#0284c7', marginTop: '3px' }}>
@@ -1146,7 +1196,6 @@ export default function AdminAuditPanel() {
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#0369a1', marginTop: '2px' }}>{guestCitizens} Guest runway sessions</div>
                 </div>
-
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                   <span style={{ fontSize: '10px', fontWeight: 800, color: '#d97706', textTransform: 'uppercase' }}>Circulating DBG Economy</span>
                   <div style={{ fontSize: '19px', fontWeight: 900, color: '#d97706', marginTop: '3px' }}>
@@ -1154,8 +1203,6 @@ export default function AdminAuditPanel() {
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '2px' }}>Standardized 1 DBG denomination</div>
                 </div>
-
-                {/* Operations 7-Day Velocity & Regional Footprint */}
                 <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #10b981' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>7-Day Rolling Velocity</span>
@@ -1369,7 +1416,7 @@ export default function AdminAuditPanel() {
               </div>
             )}
 
-            {/* SECTION C: SANDBOX REALTIME TESTING (ERGONOMICS OVERHAUL) */}
+            {/* SECTION C: SANDBOX REALTIME TESTING */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
               <div style={{ marginBottom: '14px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0 }}>🧪 Sandbox Realtime Testing (543 Lok Sabha Seats)</h3>
@@ -1378,7 +1425,7 @@ export default function AdminAuditPanel() {
                 </p>
               </div>
 
-              {/* Full-Width Target Poll Selector (No More Truncation) */}
+              {/* Full-Width Target Poll Selector */}
               <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', marginBottom: '14px' }}>
                 <label style={{ fontSize: '11px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
                   🎯 Target Poll for Injection:
@@ -1401,7 +1448,6 @@ export default function AdminAuditPanel() {
 
               {/* Batch Ingestion Grid: Constituency, Option, Quantity Batch, Verified Toggle, Current Votes & Cast */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.4fr auto auto auto auto', gap: '8px', alignItems: 'center' }}>
-                {/* 1. Constituency */}
                 <select
                   value={simSeat}
                   onChange={(e) => setSimSeat(e.target.value)}
@@ -1423,7 +1469,6 @@ export default function AdminAuditPanel() {
                   </optgroup>
                 </select>
 
-                {/* 2. Option */}
                 <select
                   value={simOption}
                   onChange={(e) => setSimOption(Number(e.target.value))}
@@ -1440,7 +1485,6 @@ export default function AdminAuditPanel() {
                   ))}
                 </select>
 
-                {/* 3. Batch Quantity Selector */}
                 <select
                   value={batchCount}
                   onChange={(e) => setBatchCount(Number(e.target.value))}
@@ -1454,7 +1498,6 @@ export default function AdminAuditPanel() {
                   <option value={150}>+150 (Hotspot)</option>
                 </select>
 
-                {/* 4. Verified Checkbox */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   <input
                     type="checkbox"
@@ -1465,7 +1508,6 @@ export default function AdminAuditPanel() {
                   <span>🛡️ Verified</span>
                 </label>
 
-                {/* 5. Live Seat Votes Badge */}
                 <div style={{ padding: '7px 10px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <div style={{ fontSize: '9px', fontWeight: 800, color: '#64748b' }}>SEAT TOTAL</div>
                   <div style={{ fontSize: '12.5px', fontWeight: 900, color: '#0284c7' }}>
@@ -1473,7 +1515,6 @@ export default function AdminAuditPanel() {
                   </div>
                 </div>
 
-                {/* 6. Batch Action Button */}
                 <button
                   onClick={handleSimulateBallot}
                   style={{ padding: '10px 16px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}

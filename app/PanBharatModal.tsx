@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 
@@ -31,7 +30,6 @@ export default function PanBharatModal({
   lang = 'EN'
 }: PanBharatModalProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-
   const [geoData, setGeoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'leading' | 0 | 1 | 2>('leading');
@@ -54,16 +52,13 @@ export default function PanBharatModal({
       });
   }, []);
 
-  // Pre-calculate deterministic constituency telemetry & quorum
   const seatTelemetry = useMemo(() => {
     if (!geoData) return new Map();
     const map = new Map<string, { leadingOpt: number; pcts: number[]; votes: number; isFortified: boolean }>();
-
     geoData.features.forEach((f: any, idx: number) => {
       const p = f.properties || {};
       const name = (p.PC_NAME || p.pc_name || p.NAME || `Seat_${idx}`).trim();
       const seed = name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
-
       const leadingOpt = seed % 3;
       const basePct = 52 + (seed % 34);
       const rem = 100 - basePct;
@@ -71,35 +66,27 @@ export default function PanBharatModal({
       pcts[leadingOpt] = basePct;
       pcts[(leadingOpt + 1) % 3] = Math.floor(rem * 0.62);
       pcts[(leadingOpt + 2) % 3] = rem - pcts[(leadingOpt + 1) % 3];
-
       const votes = 25 + (seed % 150);
       const isFortified = votes >= 50;
-
       map.set(name.toLowerCase(), { leadingOpt, pcts, votes, isFortified });
     });
-
     return map;
   }, [geoData]);
 
   const getSeatColor = (name: string, isFortified: boolean, leadingOpt: number) => {
     const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const cleanTarget = selectedSeatName.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    // Active verified seat is highlighted in vibrant emerald
     if (cleanTarget && cleanName === cleanTarget) {
       return '#10b981';
     }
-
     if (!isFortified) {
       return '#f1f5f9';
     }
-
     if (filterMode === 'leading') {
-      if (leadingOpt === 0) return '#bbf7d0'; // Emerald tint
-      if (leadingOpt === 1) return '#bae6fd'; // Azure tint
-      return '#fef08a'; // Amber tint
+      if (leadingOpt === 0) return '#bbf7d0';
+      if (leadingOpt === 1) return '#bae6fd';
+      return '#fef08a';
     }
-
     const data = seatTelemetry.get(name.toLowerCase());
     if (data && data.leadingOpt === filterMode) {
       return filterMode === 0 ? '#10b981' : filterMode === 1 ? '#0284c7' : '#f59e0b';
@@ -109,37 +96,27 @@ export default function PanBharatModal({
 
   useEffect(() => {
     if (!geoData || !svgRef.current) return;
-
-    // Standard aspect ratio for full territorial extent of India
     const width = 1000;
     const height = 1150;
-
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
-
     const g = svg.append('g').attr('class', 'map-viewport');
 
-    // Conic Conformal projection adjusted for India's mainland and boundaries
     const projection = d3.geoConicConformal()
       .parallels([12, 32])
       .rotate([-82.5, 0])
       .fitSize([width - 40, height - 40], geoData);
-
     const pathGenerator = d3.geoPath().projection(projection);
 
-    // Zoom and pan engine
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 10])
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
       });
-
     svg.call(zoom);
 
-    // Initial translation offset for visual padding
     g.attr('transform', 'translate(20, 20)');
 
-    // 543 Parliamentary Constituency polygons
     const paths = g.selectAll('path.seat')
       .data(geoData.features)
       .enter()
@@ -161,12 +138,10 @@ export default function PanBharatModal({
         const name = p.PC_NAME || p.pc_name || p.NAME || '';
         const st = p.ST_NAME || p.st_name || p.STATE || '';
         const t = seatTelemetry.get(name.toLowerCase());
-
         d3.select(this)
           .attr('stroke', '#0284c7')
           .attr('stroke-width', 2.5)
           .raise();
-
         setHoveredSeat({ name, state: st, telemetry: t });
       })
       .on('mouseleave', function () {
@@ -175,7 +150,6 @@ export default function PanBharatModal({
           .attr('stroke-width', 0.6);
       });
 
-    // Dynamic search highlight
     if (searchQuery.trim()) {
       paths.each(function (d: any) {
         const p = d.properties || {};
@@ -190,7 +164,6 @@ export default function PanBharatModal({
       });
     }
 
-    // Centroid Beacon for Active Verified Seat
     const cleanTarget = selectedSeatName.toLowerCase().replace(/[^a-z0-9]/g, '');
     const activeFeature = geoData.features.find((f: any) => {
       const p = f.properties || {};
@@ -210,7 +183,6 @@ export default function PanBharatModal({
           .attr('stroke-width', 3)
           .attr('class', 'beacon-pulse-ring')
           .attr('pointer-events', 'none');
-
         g.append('circle')
           .attr('cx', centroid[0])
           .attr('cy', centroid[1])
@@ -244,7 +216,6 @@ export default function PanBharatModal({
           animation: beaconPulseRing 2s infinite ease-out;
         }
       `}</style>
-
       <div
         style={{
           backgroundColor: '#ffffff',
@@ -291,7 +262,6 @@ export default function PanBharatModal({
               {pollQuestion}
             </h2>
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <input
               type="text"
@@ -308,22 +278,24 @@ export default function PanBharatModal({
                 width: '200px'
               }}
             />
-
-            <button
-              onClick={onClose}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '7px 16px',
-                fontSize: '13px',
-                fontWeight: 700,
-                color: '#334155',
-                cursor: 'pointer'
-              }}
-            >
-              ✕ Close
-            </button>
+            {/* Show Close button ONLY if a confirmed seat already exists */}
+            {selectedSeatName && (
+              <button
+                onClick={onClose}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '7px 16px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Close
+              </button>
+            )}
           </div>
         </div>
 
@@ -340,7 +312,6 @@ export default function PanBharatModal({
           <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginRight: '4px' }}>
             Map Layer:
           </span>
-
           <button
             onClick={() => setFilterMode('leading')}
             style={{
@@ -356,7 +327,6 @@ export default function PanBharatModal({
           >
             ● Leading Consensus (All)
           </button>
-
           {options.map((opt, idx) => {
             const isSelected = filterMode === idx;
             const badgeColor = idx === 0 ? '#10b981' : idx === 1 ? '#0284c7' : '#f59e0b';
@@ -420,15 +390,12 @@ export default function PanBharatModal({
             <div style={{ fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 800, letterSpacing: '0.04em' }}>
               CONSTITUENCY TELEMETRY
             </div>
-            
             <div style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
               {hoveredSeat?.name || selectedSeatName || 'Hover over any seat'}
             </div>
-            
             <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
               {hoveredSeat?.state || 'Bharat 543 Electoral Grid'}
             </div>
-
             {hoveredSeat?.telemetry && (
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
@@ -437,12 +404,10 @@ export default function PanBharatModal({
                     {hoveredSeat.telemetry.isFortified ? '✓ Quorum Met' : `Pending (${hoveredSeat.telemetry.votes}/50)`}
                   </span>
                 </div>
-
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                   <span style={{ color: '#64748b' }}>Leading</span>
                   <span style={{ fontWeight: 800, color: '#0f172a' }}>
-                    {options[hoveredSeat.telemetry.leadingOpt]?.text_en || 'Leading'} (
-                    {hoveredSeat.telemetry.pcts[hoveredSeat.telemetry.leadingOpt]}%)
+                    {options[hoveredSeat.telemetry.leadingOpt]?.text_en || 'Leading'} ({hoveredSeat.telemetry.pcts[hoveredSeat.telemetry.leadingOpt]}%)
                   </span>
                 </div>
               </div>
