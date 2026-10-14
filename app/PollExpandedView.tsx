@@ -933,7 +933,46 @@ export default function PollExpandedView({
             </div>
           </div>
         </div>
+{/* Consensus Movement & Historical Shift Feed (Fixed Height, Scrollable Inside) */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '20px',
+          padding: '16px',
+          marginBottom: '14px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '14px' }}>📈</span>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                {lang === 'HI' ? 'अंतिम विजिट के बाद से बदलाव (Live Shifts)' : 'What Changed Since You Last Saw'}
+              </span>
+            </div>
+            <span style={{ fontSize: '10px', color: '#059669', fontWeight: 800, backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+              ● Real-time
+            </span>
+          </div>
 
+          {/* Fixed-Height Scrollable Activity Container */}
+          <div style={{ maxHeight: '130px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #10b981' }}>
+              <span style={{ fontWeight: 800, color: '#059669' }}>📍 {userSeatName || 'Your Seat'}:</span>{' '}
+              {userSeatStats && userSeatStats.totalVotes > 0
+                ? `${userSeatStats.leadingOptionText} holds the lead with ${userSeatStats.leadingPercent}% consensus.`
+                : 'Initial ballots forming the baseline for this seat.'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #0284c7' }}>
+              <span style={{ fontWeight: 800, color: '#0284c7' }}>🏛️ National Momentum:</span>{' '}
+              {bharatStats.total} total ballots recorded across {tallies.filter(t => t.total_votes > 0).length} active constituencies.
+            </div>
+            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #f59e0b' }}>
+              <span style={{ fontWeight: 800, color: '#d97706' }}>⚡ Quorum Fortification:</span>{' '}
+              {tallies.filter(t => t.total_votes >= 50).length} seats have reached fortified quorum (&ge;50 votes).
+            </div>
+          </div>
+        </div>
+        
         {/* Map / Grid Container */}
         {viewMode === 'MAP' ? (
           <div

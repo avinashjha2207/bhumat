@@ -109,13 +109,22 @@ function getOrCreateVoterToken(): string {
 export default function BhuMatApp() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'vote' | 'schedule' | 'profile'>('vote');
+  const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>('OVERVIEW');
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(() => new Date().getDate());
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
-  const [username] = useState('CitizenBharat');
+  const [username, setUsername] = useState<string>(() => {
+  if (typeof window !== 'undefined') {
+    return safeStorage.getItem('bhumat_username') || 'CitizenBharat';
+  }
+  return 'CitizenBharat';
+});
+const [isEditingUsername, setIsEditingUsername] = useState(false);
+const [usernameInput, setUsernameInput] = useState('');
 
   const [dbgPoints, setDbgPoints] = useState<number>(() => {
     try {
@@ -665,11 +674,11 @@ export default function BhuMatApp() {
     if (activeCategoryFilter === 'LokMat') list = list.filter((p) => p.category === 'LokMat');
     if (!pollSearchQuery.trim()) return list;
     const q = pollSearchQuery.toLowerCase().trim();
-    return list.filter((p) =>
-      p.title_en.toLowerCase().includes(q) ||
-      p.title_hi.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q)
-    );
+    const searchTokens = q.split(/\s+/).filter(Boolean);
+    return list.filter((p) => {
+      const combined = `${p.title_en} ${p.title_hi} ${p.category} ${p.options?.map((o: any) => `${o.text_en}${o.text_hi}`).join(' ')}`.toLowerCase();
+      return searchTokens.every(token => combined.includes(token));
+    });
   }, [pollSearchQuery, polls, activeCategoryFilter]);
 
   const filteredDropdownSeats = useMemo(() => {
@@ -983,7 +992,40 @@ export default function BhuMatApp() {
         {/* TAB 1: VOTE FEED */}
         {activeTab === 'vote' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
+            {/* Quick Civic Tips Banner */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '12px 14px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '14px' }}>💡</span>
+                  <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#0f172a' }}>
+                    {lang === 'HI' ? 'भूमत नागरिक मार्गदर्शिका (Tips)' : 'BhuMat Civic Pro-Tips'}
+                  </span>
+                </div>
+                <span style={{ fontSize: '10px', color: '#0284c7', fontWeight: 700 }}>
+                  {lang === 'HI' ? 'अंक एवं नियम' : 'Rules & Rewards'}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                <div style={{ backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0369a1' }}>🌅 LokMat vs 🌆 JanMat</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', lineHeight: 1.35 }}>
+                    {lang === 'HI' ? 'लोकमत सुबह 8 बजे खुला मत है। जनमत रात 8 बजे 100% गोपनीय नीतिगत मत है।' : 'LokMat (8 AM) is open culture. JanMat (8 PM) is secret governance audit.'}
+                  </div>
+                </div>
+                <div style={{ backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#15803d' }}>🔥 7-Day Streak (+1 DBG)</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', lineHeight: 1.35 }}>
+                    {lang === 'HI' ? 'लगातार 7 दिन मतदान पर +1 DBG क्रेडिट अनलॉक होता है।' : 'Vote 7 consecutive days to earn +1 DBG credit.'}
+                  </div>
+                </div>
+              </div>
+            </div>
             {/* Animated 3-Step Guest Runway Indicator Meter */}
             {!linkedPhone && isConfirmed && (
               <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '16px', padding: '12px 16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
@@ -1144,27 +1186,29 @@ export default function BhuMatApp() {
                   const hasVotedThisCycle = votedCycleKeys.includes(cycleVoteKey);
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
                   const userChoiceIdx = sessionBallotChoices[choiceKey];
-
+                  // Dynamic height taking into account title length and option count
+                  const dynamicCardHeight = Math.max(isFlipped ? 580 : 540, 390 + poll.options.length * 64);
                   return (
                     <div
                       key={poll.id}
                       style={{
                         perspective: '1200px',
                         width: '100%',
-                        minHeight: '520px',
-                        marginBottom: '16px'
+                        minHeight: `${dynamicCardHeight}px`,
+                        marginBottom: '20px'
                       }}
                     >
                       <div
                         style={{
                           position: 'relative',
                           width: '100%',
-                          minHeight: '520px',
+                          minHeight: `${dynamicCardHeight}px`,
                           transition: 'transform 0.65s cubic-bezier(0.4, 0, 0.2, 1)',
                           transformStyle: 'preserve-3d',
                           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
                         }}
                       >
+
                         {/* FRONT CARD: BALLOT VIEW */}
                         <div
                           style={{
@@ -1219,7 +1263,7 @@ export default function BhuMatApp() {
                                   backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px'
                                 }}>
                                   {poll.participation_mode === 'one_time' 
-                                    ? (lang === 'HI' ? '🔒 एकमुश्त मत' : '🔒 Lifetime')
+                                    ? (lang === 'HI' ? '🔒 एकमुश्त मत' : '🔒 One-time')
                                     : (lang === 'HI' ? `📅 ${poll.recurrence || 'मासिक'}` : `📅 ${poll.recurrence || 'Monthly'}`)}
                                 </span>
                               </div>
@@ -1631,15 +1675,331 @@ export default function BhuMatApp() {
         {/* TAB 3: SCHEDULE & CADENCE */}
         {activeTab === 'schedule' && (() => {
           const now = new Date();
-          const currentMonthIdx = now.getMonth();
           const currentYear = now.getFullYear();
-          const seasonNumber = currentMonthIdx + 1;
+          const currentMonth = now.getMonth();
+          const seasonNumber = currentMonth + 1;
           const activeMonthName = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
+          const activeMonthShort = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'short' }).toUpperCase();
           const seasonTitleText = lang === 'HI'
             ? `${activeMonthName} सत्र (सत्र ${seasonNumber} • ${currentYear})`
             : `${activeMonthName} Season (Season ${seasonNumber} • ${currentYear})`;
+
+          const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+          const firstDayRaw = new Date(currentYear, currentMonth, 1).getDay();
+          const startOffset = (firstDayRaw + 6) % 7; // Monday = 0
+          const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+
+          const selectedDateObj = new Date(currentYear, currentMonth, selectedCalendarDay);
+          const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
+
+          const pollsForSelectedDay = polls.filter((p) => {
+            if (!p.starts_at) return true;
+            const pd = new Date(p.starts_at);
+            return pd.getDate() === selectedCalendarDay && pd.getMonth() === currentMonth;
+          });
+
+          // Accurate Category Theming: LokMat = Orange | JanMat = Green
+          const dayLokMatPoll = pollsForSelectedDay.find((p) => p.category === 'LokMat') || {
+            id: 'mock_lm',
+            category: 'LokMat',
+            title_en: 'Indian cinema ke itihas mein, screen par aate hi kis villain ne logon ke dilon mein sabse zyada khauf paida kiya?',
+            title_hi: 'भारतीय सिनेमा के इतिहास में किस खलनायक ने पर्दे पर सबसे ज्यादा खौफ पैदा किया?'
+          };
+
+          const dayJanMatPoll = pollsForSelectedDay.find((p) => p.category === 'JanMat') || {
+            id: 'mock_jm',
+            category: 'JanMat',
+            title_en: 'Lok Sabha mein vipaksh ke neta (Leader of Opposition) jis tarah se janta ke mudde utha rahe hain, kya aap unke kaam se santusht hain?',
+            title_hi: 'लोकसभा में विपक्ष के नेता जिस तरह से जनता के मुद्दे उठा रहे हैं, क्या आप उनके काम से संतुष्ट हैं?'
+          };
+
+          // ─── DEDICATED FULL-PAGE CALENDAR VIEW (SOVEREIGN RETROFIT) ───
+          if (scheduleViewMode === 'CALENDAR') {
+            return (
+              <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
+                {/* Header Row: Back Button & Season Badge */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleViewMode('OVERVIEW')}
+                    style={{
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '7px 14px',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      color: '#0f172a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <span>←</span>
+                    <span>{lang === 'HI' ? 'समय-सारणी मुख्य पृष्ठ' : 'Schedule Overview'}</span>
+                  </button>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                      {activeMonthShort} {currentYear}
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '2px 7px', borderRadius: '5px' }}>
+                      {lang === 'HI' ? `सत्र ${seasonNumber}` : `S-${seasonNumber}`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Calendar Card Viewport */}
+                <div style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '24px',
+                  border: '1.5px solid #e2e8f0',
+                  padding: '18px 16px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.02)'
+                }}>
+                  {/* Legend Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {lang === 'HI' ? 'दैनिक ड्रॉप चक्र' : 'Daily Cadence Matrix'}
+                    </span>
+                    <div style={{ display: 'flex', gap: '10px', fontSize: '11px', fontWeight: 800 }}>
+                      <span style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                        LokMat (08 AM)
+                      </span>
+                      <span style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                        JanMat (08 PM)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Weekday Row (M T W T F S S) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', marginBottom: '10px' }}>
+                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w, idx) => (
+                      <div key={idx} style={{ fontSize: '11.5px', fontWeight: 800, color: idx >= 5 ? '#ef4444' : '#64748b' }}>
+                        {w}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 7-Column Days Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center' }}>
+                    {/* Previous Month Inactive Days */}
+                    {Array.from({ length: startOffset }).map((_, idx) => {
+                      const dayNum = prevMonthDays - startOffset + idx + 1;
+                      return (
+                        <div key={`prev-${idx}`} style={{ padding: '8px 2px', opacity: 0.25, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>{dayNum}</span>
+                        </div>
+                      );
+                    })}
+
+                    {/* Current Month Active Days */}
+                    {Array.from({ length: daysInMonth }).map((_, idx) => {
+                      const dayNum = idx + 1;
+                      const isSelected = selectedCalendarDay === dayNum;
+                      const isWeekend = (startOffset + idx) % 7 >= 5;
+
+                      // Check if any actual poll is scheduled on this calendar date
+                      const dayPolls = polls.filter((p) => {
+                        if (!p.starts_at) return false;
+                        const pd = new Date(p.starts_at);
+                        return pd.getDate() === dayNum && pd.getMonth() === currentMonth;
+                      });
+
+                      const hasActualLokMat = dayPolls.some((p) => p.category === 'LokMat');
+                      const hasActualJanMat = dayPolls.some((p) => p.category === 'JanMat');
+
+                      return (
+                        <div
+                          key={dayNum}
+                          onClick={() => setSelectedCalendarDay(dayNum)}
+                          style={{
+                            padding: '8px 2px 10px 2px',
+                            borderRadius: '12px',
+                            border: isSelected ? '2px solid #0284c7' : '1.5px solid transparent',
+                            backgroundColor: isSelected ? '#f0f9ff' : 'transparent',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span style={{
+                            fontSize: '12.5px',
+                            fontWeight: isSelected ? 900 : 700,
+                            color: isSelected ? '#0284c7' : isWeekend ? '#ef4444' : '#0f172a'
+                          }}>
+                            {dayNum}
+                          </span>
+
+                          {/* Dynamic Drop Indicators based on actual poll data */}
+                          <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '6px' }}>
+                            {hasActualLokMat && (
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                            )}
+                            {hasActualJanMat && (
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                            )}
+                            {!hasActualLokMat && !hasActualJanMat && (
+                              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#e2e8f0' }} />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Selected Day Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                    <span style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                      {selectedCalendarDay}
+                    </span>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#64748b' }}>
+                      {selectedDayWeekday} • {activeMonthName} {currentYear}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>
+                    {pollsForSelectedDay.length} {pollsForSelectedDay.length === 1 ? (lang === 'HI' ? 'प्रश्न निर्धारित' : 'Poll Scheduled') : (lang === 'HI' ? 'प्रश्न निर्धारित' : 'Polls Scheduled')}
+                  </span>
+                </div>
+
+                {/* Poll List for the Selected Calendar Date */}
+                {pollsForSelectedDay.length === 0 ? (
+                  <div style={{
+                    backgroundColor: '#ffffff',
+                    border: '1.5px solid #e2e8f0',
+                    borderRadius: '20px',
+                    padding: '28px 20px',
+                    textAlign: 'center',
+                    color: '#64748b',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  }}>
+                    <div style={{ fontSize: '28px', marginBottom: '8px' }}>🔒</div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                      {lang === 'HI' ? 'इस तिथि हेतु कोई प्रश्न निर्धारित नहीं है' : 'No Drops Scheduled For This Date'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.45 }}>
+                      {lang === 'HI' 
+                        ? 'इस तिथि के प्रश्न ड्रॉप समय के करीब प्रकाशित किए जाएंगे।' 
+                        : 'Polls for this date will appear as the seasonal cycle progresses.'}
+                    </div>
+                  </div>
+                ) : (
+                  pollsForSelectedDay.map((p) => {
+                    const isJanMat = p.category === 'JanMat';
+                    const dropTimeText = isJanMat ? '08:00 PM' : '08:00 AM';
+
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                          borderRadius: '20px',
+                          padding: '18px 18px 14px 18px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                        }}
+                      >
+                        {/* Tag & Drop Time Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{
+                            fontSize: '10.5px',
+                            fontWeight: 800,
+                            color: isJanMat ? '#059669' : '#d97706',
+                            backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                            padding: '3px 9px',
+                            borderRadius: '999px',
+                            border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`
+                          }}>
+                            ● {p.category.toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '3px 8px', borderRadius: '6px' }}>
+                            ⏰ {dropTimeText}
+                          </span>
+                        </div>
+
+                        {/* Question Titles */}
+                        <div>
+                          <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35, marginBottom: '4px' }}>
+                            {lang === 'EN' ? p.title_en : p.title_hi}
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 500, color: '#64748b', lineHeight: 1.4 }}>
+                            {lang === 'EN' ? p.title_hi : p.title_en}
+                          </div>
+                        </div>
+
+                        {/* Bottom Utility Row */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          borderTop: '1px solid #f1f5f9',
+                          paddingTop: '10px',
+                          marginTop: '2px'
+                        }}>
+                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                            {isJanMat 
+                              ? (lang === 'HI' ? '🔒 100% गोपनीय ऑडिट' : '🔒 Secret Ballot Audit')
+                              : (lang === 'HI' ? '🌅 खुला सांस्कृतिक संवाद' : '🌅 Public Cultural Pulse')}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <button
+                              onClick={() => alert(lang === 'HI' ? 'सूचना सक्षम की गई!' : 'Drop notification alert set!')}
+                              title="Set Alert"
+                              style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', fontSize: '12px', cursor: 'pointer' }}
+                            >
+                              🔔
+                            </button>
+                            <button
+                              onClick={() => {
+                                const dynamicCycle = p.participation_mode === 'recurring' ? getCurrentCycleId(p.recurrence) : 'lifetime';
+                                const cycleVoteKey = `${p.id}___${dynamicCycle}`;
+                                if (votedCycleKeys.includes(cycleVoteKey)) {
+                                  openExpandedView(p);
+                                } else {
+                                  setActiveTab('vote');
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              }}
+                              style={{
+                                background: isJanMat ? '#059669' : '#d97706',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {lang === 'HI' ? 'देखें ❯' : 'View ❯'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+          }
+
+          // ─── DEFAULT VIEW: CLASSIC SCHEDULE OVERVIEW ───
           return (
-            <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
+              
+              {/* Dynamic Season Banner */}
               <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px', letterSpacing: '0.04em' }}>
@@ -1669,18 +2029,19 @@ export default function BhuMatApp() {
                 </p>
               </div>
 
+              {/* Daily Drop Rhythm Cards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
                   {lang === 'EN' ? 'Daily Drop Rhythm' : 'दैनिक मतदान समय'}
                 </div>
+
+                {/* LokMat Morning Drop (Orange Theme) */}
                 <div
-                  onClick={(e) => triggerInfoPopup(
-                    lang === 'EN' ? 'LokMat Drop Rationale' : 'लोकमत समय का उद्देश्य',
-                    lang === 'EN'
-                      ? 'Published every morning at 8:00 AM. Covers public debates and sports/culture topics with transparent community profiles.'
-                      : 'प्रतिदिन सुबह 8:00 बजे प्रकाशित। सामाजिक विमर्श, खेल व संस्कृति पर खुला सांस्कृतिक मत।',
-                    e
-                  )}
+                  onClick={() => {
+                    setActiveCategoryFilter('LokMat');
+                    setActiveTab('vote');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                   style={{ backgroundColor: '#ffffff', border: '1.5px solid #fde68a', borderRadius: '16px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1701,14 +2062,13 @@ export default function BhuMatApp() {
                   </span>
                 </div>
 
+                {/* JanMat Evening Drop (Green Theme) */}
                 <div
-                  onClick={(e) => triggerInfoPopup(
-                    lang === 'EN' ? 'JanMat Drop Rationale' : 'जनमत समय का उद्देश्य',
-                    lang === 'EN'
-                      ? 'Published every evening at 8:00 PM. Features critical civic and policy audits using anonymous secret ballots.'
-                      : 'प्रतिदिन शाम 8:00 बजे प्रकाशित। प्रशासनिक और नीतिगत ऑडिट हेतु 100% गोपनीय मतपेटी।',
-                    e
-                  )}
+                  onClick={() => {
+                    setActiveCategoryFilter('JanMat');
+                    setActiveTab('vote');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                   style={{ backgroundColor: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '16px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1730,11 +2090,36 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              {/* Upcoming Scheduled Queue */}
+              {/* Upcoming Scheduled Drops Header + Calendar Toggle Button */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
-                  {lang === 'EN' ? `Upcoming Scheduled Drops (${scheduledQueueList.length})` : `आगामी निर्धारित मत (${scheduledQueueList.length})`}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 4px 0 4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {lang === 'EN' ? `Upcoming Scheduled Drops (${scheduledQueueList.length})` : `आगामी निर्धारित मत (${scheduledQueueList.length})`}
+                  </span>
+
+                  {/* Toggle button to open Calendar View */}
+                  <button
+                    type="button"
+                    onClick={() => setScheduleViewMode('CALENDAR')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      backgroundColor: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>📅</span>
+                    <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
+                  </button>
                 </div>
+
                 {scheduledQueueList.length === 0 ? (
                   <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
                     {lang === 'EN'
@@ -1744,17 +2129,26 @@ export default function BhuMatApp() {
                 ) : (
                   scheduledQueueList.map((item) => {
                     const sched = evaluatePollSchedule(item);
+                    const isItemJanMat = item.category === 'JanMat';
                     return (
-                      <div key={item.id} style={{ backgroundColor: '#ffffff', opacity: 0.85, border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '10.5px', fontWeight: 800, color: item.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: item.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', padding: '2px 8px', borderRadius: '999px', border: `1px solid ${item.category === 'JanMat' ? '#a7f3d0' : '#fde68a'}` }}>
+                          <span style={{
+                            fontSize: '10.5px',
+                            fontWeight: 800,
+                            color: isItemJanMat ? '#059669' : '#d97706',
+                            backgroundColor: isItemJanMat ? '#ecfdf5' : '#fffbeb',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            border: `1px solid ${isItemJanMat ? '#a7f3d0' : '#fde68a'}`
+                          }}>
                             ● {item.category}
                           </span>
                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '2px 8px', borderRadius: '6px' }}>
                             🔒 {sched.nextUnlockLabel}
                           </span>
                         </div>
-                        <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155', lineHeight: 1.35 }}>
                           {lang === 'EN' ? item.title_en : item.title_hi}
                         </div>
                         <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 500 }}>
@@ -1804,9 +2198,69 @@ export default function BhuMatApp() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '6px' }}>
                   <div>
-                    <h2 style={{ fontSize: '22px', fontWeight: 900, margin: 0, color: '#f8fafc', letterSpacing: '-0.01em' }}>
-                      {username}
-                    </h2>
+                    {isEditingUsername ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0' }}>
+                        <input
+                          type="text"
+                          value={usernameInput}
+                          maxLength={20}
+                          placeholder="Unique username..."
+                          onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                          style={{
+                            padding: '4px 8px', borderRadius: '6px', border: '1px solid #38bdf8',
+                            fontSize: '14px', fontWeight: 800, backgroundColor: '#1e293b', color: '#ffffff', outline: 'none'
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!usernameInput.trim()) return;
+                            const cleanName = usernameInput.trim();
+                            // Check uniqueness in voter_wallets
+                            const { data: existing } = await supabase
+                              .from('voter_wallets')
+                              .select('voter_token')
+                              .eq('username', cleanName)
+                              .neq('voter_token', deviceHash)
+                              .maybeSingle();
+
+                            if (existing) {
+                              alert(lang === 'HI' ? 'यह यूजरनेम पहले से किसी अन्य नागरिक का है।' : 'This username is already taken. Please choose another.');
+                              return;
+                            }
+
+                            await supabase.from('voter_wallets').update({ username: cleanName }).eq('voter_token', deviceHash);
+                            setUsername(cleanName);
+                            safeStorage.setItem('bhumat_username', cleanName);
+                            setIsEditingUsername(false);
+                          }}
+                          style={{ padding: '4px 8px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => setIsEditingUsername(false)}
+                          style={{ padding: '4px 8px', backgroundColor: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h2 style={{ fontSize: '22px', fontWeight: 900, margin: 0, color: '#f8fafc', letterSpacing: '-0.01em' }}>
+                          {username}
+                        </h2>
+                        <button
+                          onClick={() => {
+                            setUsernameInput(username);
+                            setIsEditingUsername(true);
+                          }}
+                          title="Edit Username"
+                          style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', padding: '0 2px' }}
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    )}
                     <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
                     </div>
@@ -2011,7 +2465,7 @@ export default function BhuMatApp() {
                   <span style={{ fontWeight: 800, color: '#0f172a' }}>{selectedSeat?.state || 'Bharat'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: '#64748b' }}>{lang === 'EN' ? 'Citizen Since:' : 'नागरिक प्रारंभ:'}</span>
+                  <span style={{ color: '#64748b' }}>{lang === 'EN' ? 'Voting Since:' : 'मतदान प्रारंभ:'}</span>
                   <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatVotingSince(votingSinceDate, lang)}</span>
                 </div>
 

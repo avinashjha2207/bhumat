@@ -152,26 +152,31 @@ export default function AuthModal({
               ? (lang === 'HI' ? 'जनमत संप्रभु सत्यापन' : 'JanMat Sovereign Verification')
               : (lang === 'HI' ? 'नागरिक प्रवेश' : 'Citizen Access')}
           </h3>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: 1.45 }}>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
             {isJanMat
               ? (lang === 'HI'
-                  ? 'जनमत नीतिगत आडिट हेतु एकमुश्त मोबाइल OTP आवश्यक है ताकि घरेलू नागरिकता की पुष्टि हो सके।'
-                  : 'One-time mobile OTP verification required to vote in JanMat to confirm domestic residency.')
+                  ? 'जनमत (संवैधानिक व नीतिगत आडिट) हेतु एकमुश्त मोबाइल OTP आवश्यक है ताकि यह सुनिश्चित हो सके कि आप भारत के वास्तविक नागरिक हैं।'
+                  : 'One-time mobile OTP verification is required for JanMat polls to ensure that only resident citizens audit public policy.')
               : (lang === 'HI'
-                  ? 'सांस्कृतिक एवं सामान्य मतों के लिए ईमेल या मोबाइल से सीधे प्रवेश करें।'
-                  : 'Sign in seamlessly with Email or Mobile OTP.')}
+                  ? 'लोकमत (सांस्कृतिक एवं सामाजिक संवाद) में मत देने हेतु आप ईमेल या मोबाइल किसी से भी जुड़ सकते हैं। जनमत के नीतिगत आडिट के लिए बाद में मोबाइल OTP से एकमुश्त सत्यापन किया जा सकता है।'
+                  : 'Sign in with Email or Mobile OTP. Email lets you participate freely in LokMat cultural debates, while JanMat civic audits will invite a one-time mobile verification later.')}
           </p>
         </div>
 
+        {/* 100% Secret Ballot Note */}
         {isJanMat && (
           <div style={{
-            backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px',
-            padding: '10px 12px', marginBottom: '14px', fontSize: '11px', color: '#166534', lineHeight: 1.45
+            backgroundColor: '#f0fdf4', border: '1.5px solid #a7f3d0', borderRadius: '14px',
+            padding: '12px 14px', marginBottom: '14px', fontSize: '11px', color: '#14532d', lineHeight: 1.5
           }}>
-            <strong>🔒 {lang === 'HI' ? '100% गोपनीय मतपेटी' : '100% Secret Ballot'}:</strong>{' '}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '12px', marginBottom: '4px', color: '#047857' }}>
+              <span>🔒 100% संप्रभु गोपनीय मतपेटी</span>
+              <span>•</span>
+              <span>Secret Ballot</span>
+            </div>
             {lang === 'HI'
-              ? 'जैसे चुनाव में उंगली की स्याही केवल मतदान की पुष्टि करती है, वैसे ही भूमत केवल यह जानता है कि आपने मत दिया है। आपका मोबाइल नंबर और आपका चुना हुआ विकल्प कभी लिंक नहीं हो सकते।'
-              : 'Just like EVM voting ink on your finger, BhuMat confirms that you voted, but nobody—not even BhuMat engineers—can see which option you chose.'}
+              ? 'जैसे आम चुनाव में आपकी उंगली पर लगी अमिट स्याही केवल यह साबित करती है कि आपने मत डाल दिया है (ताकि फर्जी व दोहरे मत रुकें), लेकिन बूथ के भीतर आपने कौन-सा बटन दबाया यह केवल आप जानते हैं—ठीक वैसे ही भूमत केवल आपकी भागीदारी दर्ज करता है। आपका मोबाइल नंबर और आपका चुना हुआ विकल्प दो अलग-अलग एन्क्रिप्टेड तालों में बंद रहते हैं; भूमत का मुख्य इंजीनियर भी उन्हें कभी आपस में जोड़ नहीं सकता।'
+              : 'Just like the indelible voting ink on your finger at an election booth confirms you voted (to stop double-voting), only you know which button you pressed inside the booth. Similarly, BhuMat confirms your participation, but your mobile identity and your chosen option live in two separate, decoupled cryptographic vaults. Even BhuMat system engineers cannot link your identity to your vote.'}
           </div>
         )}
 
