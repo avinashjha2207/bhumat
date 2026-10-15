@@ -2,12 +2,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import { useRouter } from 'next/navigation';
 import { supabase, safeStorage } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 import { getCurrentCycleId } from './utils/cycleManager';
 import { solvePoWChallenge } from './utils/powSolver';
 import { evaluatePollSchedule } from './utils/pollScheduler';
 import AuthModal from './AuthModal';
+import SponsorPollModal from './SponsorPollModal';
 
 const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
   ssr: false,
@@ -18,7 +20,6 @@ const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
   )
 });
 const PollExpandedView = dynamic(() => import('./PollExpandedView'), { ssr: false });
-const LeaderboardView = dynamic(() => import('./LeaderboardView'), { ssr: false });
 
 const SEAT_CHANGE_COST_DBG = 1; // Standardized: 1 DBG per shift
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
@@ -79,6 +80,21 @@ const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
   'West Bengal': ['Alipurduars', 'Arambagh', 'Asansol', 'Baharampur', 'Balurghat', 'Bangaon', 'Bankura', 'Barasat', 'Bardhaman Durgapur', 'Bardhaman Purba', 'Barrackpore', 'Basirhat', 'Birbhum', 'Bishnupur', 'Bolpur', 'Cooch Behar', 'Darjeeling', 'Diamond Harbour', 'Dum Dum', 'Ghatal', 'Hooghly', 'Howrah', 'Jadavpur', 'Jalpaiguri', 'Jangipur', 'Jaynagar', 'Jhargram', 'Kanthi', 'Kolkata Dakshin', 'Kolkata Uttar', 'Krishnanagar', 'Maldaha Dakshin', 'Maldaha Uttar', 'Mathurapur', 'Medinipur', 'Murshidabad', 'Purulia', 'Raiganj', 'Ranaghat', 'Sreerampur', 'Tamluk', 'Uluberia']
 };
 
+function maskPhoneNumber(phone?: string | null): string {
+  if (!phone) return '';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length < 10) return phone;
+  const last10 = clean.slice(-10);
+  return `+91 ***** **${last10.slice(-3)}`;
+}
+
+function maskEmailAddress(email?: string | null): string {
+  if (!email || !email.includes('@')) return email || '';
+  const [local, domain] = email.split('@');
+  if (local.length <= 3) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 3)}****${local.slice(-3)}@${domain}`;
+}
+
 function formatVotingSince(dateStr?: string, lang: 'EN' | 'HI' = 'EN'): string {
   const d = dateStr ? new Date(dateStr) : new Date();
   if (isNaN(d.getTime())) return lang === 'HI' ? '11 अक्टू 2026' : '11 Oct 2026';
@@ -107,6 +123,7 @@ function getOrCreateVoterToken(): string {
 }
 
 export default function BhuMatApp() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'vote' | 'schedule' | 'profile'>('vote');
   const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>('OVERVIEW');
@@ -117,14 +134,16 @@ export default function BhuMatApp() {
   const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
+  const [showSponsorModal, setShowSponsorModal] = useState(false);
+
   const [username, setUsername] = useState<string>(() => {
-  if (typeof window !== 'undefined') {
-    return safeStorage.getItem('bhumat_username') || 'CitizenBharat';
-  }
-  return 'CitizenBharat';
-});
-const [isEditingUsername, setIsEditingUsername] = useState(false);
-const [usernameInput, setUsernameInput] = useState('');
+    if (typeof window !== 'undefined') {
+      return safeStorage.getItem('bhumat_username') || 'CitizenBharat';
+    }
+    return 'CitizenBharat';
+  });
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
 
   const [dbgPoints, setDbgPoints] = useState<number>(() => {
     try {
@@ -134,7 +153,6 @@ const [usernameInput, setUsernameInput] = useState('');
       return 1;
     }
   });
-
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [profileRefreshKey, setProfileRefreshKey] = useState(0);
@@ -159,7 +177,6 @@ const [usernameInput, setUsernameInput] = useState('');
   const [linkedPhone, setLinkedPhone] = useState<string | null>(() => {
     return typeof window !== 'undefined' ? safeStorage.getItem('bhumat_user_phone') : null;
   });
-
   const [linkedEmail, setLinkedEmail] = useState<string | null>(() => {
     return typeof window !== 'undefined' ? safeStorage.getItem('bhumat_user_email') : null;
   });
@@ -185,13 +202,16 @@ const [usernameInput, setUsernameInput] = useState('');
   const [prevMonthVotesCount, setPrevMonthVotesCount] = useState(0);
   const [deviceHash, setDeviceHash] = useState<string>('');
   const [votingSinceDate, setVotingSinceDate] = useState<string>('');
+
   const [selectedSeat, setSelectedSeat] = useState<{ name: string; state: string } | null>(null);
   const [tentativeSeat, setTentativeSeat] = useState<{ name: string; state: string } | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isChangeSeatModalOpen, setIsChangeSeatModalOpen] = useState(false);
   const [seatSearchInput, setSeatSearchInput] = useState('');
+
   const [pollSearchQuery, setPollSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+
   const [polls, setPolls] = useState<Poll[]>([]);
   const [cachedTalliesByPoll, setCachedTalliesByPoll] = useState<Record<string, any[]>>({});
   const [flippedOverrides, setFlippedOverrides] = useState<Record<string, boolean>>({});
@@ -254,14 +274,12 @@ const [usernameInput, setUsernameInput] = useState('');
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Universal Proof-of-Participation Check
   const openExpandedView = async (poll: Poll) => {
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
     const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
     
     const hasVoted = votedCycleKeys.includes(cycleVoteKey) || 
       (poll.participation_mode === 'one_time' && votedCycleKeys.some(k => k.startsWith(`${poll.id}___`)));
-
     if (!hasVoted) {
       showPointerToast(
         lang === 'HI'
@@ -272,7 +290,6 @@ const [usernameInput, setUsernameInput] = useState('');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-
     try {
       const { data } = await supabase
         .from('constituency_tallies')
@@ -311,11 +328,9 @@ const [usernameInput, setUsernameInput] = useState('');
           else if (matchedPoll?.category === 'LokMat') localLokMat += 1;
         });
       } catch (err) {}
-
       const { data, error } = await supabase.rpc('get_or_create_voter_wallet', {
         p_voter_token: activeToken
       });
-
       if (data && !error && data.success) {
         const verifiedDbg = data.dbg_balance !== undefined ? data.dbg_balance : 1;
         setDbgPoints(verifiedDbg);
@@ -339,7 +354,6 @@ const [usernameInput, setUsernameInput] = useState('');
           setMonthlyVotesCount(localTotal);
         }
       }
-
       const { data: mData } = await supabase.rpc('check_monthly_milestone', {
         p_voter_token: activeToken
       });
@@ -360,7 +374,6 @@ const [usernameInput, setUsernameInput] = useState('');
     const token = getOrCreateVoterToken();
     setDeviceHash(token);
     syncWallet(token);
-
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const refParam = urlParams.get('ref');
@@ -377,7 +390,6 @@ const [usernameInput, setUsernameInput] = useState('');
         });
       }
     }
-
     try {
       const savedSeat = safeStorage.getItem('bhumat_user_seat');
       const savedState = safeStorage.getItem('bhumat_user_state');
@@ -395,7 +407,6 @@ const [usernameInput, setUsernameInput] = useState('');
       if (savedChoices) setSessionBallotChoices(JSON.parse(savedChoices));
       if (savedTimestamps) setVoteTimestamps(JSON.parse(savedTimestamps));
     } catch (e) {}
-
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => {
         console.warn('SW registration skipped:', err);
@@ -490,16 +501,13 @@ const [usernameInput, setUsernameInput] = useState('');
 
   const executeCastBallot = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
-
     const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
     const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
     const choiceKey = `${poll.id}___${dynamicCycle}`;
-
     if (votedCycleKeys.includes(cycleVoteKey)) {
       showPointerToast(getFrequencyRevoteMessage(poll.recurrence), e);
       return;
     }
-
     const updatedKeys = [...votedCycleKeys, cycleVoteKey];
     setVotedCycleKeys(updatedKeys);
     const updatedChoices = { ...sessionBallotChoices, [choiceKey]: optionIdx };
@@ -515,7 +523,6 @@ const [usernameInput, setUsernameInput] = useState('');
       setLokmatPollsCount((prev) => prev + 1);
     }
     setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
-
     const isUserVerified = Boolean(linkedPhone && linkedPhone.trim() !== '');
     if (!isUserVerified) {
       const nextCount = guestVotesCast + 1;
@@ -531,13 +538,11 @@ const [usernameInput, setUsernameInput] = useState('');
       const xpGained = poll.category === 'JanMat' ? '+20 XP' : '+10 XP';
       showPointerToast(lang === 'HI' ? `✓ ${selectedSeat.name} हेतु मत दर्ज! ${xpGained}` : `✓ Ballot logged for ${selectedSeat.name}! ${xpGained}`, e);
     }
-
     try {
       safeStorage.setItem('bhumat_voted_cycles', JSON.stringify(updatedKeys));
       safeStorage.setItem('bhumat_vote_timestamps', JSON.stringify(updatedTimestamps));
       safeStorage.setItem('bhumat_voted_polls', JSON.stringify(updatedChoices));
     } catch (err) {}
-
     const currentDynamicSeason = getCurrentCycleId('monthly');
     try {
       const { data: gData } = await supabase.rpc('record_vote_gamification', {
@@ -557,7 +562,6 @@ const [usernameInput, setUsernameInput] = useState('');
     } catch (err) {
       console.warn('Gamification XP logging error:', err);
     }
-
     let challengeId: string | null = null;
     let solvedNonce: string | null = null;
     try {
@@ -577,7 +581,6 @@ const [usernameInput, setUsernameInput] = useState('');
     } catch (powErr) {
       console.warn('PoW pre-flight skipped or failed:', powErr);
     }
-
     await supabase.rpc('cast_ballot_transaction', {
       p_poll_id: poll.id,
       p_cycle_id: dynamicCycle,
@@ -588,7 +591,6 @@ const [usernameInput, setUsernameInput] = useState('');
       p_challenge_id: challengeId,
       p_nonce: solvedNonce
     });
-
     try {
       const { data: refReward } = await supabase.rpc('check_and_reward_referral', {
         p_voter_token: deviceHash,
@@ -602,17 +604,13 @@ const [usernameInput, setUsernameInput] = useState('');
     } catch (err) {
       console.warn('Referral milestone trigger error:', err);
     }
-
     syncWallet(deviceHash);
   };
 
   const handleCastVote = async (poll: Poll, optionIdx: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (!selectedSeat) return;
-
     const isJanMat = poll.category === 'JanMat';
     const hasPhone = Boolean(linkedPhone && linkedPhone.trim() !== '');
-
-    // Strict JanMat Mobile Phone Requirement
     if (isJanMat && !hasPhone) {
       setAuthModalState({
         isOpen: true,
@@ -621,7 +619,6 @@ const [usernameInput, setUsernameInput] = useState('');
       });
       return;
     }
-
     const isUserIdentified = hasPhone || Boolean(linkedEmail && linkedEmail.trim() !== '');
     if (!isUserIdentified && guestVotesCast >= 3) {
       setAuthModalState({
@@ -631,15 +628,12 @@ const [usernameInput, setUsernameInput] = useState('');
       });
       return;
     }
-
     executeCastBallot(poll, optionIdx, e);
   };
 
-  // Scheduling Split: strictly check live vs upcoming
   const { livePollsList, scheduledQueueList } = useMemo(() => {
     const live: Poll[] = [];
     const upcoming: Poll[] = [];
-
     polls.forEach((p) => {
       const schedule = evaluatePollSchedule(p);
       if (schedule.isCurrentlyLive) {
@@ -648,7 +642,6 @@ const [usernameInput, setUsernameInput] = useState('');
         upcoming.push(p);
       }
     });
-
     return { livePollsList: live, scheduledQueueList: upcoming };
   }, [polls]);
 
@@ -1026,6 +1019,7 @@ const [usernameInput, setUsernameInput] = useState('');
                 </div>
               </div>
             </div>
+
             {/* Animated 3-Step Guest Runway Indicator Meter */}
             {!linkedPhone && isConfirmed && (
               <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '16px', padding: '12px 16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
@@ -1186,7 +1180,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   const hasVotedThisCycle = votedCycleKeys.includes(cycleVoteKey);
                   const isFlipped = flippedOverrides[poll.id] !== undefined ? flippedOverrides[poll.id] : hasVotedThisCycle;
                   const userChoiceIdx = sessionBallotChoices[choiceKey];
-                  // Dynamic height taking into account title length and option count
                   const dynamicCardHeight = Math.max(isFlipped ? 580 : 540, 390 + poll.options.length * 64);
                   return (
                     <div
@@ -1208,7 +1201,6 @@ const [usernameInput, setUsernameInput] = useState('');
                           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
                         }}
                       >
-
                         {/* FRONT CARD: BALLOT VIEW */}
                         <div
                           style={{
@@ -1257,7 +1249,6 @@ const [usernameInput, setUsernameInput] = useState('');
                                   <span>{poll.category}</span>
                                   <span style={{ fontSize: '9px', opacity: 0.6 }}>ⓘ</span>
                                 </span>
-
                                 <span style={{
                                   fontSize: '10px', fontWeight: 800, color: '#64748b',
                                   backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px'
@@ -1276,7 +1267,6 @@ const [usernameInput, setUsernameInput] = useState('');
                                 </button>
                               )}
                             </div>
-
                             <div style={{ marginBottom: '12px' }}>
                               <h2 style={{ fontSize: '17px', fontWeight: 850, color: '#0f172a', lineHeight: 1.35, letterSpacing: '-0.015em', margin: '0 0 6px 0', wordBreak: 'break-word' }}>
                                 {lang === 'EN' ? poll.title_en : poll.title_hi}
@@ -1285,11 +1275,9 @@ const [usernameInput, setUsernameInput] = useState('');
                                 {lang === 'EN' ? poll.title_hi : poll.title_en}
                               </p>
                             </div>
-
                             <div style={{ margin: '0 0 14px 0', maxWidth: '100%', boxSizing: 'border-box' }}>
                               <TickerTape activePoll={poll} lang={lang} />
                             </div>
-
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
                               {poll.options.map((opt, idx) => {
                                 const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
@@ -1332,7 +1320,6 @@ const [usernameInput, setUsernameInput] = useState('');
                               })}
                             </div>
                           </div>
-
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: 'auto' }}>
                             <span style={{ fontSize: '11px', color: '#475569', fontWeight: 600 }}>
                               {isJanMat 
@@ -1381,13 +1368,11 @@ const [usernameInput, setUsernameInput] = useState('');
                                 {lang === 'HI' ? 'मतपत्र देखें ↻' : 'View Ballot ↻'}
                               </button>
                             </div>
-
                             <div style={{ marginBottom: '8px' }}>
                               <h2 style={{ fontSize: '16px', fontWeight: 850, margin: 0, color: '#0f172a', lineHeight: 1.3, letterSpacing: '-0.015em' }}>
                                 {lang === 'EN' ? poll.title_en : poll.title_hi}
                               </h2>
                             </div>
-
                             <div
                               style={{
                                 display: 'grid',
@@ -1428,7 +1413,6 @@ const [usernameInput, setUsernameInput] = useState('');
                                 <span>{lang === 'HI' ? 'खंडित मत' : 'Split Mat'}</span>
                               </div>
                             </div>
-
                             <div style={{ width: '100%' }}>
                               <DrishtiMap
                                 selectedConstituencyName={selectedSeat?.name}
@@ -1442,7 +1426,6 @@ const [usernameInput, setUsernameInput] = useState('');
                               />
                             </div>
                           </div>
-
                           <div style={{ width: '100%', marginTop: 'auto', paddingTop: '10px' }}>
                             <button
                               type="button"
@@ -1582,7 +1565,6 @@ const [usernameInput, setUsernameInput] = useState('');
                 </button>
               </div>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {searchPollMatches.length === 0 ? (
                 <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 20px', textAlign: 'center', color: '#64748b', fontSize: '13px', border: '1px solid #e2e8f0' }}>
@@ -1602,7 +1584,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
                   const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
                   const hasVotedThisCycle = votedCycleKeys.includes(cycleVoteKey);
-
                   return (
                     <div
                       key={poll.id}
@@ -1639,7 +1620,6 @@ const [usernameInput, setUsernameInput] = useState('');
                             {poll.recurrence ? `${poll.recurrence.toUpperCase()}` : 'MONTHLY'}
                           </span>
                         </div>
-
                         {hasVotedThisCycle ? (
                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>
                             {lang === 'EN' ? 'View Drishti ❯' : 'दृष्टि देखें ❯'}
@@ -1683,41 +1663,22 @@ const [usernameInput, setUsernameInput] = useState('');
           const seasonTitleText = lang === 'HI'
             ? `${activeMonthName} सत्र (सत्र ${seasonNumber} • ${currentYear})`
             : `${activeMonthName} Season (Season ${seasonNumber} • ${currentYear})`;
-
           const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
           const firstDayRaw = new Date(currentYear, currentMonth, 1).getDay();
           const startOffset = (firstDayRaw + 6) % 7; // Monday = 0
           const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
-
           const selectedDateObj = new Date(currentYear, currentMonth, selectedCalendarDay);
           const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
-
           const pollsForSelectedDay = polls.filter((p) => {
             if (!p.starts_at) return true;
             const pd = new Date(p.starts_at);
             return pd.getDate() === selectedCalendarDay && pd.getMonth() === currentMonth;
           });
 
-          // Accurate Category Theming: LokMat = Orange | JanMat = Green
-          const dayLokMatPoll = pollsForSelectedDay.find((p) => p.category === 'LokMat') || {
-            id: 'mock_lm',
-            category: 'LokMat',
-            title_en: 'Indian cinema ke itihas mein, screen par aate hi kis villain ne logon ke dilon mein sabse zyada khauf paida kiya?',
-            title_hi: 'भारतीय सिनेमा के इतिहास में किस खलनायक ने पर्दे पर सबसे ज्यादा खौफ पैदा किया?'
-          };
-
-          const dayJanMatPoll = pollsForSelectedDay.find((p) => p.category === 'JanMat') || {
-            id: 'mock_jm',
-            category: 'JanMat',
-            title_en: 'Lok Sabha mein vipaksh ke neta (Leader of Opposition) jis tarah se janta ke mudde utha rahe hain, kya aap unke kaam se santusht hain?',
-            title_hi: 'लोकसभा में विपक्ष के नेता जिस तरह से जनता के मुद्दे उठा रहे हैं, क्या आप उनके काम से संतुष्ट हैं?'
-          };
-
-          // ─── DEDICATED FULL-PAGE CALENDAR VIEW (SOVEREIGN RETROFIT) ───
+          // ─── DEDICATED FULL-PAGE CALENDAR VIEW ───
           if (scheduleViewMode === 'CALENDAR') {
             return (
               <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
-                {/* Header Row: Back Button & Season Badge */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
                   <button
                     type="button"
@@ -1740,7 +1701,6 @@ const [usernameInput, setUsernameInput] = useState('');
                     <span>←</span>
                     <span>{lang === 'HI' ? 'समय-सारणी मुख्य पृष्ठ' : 'Schedule Overview'}</span>
                   </button>
-
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
                       {activeMonthShort} {currentYear}
@@ -1751,7 +1711,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   </div>
                 </div>
 
-                {/* Calendar Card Viewport */}
                 <div style={{
                   backgroundColor: '#ffffff',
                   borderRadius: '24px',
@@ -1759,7 +1718,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   padding: '18px 16px',
                   boxShadow: '0 4px 16px rgba(0,0,0,0.02)'
                 }}>
-                  {/* Legend Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9' }}>
                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {lang === 'HI' ? 'दैनिक ड्रॉप चक्र' : 'Daily Cadence Matrix'}
@@ -1776,7 +1734,6 @@ const [usernameInput, setUsernameInput] = useState('');
                     </div>
                   </div>
 
-                  {/* Weekday Row (M T W T F S S) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', marginBottom: '10px' }}>
                     {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w, idx) => (
                       <div key={idx} style={{ fontSize: '11.5px', fontWeight: 800, color: idx >= 5 ? '#ef4444' : '#64748b' }}>
@@ -1785,9 +1742,7 @@ const [usernameInput, setUsernameInput] = useState('');
                     ))}
                   </div>
 
-                  {/* 7-Column Days Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center' }}>
-                    {/* Previous Month Inactive Days */}
                     {Array.from({ length: startOffset }).map((_, idx) => {
                       const dayNum = prevMonthDays - startOffset + idx + 1;
                       return (
@@ -1797,22 +1752,17 @@ const [usernameInput, setUsernameInput] = useState('');
                       );
                     })}
 
-                    {/* Current Month Active Days */}
                     {Array.from({ length: daysInMonth }).map((_, idx) => {
                       const dayNum = idx + 1;
                       const isSelected = selectedCalendarDay === dayNum;
                       const isWeekend = (startOffset + idx) % 7 >= 5;
-
-                      // Check if any actual poll is scheduled on this calendar date
                       const dayPolls = polls.filter((p) => {
                         if (!p.starts_at) return false;
                         const pd = new Date(p.starts_at);
                         return pd.getDate() === dayNum && pd.getMonth() === currentMonth;
                       });
-
                       const hasActualLokMat = dayPolls.some((p) => p.category === 'LokMat');
                       const hasActualJanMat = dayPolls.some((p) => p.category === 'JanMat');
-
                       return (
                         <div
                           key={dayNum}
@@ -1837,8 +1787,6 @@ const [usernameInput, setUsernameInput] = useState('');
                           }}>
                             {dayNum}
                           </span>
-
-                          {/* Dynamic Drop Indicators based on actual poll data */}
                           <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '6px' }}>
                             {hasActualLokMat && (
                               <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
@@ -1856,7 +1804,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   </div>
                 </div>
 
-                {/* Selected Day Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0 4px' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                     <span style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
@@ -1871,7 +1818,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   </span>
                 </div>
 
-                {/* Poll List for the Selected Calendar Date */}
                 {pollsForSelectedDay.length === 0 ? (
                   <div style={{
                     backgroundColor: '#ffffff',
@@ -1896,7 +1842,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   pollsForSelectedDay.map((p) => {
                     const isJanMat = p.category === 'JanMat';
                     const dropTimeText = isJanMat ? '08:00 PM' : '08:00 AM';
-
                     return (
                       <div
                         key={p.id}
@@ -1911,7 +1856,6 @@ const [usernameInput, setUsernameInput] = useState('');
                           boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                         }}
                       >
-                        {/* Tag & Drop Time Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{
                             fontSize: '10.5px',
@@ -1928,8 +1872,6 @@ const [usernameInput, setUsernameInput] = useState('');
                             ⏰ {dropTimeText}
                           </span>
                         </div>
-
-                        {/* Question Titles */}
                         <div>
                           <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35, marginBottom: '4px' }}>
                             {lang === 'EN' ? p.title_en : p.title_hi}
@@ -1938,8 +1880,6 @@ const [usernameInput, setUsernameInput] = useState('');
                             {lang === 'EN' ? p.title_hi : p.title_en}
                           </div>
                         </div>
-
-                        {/* Bottom Utility Row */}
                         <div style={{
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -1998,8 +1938,6 @@ const [usernameInput, setUsernameInput] = useState('');
           // ─── DEFAULT VIEW: CLASSIC SCHEDULE OVERVIEW ───
           return (
             <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px', boxSizing: 'border-box' }}>
-              
-              {/* Dynamic Season Banner */}
               <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px', letterSpacing: '0.04em' }}>
@@ -2035,7 +1973,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   {lang === 'EN' ? 'Daily Drop Rhythm' : 'दैनिक मतदान समय'}
                 </div>
 
-                {/* LokMat Morning Drop (Orange Theme) */}
                 <div
                   onClick={() => {
                     setActiveCategoryFilter('LokMat');
@@ -2062,7 +1999,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   </span>
                 </div>
 
-                {/* JanMat Evening Drop (Green Theme) */}
                 <div
                   onClick={() => {
                     setActiveCategoryFilter('JanMat');
@@ -2096,8 +2032,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     {lang === 'EN' ? `Upcoming Scheduled Drops (${scheduledQueueList.length})` : `आगामी निर्धारित मत (${scheduledQueueList.length})`}
                   </span>
-
-                  {/* Toggle button to open Calendar View */}
                   <button
                     type="button"
                     onClick={() => setScheduleViewMode('CALENDAR')}
@@ -2119,7 +2053,6 @@ const [usernameInput, setUsernameInput] = useState('');
                     <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
                   </button>
                 </div>
-
                 {scheduledQueueList.length === 0 ? (
                   <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
                     {lang === 'EN'
@@ -2163,19 +2096,17 @@ const [usernameInput, setUsernameInput] = useState('');
           );
         })()}
 
-        {/* TAB 4: CITIZEN PASSPORT & CIVIC XP (STRICT GAMIFIED EDITION) */}
+        {/* TAB 4: CITIZEN PASSPORT & CIVIC XP */}
         {activeTab === 'profile' && (() => {
           const now = new Date();
           const activeMonthLabel = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
           const seasonNumber = now.getMonth() + 1;
-
           const storedStreak = safeStorage.getItem('bhumat_daily_streak') || '1';
           const streakDays = Math.max(1, parseInt(storedStreak, 10));
-
           return (
             <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
-              {/* Sovereign Passport Card */}
+              {/* Single Clean Sovereign Passport Card */}
               <div style={{
                 backgroundColor: '#0f172a',
                 color: '#ffffff',
@@ -2184,15 +2115,49 @@ const [usernameInput, setUsernameInput] = useState('');
                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.25)',
                 border: '1px solid #1e293b'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em', textTransform: 'uppercase', paddingTop: '4px' }}>
                     {lang === 'HI' ? `${activeMonthLabel.toUpperCase()} सत्र (सत्र ${seasonNumber} • 2026)` : `${activeMonthLabel.toUpperCase()} SEASON (OCT 2026)`}
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#1e293b', border: '1px solid #334155', padding: '3px 8px', borderRadius: '999px' }}>
-                    <span style={{ fontSize: '13px' }}>🔥</span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#fbbf24' }}>
-                      {streakDays}-Day Streak
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#1e293b', border: '1px solid #334155', padding: '3px 8px', borderRadius: '999px' }}>
+                      <span style={{ fontSize: '13px' }}>🔥</span>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#fbbf24' }}>
+                        {streakDays}-Day Streak
+                      </span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (dbgPoints < 1) {
+                          alert(lang === 'HI' ? 'स्ट्रीक सुरक्षित करने हेतु 1 DBG आवश्यक है।' : '1 DBG required to repair streak.');
+                          return;
+                        }
+                        const { data, error } = await supabase.rpc('repair_user_streak', {
+                          p_voter_token: deviceHash
+                        });
+                        if (data?.success) {
+                          setDbgPoints(data.new_balance);
+                          safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
+                          safeStorage.setItem('bhumat_daily_streak', String(data.new_streak));
+                          alert(lang === 'HI' ? '✓ स्ट्रीक सुरक्षित कर दी गई!' : '✓ Streak successfully repaired!');
+                          syncWallet(deviceHash);
+                        } else {
+                          alert(error?.message || data?.error);
+                        }
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#38bdf8',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: '0 2px',
+                        opacity: 0.9
+                      }}
+                    >
+                      🛡️ {lang === 'HI' ? 'स्ट्रीक बचाएं (1 DBG)' : 'Protect Streak (1 DBG)'}
+                    </button>
                   </div>
                 </div>
 
@@ -2215,19 +2180,16 @@ const [usernameInput, setUsernameInput] = useState('');
                           onClick={async () => {
                             if (!usernameInput.trim()) return;
                             const cleanName = usernameInput.trim();
-                            // Check uniqueness in voter_wallets
                             const { data: existing } = await supabase
                               .from('voter_wallets')
                               .select('voter_token')
                               .eq('username', cleanName)
                               .neq('voter_token', deviceHash)
                               .maybeSingle();
-
                             if (existing) {
                               alert(lang === 'HI' ? 'यह यूजरनेम पहले से किसी अन्य नागरिक का है।' : 'This username is already taken. Please choose another.');
                               return;
                             }
-
                             await supabase.from('voter_wallets').update({ username: cleanName }).eq('voter_token', deviceHash);
                             setUsername(cleanName);
                             safeStorage.setItem('bhumat_username', cleanName);
@@ -2262,8 +2224,34 @@ const [usernameInput, setUsernameInput] = useState('');
                       </div>
                     )}
                     <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
-                    </div>
+  <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
+</div>
+
+{/* Masked Active Credentials (Phone, Email, or Guest) */}
+{(linkedPhone || linkedEmail) ? (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
+    {linkedPhone && (
+      <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <span>📱</span>
+        <span>{maskPhoneNumber(linkedPhone)}</span>
+        <span style={{ color: '#10b981', fontSize: '11px' }}>🛡️</span>
+      </span>
+    )}
+    {linkedEmail && (
+      <span style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <span>✉️</span>
+        <span>{maskEmailAddress(linkedEmail)}</span>
+        <span style={{ color: '#10b981', fontSize: '11px' }}>✓</span>
+      </span>
+    )}
+  </div>
+) : (
+  <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
+    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
+      🌱 Guest Runway Session
+    </span>
+  </div>
+)}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '24px', fontWeight: 900, color: '#fbbf24' }}>
@@ -2275,21 +2263,24 @@ const [usernameInput, setUsernameInput] = useState('');
                   </div>
                 </div>
 
-                {/* Milestone Progress Bar */}
+                {/* Civic Rank Promotion Meter */}
                 <div style={{ marginTop: '16px', backgroundColor: '#1e293b', borderRadius: '12px', padding: '12px 14px', border: '1px solid #334155' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800 }}>
                     <span style={{ color: '#cbd5e1' }}>
-                      {lang === 'HI' ? 'सत्र प्रगति लक्ष्य:' : 'Season Attendance Goal:'}
+                      {lang === 'HI' ? 'अगला नागरिक पद:' : 'Next Civic Rank:'}{' '}
+                      <strong style={{ color: '#38bdf8' }}>
+                        {displayMonthlyVotes < 10 ? '🏛️ Jagruk Nagrik' : (displayMonthlyVotes < 25 ? '🛡️ Lok Prahari' : '⚖️ Rashtriya Nirdharak')}
+                      </strong>
                     </span>
-                    <span style={{ color: displayMonthlyVotes >= 45 ? '#10b981' : '#38bdf8' }}>
-                      {displayMonthlyVotes} / 60 {lang === 'HI' ? 'मत' : 'Ballots'}
+                    <span style={{ color: '#fbbf24' }}>
+                      {displayMonthlyVotes} / {displayMonthlyVotes < 10 ? 10 : (displayMonthlyVotes < 25 ? 25 : 45)} {lang === 'HI' ? 'मत' : 'Ballots'}
                     </span>
                   </div>
                   <div style={{ width: '100%', height: '6px', backgroundColor: '#334155', borderRadius: '999px', marginTop: '8px', overflow: 'hidden' }}>
                     <div style={{
-                      width: `${Math.min(100, Math.round((displayMonthlyVotes / 60) * 100))}%`,
+                      width: `${Math.min(100, Math.round((displayMonthlyVotes / (displayMonthlyVotes < 10 ? 10 : (displayMonthlyVotes < 25 ? 25 : 45))) * 100))}%`,
                       height: '100%',
-                      backgroundColor: displayMonthlyVotes >= 45 ? '#10b981' : '#38bdf8',
+                      backgroundColor: '#10b981',
                       transition: 'width 0.4s ease'
                     }} />
                   </div>
@@ -2301,7 +2292,7 @@ const [usernameInput, setUsernameInput] = useState('');
                 </div>
               </div>
 
-              {/* DBG Sovereign Balance Card with 10 DBG Suggestion Sink */}
+              {/* DBG Sovereign Balance Card with Sponsor & Suggest Actions */}
               <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
@@ -2313,56 +2304,76 @@ const [usernameInput, setUsernameInput] = useState('');
                     </div>
                   </div>
                   
-                  {/* Suggest a Poll 10 DBG Action */}
-                  <button
-                    onClick={async () => {
-                      if (dbgPoints < 10) {
-                        alert(lang === 'HI' 
-                          ? `नागरिक प्रश्न प्रस्तावित करने हेतु 10 DBG आवश्यक हैं। आपका शेष: ${dbgPoints} DBG` 
-                          : `Proposing a public question to the governance editorial requires 10 DBG. Your balance: ${dbgPoints} DBG`);
-                        return;
-                      }
-                      const topic = prompt(lang === 'HI' 
-                        ? 'भूमत संपादकीय मंडल हेतु अपना प्रश्न दर्ज करें (शुल्क: 10 DBG):' 
-                        : 'Submit your poll question to BhuMat Governance (Fee: 10 DBG):');
-                      if (topic && topic.trim()) {
-                        const { data, error } = await supabase.rpc('propose_citizen_poll', {
-                          p_voter_token: deviceHash,
-                          p_category: 'JanMat',
-                          p_title_en: topic.trim(),
-                          p_title_hi: topic.trim(),
-                          p_options: JSON.stringify([
-                            { id: 0, text_en: 'Option 1', text_hi: 'विकल्प 1' },
-                            { id: 1, text_en: 'Option 2', text_hi: 'विकल्प 2' }
-                          ])
-                        });
-                        if (!error && data?.success) {
-                          setDbgPoints(data.new_balance);
-                          safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
-                          alert(lang === 'HI' ? '✓ आपका प्रस्ताव संपादकीय समीक्षा हेतु दर्ज कर लिया गया है।' : '✓ Proposal submitted to the sovereign editorial queue!');
-                          fetchLedger(deviceHash);
-                        } else {
-                          alert(`Error: ${error?.message || data?.error}`);
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <button
+                      onClick={() => setShowSponsorModal(true)}
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#ecfdf5',
+                        border: '1.5px solid #a7f3d0',
+                        borderRadius: '10px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#065f46',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <span>🎯</span>
+                      <span>{lang === 'HI' ? 'लोकल पोल होस्ट करें (50 DBG)' : 'Sponsor Poll (50 DBG)'}</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (dbgPoints < 10) {
+                          alert(lang === 'HI' 
+                            ? `नागरिक प्रश्न प्रस्तावित करने हेतु 10 DBG आवश्यक हैं। आपका शेष: ${dbgPoints} DBG` 
+                            : `Proposing a public question to the governance editorial requires 10 DBG. Your balance: ${dbgPoints} DBG`);
+                          return;
                         }
-                      }
-                    }}
-                    style={{
-                      padding: '8px 12px',
-                      backgroundColor: '#f8fafc',
-                      border: '1.5px solid #cbd5e1',
-                      borderRadius: '10px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      color: '#0f172a',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <span>💡</span>
-                    <span>{lang === 'HI' ? 'प्रश्न सुझाएं (10 DBG)' : 'Suggest Poll (10 DBG)'}</span>
-                  </button>
+                        const topic = prompt(lang === 'HI' 
+                          ? 'भूमत संपादकीय मंडल हेतु अपना प्रश्न दर्ज करें (शुल्क: 10 DBG):' 
+                          : 'Submit your poll question to BhuMat (Fee: 10 DBG):');
+                        if (topic && topic.trim()) {
+                          const { data, error } = await supabase.rpc('propose_citizen_poll', {
+                            p_voter_token: deviceHash,
+                            p_category: 'JanMat',
+                            p_title_en: topic.trim(),
+                            p_title_hi: topic.trim(),
+                            p_options: JSON.stringify([
+                              { id: 0, text_en: 'Option 1', text_hi: 'विकल्प 1' },
+                              { id: 1, text_en: 'Option 2', text_hi: 'विकल्प 2' }
+                            ])
+                          });
+                          if (!error && data?.success) {
+                            setDbgPoints(data.new_balance);
+                            safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
+                            alert(lang === 'HI' ? '✓ आपका प्रस्ताव संपादकीय समीक्षा हेतु दर्ज कर लिया गया है।' : '✓ Proposal submitted to the sovereign editorial queue!');
+                            fetchLedger(deviceHash);
+                          } else {
+                            alert(`Error: ${error?.message || data?.error}`);
+                          }
+                        }
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '10.5px',
+                        fontWeight: 700,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <span>💡</span>
+                      <span>{lang === 'HI' ? 'संपादकीय सुझाव (10 DBG)' : 'Suggest Poll (10 DBG)'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Audit Ledger Drawer Toggle */}
@@ -2385,7 +2396,6 @@ const [usernameInput, setUsernameInput] = useState('');
                       {isLedgerOpen ? '▲' : '▼'}
                     </span>
                   </div>
-
                   {isLedgerOpen && (
                     <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {ledgerEntries.length === 0 ? (
@@ -2407,14 +2417,35 @@ const [usernameInput, setUsernameInput] = useState('');
                 </div>
               </div>
 
-              {/* Leaderboard Engine Component */}
-              <div>
-                <LeaderboardView
-                  userState={selectedSeat?.state || 'Bihar'}
-                  userSeat={selectedSeat?.name || 'Karakat'}
-                  voterToken={deviceHash}
-                  refreshTrigger={profileRefreshKey}
-                />
+              {/* National Leaderboard Teaser Card */}
+              <div
+                onClick={() => router.push('/leaderboard')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '20px',
+                  padding: '16px 18px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
+                    🏆
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a' }}>
+                      {lang === 'HI' ? 'अखिल भारतीय संप्रभु लीडरबोर्ड' : 'Bharat Sovereign Leaderboard'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>
+                      {lang === 'HI' ? 'संसदीय कोरम, राज्य संप्रभुता व राष्ट्रीय रैंक' : 'Constituency Quorum, State Index & Top Citizens'}
+                    </div>
+                  </div>
+                </div>
+                <span style={{ fontSize: '14px', color: '#0284c7', fontWeight: 900 }}>↗</span>
               </div>
 
               {/* Referral Invite Milestone Card */}
@@ -2468,7 +2499,6 @@ const [usernameInput, setUsernameInput] = useState('');
                   <span style={{ color: '#64748b' }}>{lang === 'EN' ? 'Voting Since:' : 'मतदान प्रारंभ:'}</span>
                   <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatVotingSince(votingSinceDate, lang)}</span>
                 </div>
-
                 <button
                   onClick={() => {
                     setTentativeSeat(null);
@@ -2490,8 +2520,41 @@ const [usernameInput, setUsernameInput] = useState('');
                 >
                   🔄 {lang === 'EN' ? `Shift Seat (${SEAT_CHANGE_COST_DBG} DBG)` : `संसदीय सीट बदलें (${SEAT_CHANGE_COST_DBG} DBG)`}
                 </button>
-              </div>
 
+                {/* Compact Logout Action */}
+                <button
+                  onClick={() => {
+                    if (confirm(lang === 'HI' ? 'क्या आप इस डिवाइस से लॉग आउट करना चाहते हैं?' : 'Log out of this citizen passport?')) {
+                      safeStorage.removeItem('bhumat_user_phone');
+                      safeStorage.removeItem('bhumat_user_email');
+                      safeStorage.removeItem('bhumat_voter_token');
+                      safeStorage.removeItem('bhumat_username');
+                      safeStorage.removeItem('bhumat_voted_cycles');
+                      safeStorage.removeItem('bhumat_voted_polls');
+                      safeStorage.removeItem('bhumat_guest_vote_count');
+                      window.location.reload();
+                    }
+                  }}
+                  style={{
+                    alignSelf: 'center',
+                    marginTop: '6px',
+                    padding: '6px 14px',
+                    backgroundColor: 'transparent',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    color: '#dc2626',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <span>⏻</span>
+                  <span>{lang === 'HI' ? 'लॉग आउट करें' : 'Log Out'}</span>
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -2631,7 +2694,7 @@ const [usernameInput, setUsernameInput] = useState('');
         </div>
       )}
 
-      {/* 4-Tab Bottom Navigation */}
+      {/* 5-Tab Bottom Navigation Dock */}
       {isConfirmed && !isChangeSeatModalOpen && (
         <nav
           style={{
@@ -2667,21 +2730,28 @@ const [usernameInput, setUsernameInput] = useState('');
               style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'search' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
             >
               <span style={{ fontSize: '18px', lineHeight: 1 }}>🔍</span>
-              <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'search' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'खोजें' : 'Search'}</span>
+              <span style={{ fontSize: '10px', fontWeight: activeTab === 'search' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'खोजें' : 'Search'}</span>
             </button>
             <button
               onClick={() => setActiveTab('vote')}
               style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'vote' ? '#10b981' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
             >
               <span style={{ fontSize: '19px', lineHeight: 1 }}>🗳️</span>
-              <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'vote' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'मतदान' : 'Vote'}</span>
+              <span style={{ fontSize: '10px', fontWeight: activeTab === 'vote' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'मतदान' : 'Vote'}</span>
             </button>
             <button
               onClick={() => setActiveTab('schedule')}
               style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'schedule' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
             >
               <span style={{ fontSize: '18px', lineHeight: 1 }}>📅</span>
-              <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'schedule' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'समय-सारणी' : 'Schedule'}</span>
+              <span style={{ fontSize: '10px', fontWeight: activeTab === 'schedule' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'समय-सारणी' : 'Schedule'}</span>
+            </button>
+            <button
+              onClick={() => router.push('/leaderboard')}
+              style={{ flex: 1, background: 'none', border: 'none', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+            >
+              <span style={{ fontSize: '18px', lineHeight: 1 }}>🏆</span>
+              <span style={{ fontSize: '10px', fontWeight: 800, marginTop: '3px' }}>{lang === 'HI' ? 'लीडरबोर्ड' : 'Rankings'}</span>
             </button>
             <button
               onClick={() => {
@@ -2691,7 +2761,7 @@ const [usernameInput, setUsernameInput] = useState('');
               style={{ flex: 1, background: 'none', border: 'none', color: activeTab === 'profile' ? '#0284c7' : '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
             >
               <span style={{ fontSize: '18px', lineHeight: 1 }}>👤</span>
-              <span style={{ fontSize: '10.5px', fontWeight: activeTab === 'profile' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'प्रोफ़ाइल' : 'Profile'}</span>
+              <span style={{ fontSize: '10px', fontWeight: activeTab === 'profile' ? 800 : 600, marginTop: '3px' }}>{lang === 'HI' ? 'प्रोफ़ाइल' : 'Profile'}</span>
             </button>
           </div>
         </nav>
@@ -2716,12 +2786,26 @@ const [usernameInput, setUsernameInput] = useState('');
           }
           syncWallet(newToken);
           setProfileRefreshKey((prev) => prev + 1);
-
           if (authModalState.pendingVote) {
             executeCastBallot(authModalState.pendingVote.poll, authModalState.pendingVote.optionIdx);
           }
         }}
       />
+
+      {/* 50 DBG User-Sponsored Poll Modal */}
+      {showSponsorModal && (
+        <SponsorPollModal
+          voterToken={deviceHash}
+          username={username}
+          userState={selectedSeat?.state || 'Bihar'}
+          userSeat={selectedSeat?.name || 'Muzaffarpur'}
+          userDbgBalance={dbgPoints}
+          onClose={() => {
+            setShowSponsorModal(false);
+            syncWallet(deviceHash);
+          }}
+        />
+      )}
     </div>
   );
 }
