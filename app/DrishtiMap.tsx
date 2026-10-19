@@ -61,6 +61,8 @@ export default function DrishtiMap({
   const [geoData, setGeoData] = useState<any | null>(null);
   const [tallies, setTallies] = useState<any[]>([]);
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
+  const pendingUpdatesRef = useRef<any[]>([]);
+  const renderThrottleRef = useRef<NodeJS.Timeout | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -105,19 +107,30 @@ export default function DrishtiMap({
         (payload: any) => {
           const updated = payload.new;
           if (updated) {
-            setTallies((prev) => {
-              const cleanSeat = clean(updated.constituency_name);
-              const cleanState = clean(updated.state_name);
-              const idx = prev.findIndex(
-                (t) => clean(t.constituency_name) === cleanSeat && clean(t.state_name) === cleanState
-              );
-              if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = updated;
-                return next;
-              }
-              return [...prev, updated];
-            });
+            // Queue update in ref buffer to throttle DOM thrashing
+            pendingUpdatesRef.current.push(updated);
+
+            if (!renderThrottleRef.current) {
+              renderThrottleRef.current = setTimeout(() => {
+                const batch = [...pendingUpdatesRef.current];
+                pendingUpdatesRef.current = [];
+                renderThrottleRef.current = null;
+
+                setTallies((prev) => {
+                  let next = [...prev];
+                  batch.forEach((item) => {
+                    const cSeat = clean(item.constituency_name);
+                    const cState = clean(item.state_name);
+                    const idx = next.findIndex(
+                      (t) => clean(t.constituency_name) === cSeat && clean(t.state_name) === cState
+                    );
+                    if (idx >= 0) next[idx] = item;
+                    else next.push(item);
+                  });
+                  return next;
+                });
+              }, 1200); // 1.2s smooth batching
+            }
 
             // Trigger Realtime Neon Ripple on map
             if (updated.constituency_name) {

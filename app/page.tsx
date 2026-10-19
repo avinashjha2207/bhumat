@@ -1961,7 +1961,7 @@ export default function BhuMatApp() {
                                 <span>{lang === 'HI' ? 'खंडित मत' : 'Split Mat'}</span>
                               </div>
                             </div>
-                            <div style={{ width: '100%' }}>
+                            <div style={{ width: '100%', marginBottom: '4px' }}>
                               <DrishtiMap
                                 selectedConstituencyName={selectedSeat?.name}
                                 selectedState={selectedSeat?.state}
@@ -1973,22 +1973,58 @@ export default function BhuMatApp() {
                                 verifiedOnly={false}
                               />
                             </div>
+                          </div>
+
+                          {/* BOTTOM ANCHORED SECTION (Pushed together to the bottom) */}
+                          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                            {/* Live Neighbor Rivalry Alert */}
+                            {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 1 && (
+                              <div style={{
+                                backgroundColor: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                borderRadius: '10px',
+                                padding: '6px 10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                color: '#92400e'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span>⚔️</span>
+                                  <span>
+                                    {selectedSeat?.name || 'Home'}: <strong>{turfStandings.find((s: any) => s.is_home)?.total_votes || 1}</strong> vs {stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.constituency_name || 'Rival'}: <strong>{stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.total_votes || 1}</strong>
+                                  </span>
+                                </div>
+                                <span style={{
+                                  fontSize: '9.5px',
+                                  fontWeight: 800,
+                                  color: '#b45309',
+                                  backgroundColor: '#fef3c7',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  {(turfStandings.find((s: any) => s.is_home)?.total_votes || 1) >= (stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.total_votes || 1) ? '🏆 Leading' : '⚡ Contested'}
+                                </span>
+                              </div>
+                            )}
 
                             {/* Regional Pulse: Top Engaged Constituencies */}
-                            <div style={{ marginTop: '6px', marginBottom: '10px', width: '100%', boxSizing: 'border-box' }}>
+                            <div style={{ marginTop: '0px', marginBottom: '6px', width: '100%', boxSizing: 'border-box' }}>
                               <div style={{
                                 fontSize: '10px',
                                 fontWeight: 800,
                                 color: '#64748b',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.04em',
-                                marginBottom: '6px',
+                                marginBottom: '5px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '4px'
                               }}>
                                 <span>🏛️</span>
-                                <span>{lang === 'HI' ? `${selectedSeat?.state || 'राज्य'} के अग्रणी क्षेत्र` : `Top Regional Pulse (${selectedSeat?.state || 'State'})`}</span>
+                                <span>{lang === 'HI' ? `${selectedSeat?.state || 'राज्य'} के शीर्ष क्षेत्र` : `Top Regional Pulse (${selectedSeat?.state || 'State'})`}</span>
                               </div>
 
                               {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 0 ? (
@@ -2010,16 +2046,16 @@ export default function BhuMatApp() {
                                           backgroundColor: '#f8fafc',
                                           border: '1px solid #e2e8f0',
                                           borderRadius: '10px',
-                                          padding: '7px 8px',
+                                          padding: '6px 7px',
                                           display: 'flex',
                                           flexDirection: 'column',
                                           justifyContent: 'space-between',
-                                          minHeight: '62px',
+                                          height: '68px',
                                           boxSizing: 'border-box'
                                         }}
                                       >
                                         <div style={{
-                                          fontSize: '11px',
+                                          fontSize: '10.5px',
                                           fontWeight: 800,
                                           color: '#0f172a',
                                           whiteSpace: 'nowrap',
@@ -2030,7 +2066,7 @@ export default function BhuMatApp() {
                                         </div>
 
                                         <div style={{
-                                          fontSize: '9.5px',
+                                          fontSize: '9px',
                                           fontWeight: 700,
                                           color: optColor,
                                           lineHeight: 1.25,
@@ -2039,18 +2075,18 @@ export default function BhuMatApp() {
                                           WebkitBoxOrient: 'vertical',
                                           overflow: 'hidden',
                                           height: '24px',
-                                          marginTop: '2px'
+                                          marginTop: '1px'
                                         }}>
                                           {lang === 'HI' ? opt?.text_hi : opt?.text_en}
                                         </div>
 
                                         <div style={{
-                                          fontSize: '9px',
+                                          fontSize: '8.5px',
                                           color: '#64748b',
                                           fontWeight: 700,
-                                          marginTop: '4px',
                                           borderTop: '1px dashed #e2e8f0',
-                                          paddingTop: '3px'
+                                          paddingTop: '2px',
+                                          marginTop: '2px'
                                         }}>
                                           {bastion.total_votes} {bastion.total_votes === 1 ? 'vote' : 'votes'}
                                         </div>
@@ -2073,35 +2109,36 @@ export default function BhuMatApp() {
                               )}
                             </div>
                           </div>
-                          <div style={{ width: '100%', marginTop: 'auto', paddingTop: '6px', paddingBottom: '4px' }}>
-                            <button
-                              type="button"
-                              onClick={() => openExpandedView(poll)}
-                              style={{
-                                width: '100%',
-                                boxSizing: 'border-box',
-                                padding: '12px 16px',
-                                backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
-                                border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
-                                borderRadius: '12px',
-                                color: isJanMat ? '#059669' : '#d97706',
-                                fontSize: '12.5px',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px',
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
-                              }}
-                            >
-                              <span>{lang === 'HI' ? 'पूर्ण दृष्टि देखें (543 सीटें)' : 'Explore Full Drishti (543 Seats)'}</span>
-                              <span>🔓</span>
-                            </button>
+                          {/* Full Drishti Button (Sits right below the rows) */}
+                            <div style={{ width: '100%', paddingTop: '2px', paddingBottom: '0px' }}>
+                              <button
+                                type="button"
+                                onClick={() => openExpandedView(poll)}
+                                style={{
+                                  width: '100%',
+                                  boxSizing: 'border-box',
+                                  padding: '12px 16px',
+                                  backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                                  border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                                  borderRadius: '12px',
+                                  color: isJanMat ? '#059669' : '#d97706',
+                                  fontSize: '12.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '8px',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+                                }}
+                              >
+                                <span>{lang === 'HI' ? 'पूर्ण दृष्टि देखें (543 सीटें)' : 'Explore Full Drishti (543 Seats)'}</span>
+                                <span>🔓</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
                   );
                 })}
               </>
