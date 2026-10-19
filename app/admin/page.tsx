@@ -750,9 +750,13 @@ const handleResetPollVotes = async () => {
       blackout_seats: []
     };
 
-    const { error } = await supabase.from('polls').insert([payload]);
-    if (error) {
-      setCreatePollStatus(`❌ Error deploying poll: ${error.message}`);
+    const { data: deployResult, error: deployError } = await supabase.rpc('deploy_new_poll', {
+      p_payload: payload
+    });
+
+    if (deployError || deployResult?.success === false) {
+      const err = deployError?.message || deployResult?.error || 'Deployment failed';
+      setCreatePollStatus(`❌ Error deploying poll: ${err}`);
     } else {
       setCreatePollStatus(`✓ Poll Successfully Deployed! ID: ${newPollId}`);
       setNewTitleEn('');
