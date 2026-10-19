@@ -750,21 +750,23 @@ const handleResetPollVotes = async () => {
       blackout_seats: []
     };
 
-    const { data: deployResult, error: deployError } = await supabase.rpc('deploy_new_poll', {
-      p_payload: payload
+    const res = await fetch('/api/admin/deploy-poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload, pin: passcode })
     });
+    const deployResult = await res.json();
 
-    if (deployError || deployResult?.success === false) {
-      const err = deployError?.message || deployResult?.error || 'Deployment failed';
-      setCreatePollStatus(`❌ Error deploying poll: ${err}`);
+    if (!res.ok || deployResult?.success === false) {
+      setCreatePollStatus(`❌ Error deploying poll: ${deployResult?.error || 'Deployment failed'}`);
     } else {
-      setCreatePollStatus(`✓ Poll Successfully Deployed! ID: ${newPollId}`);
+      setCreatePollStatus(`✓ Poll Successfully Deployed! ID: ${deployResult?.poll_id || newPollId}`);
       setNewTitleEn('');
       setNewTitleHi('');
       setCustomTargetSeats([]);
       setSelectedStates([]);
       await fetchPolls();
-      setSelectedPollId(newPollId);
+      setSelectedPollId(deployResult?.poll_id || newPollId);
       setTimeout(() => {
         setActiveAdminTab('AUDIT');
         setCreatePollStatus('');

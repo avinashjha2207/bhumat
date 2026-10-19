@@ -8,7 +8,7 @@ const supabaseUrl = (rawUrl && rawUrl.startsWith('http'))
 const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 const supabaseAnonKey = (rawKey && rawKey.length > 20)
   ? rawKey
-  : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4enZ6d2xxYnlnZnRjbHN5ZWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxNjY4NzEsImV4cCI6MjEwNzc0Mjg3MX0.sV4uM432y-v-L7_D822zQYf5w588b_H7c';
+  : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4enZ6d2xxYnlnZnRjbHN5ZWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwODAwMzAsImV4cCI6MjEwNzY1NjAzMH0.u6RDlcvqWXDcX2FOW-Rj4SANBL7ZWgg76WgcX2-DI2I';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
