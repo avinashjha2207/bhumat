@@ -1,185 +1,288 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { supabase } from './utils/supabaseClient';
+import React, { useState, useMemo } from 'react';
+import { supabase, safeStorage } from './utils/supabaseClient';
 
-// Complete mapping of states to their Lok Sabha seats for user selection
-const STATE_TO_SEATS: Record<string, string[]> = {
-  'Bihar': [
-    'Araria', 'Arrah', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Buxar', 'Darbhanga', 'Gaya', 
-    'Gopalganj', 'Hajipur', 'Jahanabad', 'Jamui', 'Jhanjharpur', 'Karakat', 'Katihar', 'Khagaria', 'Kishanganj', 
-    'Madhepura', 'Madhubani', 'Maharajganj', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Paschim Champaran', 
-    'Pataliputra', 'Patna Sahib', 'Purnia', 'Purvi Champaran', 'Samastipur', 'Saran', 'Sasaram', 'Sheohar', 
-    'Sitamarhi', 'Siwan', 'Supaul', 'Ujiarpur', 'Vaishali', 'Valmiki Nagar'
-  ],
-  'Maharashtra': [
-    'Ahmednagar', 'Akola', 'Amravati', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 
-    'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 
-    'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 
-    'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 
-    'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 
-    'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim'
-  ],
-  // Add other states or fallback dynamically as needed
+interface SponsorPollModalProps {
+  voterToken: string;
+  username: string;
+  userState: string;
+  userSeat: string;
+  userDbgBalance: number;
+  onClose: () => void;
+}
+
+const STATE_SEATS_MAP: Record<string, string[]> = {
+  'Bihar': ['Araria', 'Arrah', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Buxar', 'Darbhanga', 'Gaya', 'Gopalganj', 'Hajipur', 'Jahanabad', 'Jamui', 'Jhanjharpur', 'Karakat', 'Katihar', 'Khagaria', 'Kishanganj', 'Madhepura', 'Madhubani', 'Maharajganj', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada', 'Paschim Champaran', 'Pataliputra', 'Patna Sahib', 'Purnia', 'Purvi Champaran', 'Samastipur', 'Saran', 'Sasaram', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Ujiarpur', 'Vaishali', 'Valmiki Nagar'],
+  'Delhi': ['Chandni Chowk', 'East Delhi', 'New Delhi', 'North East Delhi', 'North West Delhi', 'South Delhi', 'West Delhi'],
+  'Maharashtra': ['Ahmednagar', 'Akola', 'Amravati', 'Aurangabad', 'Baramati', 'Beed', 'Bhandara Gondiya', 'Bhiwandi', 'Buldhana', 'Chandrapur', 'Dhule', 'Dindori', 'Gadchiroli-Chimur', 'Hatkanangle', 'Hingoli', 'Jalgaon', 'Jalna', 'Kalyan', 'Kolhapur', 'Latur', 'Madha', 'Maval', 'Mumbai North', 'Mumbai North Central', 'Mumbai North East', 'Mumbai North West', 'Mumbai South', 'Mumbai South Central', 'Nagpur', 'Nanded', 'Nandurbar', 'Nashik', 'Osmanabad', 'Palghar', 'Parbhani', 'Pune', 'Raigad', 'Ramtek', 'Ratnagiri-Sindhudurg', 'Raver', 'Sangli', 'Satara', 'Shirdi', 'Shirur', 'Solapur', 'Thane', 'Wardha', 'Yavatmal-Washim'],
+  'Karnataka': ['Bagalkot', 'Bangalore Central', 'Bangalore North', 'Bangalore Rural', 'Bangalore South', 'Belgaum', 'Bellary', 'Bidar', 'Bijapur', 'Chamarajanagar', 'Chikkballapur', 'Chikkodi', 'Chitradurga', 'Dakshina Kannada', 'Davanagere', 'Dharwad', 'Gulbarga', 'Hassan', 'Haveri', 'Kolar', 'Koppal', 'Mandya', 'Mysore', 'Raichur', 'Shimoga', 'Tumkur', 'Udupi Chikmagalur', 'Uttara Kannada'],
+  'Uttar Pradesh': ['Agra', 'Aligarh', 'Allahabad', 'Ambedkar Nagar', 'Amethi', 'Amroha', 'Aonla', 'Azamgarh', 'Badaun', 'Baghpat', 'Bahraich', 'Ballia', 'Banda', 'Bansgaon', 'Barabanki', 'Bareilly', 'Basti', 'Bhadohi', 'Bijnor', 'Bulandshahr', 'Chandauli', 'Deoria', 'Dhaurahra', 'Domariyaganj', 'Etah', 'Etawah', 'Faizabad', 'Farrukhabad', 'Fatehpur', 'Fatehpur Sikri', 'Firozabad', 'Gautam Buddha Nagar', 'Ghaziabad', 'Ghazipur', 'Ghosi', 'Gonda', 'Gorakhpur', 'Hardoi', 'Hathras', 'Jalaun', 'Jaunpur', 'Jhansi', 'Kairana', 'Kaiserganj', 'Kannauj', 'Kanpur', 'Kaushambi', 'Kheri', 'Kushi Nagar', 'Lalganj', 'Lucknow', 'Machhlishahr', 'Mainpuri', 'Mathura', 'Meerut', 'Mirzapur', 'Misrikh', 'Mohanlalganj', 'Moradabad', 'Muzaffarnagar', 'Nagina', 'Phulpur', 'Pilibhit', 'Pratapgarh', 'Rae Bareli', 'Rampur', 'Robertsganj', 'Saharanpur', 'Salempur', 'Sambhal', 'Sant Kabir Nagar', 'Shahjahanpur', 'Shrawasti', 'Siddharthnagar', 'Sitapur', 'Sultanpur', 'Unnao', 'Varanasi']
 };
 
-export default function SponsorPollModal({ voterToken, username, userState, userSeat, userDbgBalance, onClose }: any) {
+export default function SponsorPollModal({
+  voterToken,
+  username,
+  userState,
+  userSeat,
+  userDbgBalance,
+  onClose
+}: SponsorPollModalProps) {
   const [titleEn, setTitleEn] = useState('');
-  const [category, setCategory] = useState<'JanMat' | 'LokMat'>('JanMat');
-  
-  // Default to home seat selected
-  const [selectedSeats, setSelectedSeats] = useState<string[]>(userSeat ? [userSeat] : []);
-  const [statusMsg, setStatusMsg] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [titleHi, setTitleHi] = useState('');
+  const [category, setCategory] = useState<'LokMat' | 'JanMat'>('LokMat');
+  const [opt0En, setOpt0En] = useState('Yes');
+  const [opt1En, setOpt1En] = useState('No');
+  const [selectedPeers, setSelectedPeers] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // 50 DBG per seat selected
-  const totalCost = selectedSeats.length * 50;
-  const availableSeatsInState = STATE_TO_SEATS[userState] || [userSeat];
+  const stateSeats = useMemo(() => {
+    return (STATE_SEATS_MAP[userState] || []).filter(s => s.toLowerCase() !== userSeat.toLowerCase());
+  }, [userState, userSeat]);
 
-  const toggleSeat = (seatName: string) => {
-    // Prevent unchecking user's mandatory home seat if desired, or let them pick freely
-    if (seatName === userSeat) return; // Home seat is always included as base
-
-    if (selectedSeats.includes(seatName)) {
-      setSelectedSeats(selectedSeats.filter(s => s !== seatName));
+  const togglePeerSeat = (seat: string) => {
+    if (selectedPeers.includes(seat)) {
+      setSelectedPeers(selectedPeers.filter(s => s !== seat));
     } else {
-      setSelectedSeats([...selectedSeats, seatName]);
+      if (selectedPeers.length >= 2) return;
+      setSelectedPeers([...selectedPeers, seat]);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titleEn.trim()) return alert('Please enter a poll question.');
-    if (userDbgBalance < totalCost) {
-      alert(`Insufficient DBG balance. You selected ${selectedSeats.length} seats (${totalCost} DBG required), but you have ${userDbgBalance} DBG.`);
+    if (!titleEn.trim()) {
+      setErrorMsg('Please write your question');
+      return;
+    }
+    if (userDbgBalance < 50) {
+      setErrorMsg(`50 DBG required. Your balance: ${userDbgBalance} DBG`);
+      return;
+    }
+    if (selectedPeers.length < 2) {
+      setErrorMsg('Please select 2 additional constituencies from your state');
       return;
     }
 
-    setLoading(true);
-    setStatusMsg('Submitting proposal & placing DBG in escrow...');
+    setIsSubmitting(true);
+    setErrorMsg('');
 
-    const { data, error } = await supabase.rpc('submit_sponsored_poll', {
-      p_voter_token: voterToken,
-      p_username: username || 'Citizen',
-      p_state_name: userState,
-      p_home_seat: userSeat || selectedSeats[0],
-      p_scope: selectedSeats.length > 1 ? 'STATE_CUSTOM' : 'HOME_SEAT',
-      p_category: category,
-      p_title_en: titleEn.trim(),
-      p_title_hi: titleEn.trim(),
-      p_options: [
-        { id: 0, text_en: 'Yes / Agree', text_hi: 'हाँ / सहमत', color: '#10b981' },
-        { id: 1, text_en: 'No / Disagree', text_hi: 'नहीं / असहमत', color: '#f59e0b' }
-      ],
-      p_seats: selectedSeats
-    });
+    const targetSeats = [userSeat, ...selectedPeers];
+    const optionsPayload = [
+      { id: 0, text_en: opt0En, text_hi: opt0En, color: '#f97316' },
+      { id: 1, text_en: opt1En, text_hi: opt1En, color: '#10b981' }
+    ];
 
-    setLoading(false);
-    if (error || !data?.success) {
-      setStatusMsg(`❌ Error: ${error?.message || data?.error}`);
-    } else {
-      setStatusMsg('✓ Proposal submitted successfully! Pending admin review. DBG held in escrow.');
-      setTimeout(() => onClose(), 2000);
+    try {
+      const { data, error } = await supabase.rpc('sponsor_community_poll', {
+        p_voter_token: voterToken,
+        p_username: username,
+        p_category: category,
+        p_title_en: titleEn.trim(),
+        p_title_hi: titleHi.trim() || titleEn.trim(),
+        p_options: JSON.stringify(optionsPayload),
+        p_home_state: userState,
+        p_home_seat: userSeat,
+        p_target_seats: targetSeats
+      });
+
+      if (error || !data?.success) {
+        setErrorMsg(error?.message || data?.error || 'Failed to submit proposal');
+        setIsSubmitting(false);
+      } else {
+        if (data.new_balance !== undefined) {
+          safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
+        }
+        alert('✓ 50 DBG Burned! Your 3-constituency poll proposal has been dispatched for editorial review.');
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Network error');
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }}>
-      <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 900, margin: 0 }}>💡 Sponsor Local BhuMat Poll</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '16px', fontWeight: 900, cursor: 'pointer' }}>✕</button>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: 'blur(5px)',
+        zIndex: 220,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '24px',
+          width: '100%',
+          maxWidth: '430px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          padding: '22px'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 900, backgroundColor: '#ecfdf5', color: '#059669', padding: '3px 8px', borderRadius: '6px' }}>
+            ⚡ 50 DBG SPONSORSHIP
+          </span>
+          <button
+            onClick={onClose}
+            style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', fontWeight: 800, color: '#64748b' }}
+          >
+            ✕
+          </button>
         </div>
 
-        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>
-          Base cost is <strong style={{ color: '#0f172a' }}>50 DBG</strong> for your home seat ({userSeat}). Hand-pick additional seats in {userState} for +50 DBG each.
+        <h3 style={{ margin: '4px 0 2px 0', fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+          Sponsor 3-Seat Public Poll
+        </h3>
+        <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#64748b', lineHeight: 1.45 }}>
+          Target your question to <strong>{userSeat}</strong> plus 2 additional seats in <strong>{userState}</strong>.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div>
-            <label style={{ fontSize: '11.5px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>Category Track</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setCategory('JanMat')}
-                style={{ padding: '8px', borderRadius: '8px', border: `2px solid ${category === 'JanMat' ? '#059669' : '#e2e8f0'}`, backgroundColor: category === 'JanMat' ? '#ecfdf5' : '#ffffff', color: '#059669', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
-              >
-                🌆 JanMat (Civic)
-              </button>
-              <button
-                type="button"
-                onClick={() => setCategory('LokMat')}
-                style={{ padding: '8px', borderRadius: '8px', border: `2px solid ${category === 'LokMat' ? '#d97706' : '#e2e8f0'}`, backgroundColor: category === 'LokMat' ? '#fffbeb' : '#ffffff', color: '#d97706', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
-              >
-                🌅 LokMat (Debate)
-              </button>
-            </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setCategory('LokMat')}
+              style={{
+                flex: 1, padding: '8px', borderRadius: '10px',
+                border: `1.5px solid ${category === 'LokMat' ? '#d97706' : '#cbd5e1'}`,
+                backgroundColor: category === 'LokMat' ? '#fffbeb' : '#ffffff',
+                color: category === 'LokMat' ? '#92400e' : '#475569',
+                fontSize: '11.5px', fontWeight: 800, cursor: 'pointer'
+              }}
+            >
+              🌅 LokMat (Cultural)
+            </button>
+            <button
+              type="button"
+              onClick={() => setCategory('JanMat')}
+              style={{
+                flex: 1, padding: '8px', borderRadius: '10px',
+                border: `1.5px solid ${category === 'JanMat' ? '#059669' : '#cbd5e1'}`,
+                backgroundColor: category === 'JanMat' ? '#ecfdf5' : '#ffffff',
+                color: category === 'JanMat' ? '#065f46' : '#475569',
+                fontSize: '11.5px', fontWeight: 800, cursor: 'pointer'
+              }}
+            >
+              🌆 JanMat (Governance)
+            </button>
           </div>
 
           <div>
-            <label style={{ fontSize: '11.5px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>Your Poll Question (English) *</label>
+            <label style={{ fontSize: '11px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '4px' }}>
+              Your Question (English) *
+            </label>
             <input
               type="text"
               required
-              placeholder="e.g. Should our district construct a new public sports complex?"
+              placeholder="e.g. Should the local highway bypass have streetlighting?"
               value={titleEn}
               onChange={(e) => setTitleEn(e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '12.5px', fontWeight: 600 }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '12.5px' }}
             />
           </div>
 
-          {/* Seat Picker Grid */}
           <div>
-            <label style={{ fontSize: '11.5px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
-              Hand-Pick Target Seats in {userState} (50 DBG / seat):
+            <label style={{ fontSize: '11px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '4px' }}>
+              Question in Hindi (Optional)
             </label>
-            <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1.5px solid #e2e8f0', borderRadius: '8px', padding: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', backgroundColor: '#f8fafc' }}>
-              {availableSeatsInState.map((seat) => {
-                const isHome = seat === userSeat;
-                const isSelected = selectedSeats.includes(seat);
+            <input
+              type="text"
+              placeholder="हिंदी अनुवाद..."
+              value={titleHi}
+              onChange={(e) => setTitleHi(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '12.5px' }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div>
+              <label style={{ fontSize: '10.5px', fontWeight: 800, color: '#334155' }}>Option 1</label>
+              <input
+                type="text"
+                value={opt0En}
+                onChange={(e) => setOpt0En(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '10.5px', fontWeight: 800, color: '#334155' }}>Option 2</label>
+              <input
+                type="text"
+                value={opt1En}
+                onChange={(e) => setOpt1En(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+              />
+            </div>
+          </div>
+
+          {/* 3-Constituency Picker */}
+          <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+              Select 2 Additional {userState} Seats ({selectedPeers.length}/2 chosen):
+            </div>
+            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '8px' }}>
+              1. 📍 <strong>{userSeat}</strong> (Your Home Seat is locked)
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '110px', overflowY: 'auto' }}>
+              {stateSeats.map((seat) => {
+                const isSelected = selectedPeers.includes(seat);
                 return (
-                  <span
+                  <button
                     key={seat}
-                    onClick={() => toggleSeat(seat)}
+                    type="button"
+                    onClick={() => togglePeerSeat(seat)}
                     style={{
-                      padding: '5px 10px',
+                      padding: '4px 8px',
                       borderRadius: '6px',
+                      border: `1px solid ${isSelected ? '#0284c7' : '#cbd5e1'}`,
+                      backgroundColor: isSelected ? '#e0f2fe' : '#ffffff',
+                      color: isSelected ? '#0369a1' : '#334155',
                       fontSize: '11px',
-                      fontWeight: 800,
-                      cursor: isHome ? 'default' : 'pointer',
-                      backgroundColor: isSelected ? '#0284c7' : '#ffffff',
-                      color: isSelected ? '#ffffff' : '#334155',
-                      border: `1px solid ${isSelected ? '#0284c7' : '#cbd5e1'}`
+                      fontWeight: isSelected ? 800 : 600,
+                      cursor: 'pointer'
                     }}
                   >
-                    {isHome ? '🏠 ' : (isSelected ? '✓ ' : '＋ ')}{seat} {isHome ? '(Home)' : ''}
-                  </span>
+                    {isSelected ? '✓ ' : '+ '}{seat}
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, display: 'block' }}>Selected: {selectedSeats.length} Seats</span>
-              <span style={{ fontSize: '13px', fontWeight: 900, color: '#d97706' }}>Total Cost: {totalCost} DBG</span>
-            </div>
-            <span style={{ fontSize: '11.5px', fontWeight: 800, color: userDbgBalance >= totalCost ? '#059669' : '#dc2626' }}>
-              Balance: {userDbgBalance} DBG
-            </span>
-          </div>
-
-          {statusMsg && (
-            <div style={{ fontSize: '11.5px', fontWeight: 800, color: statusMsg.startsWith('✓') ? '#059669' : '#dc2626' }}>
-              {statusMsg}
+          {errorMsg && (
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626' }}>
+              {errorMsg}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={loading}
-            style={{ padding: '12px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 900, cursor: 'pointer', marginTop: '4px' }}
+            disabled={isSubmitting || userDbgBalance < 50 || selectedPeers.length < 2}
+            style={{
+              padding: '12px',
+              backgroundColor: userDbgBalance >= 50 && selectedPeers.length === 2 ? '#10b981' : '#cbd5e1',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontWeight: 800,
+              cursor: userDbgBalance >= 50 && selectedPeers.length === 2 ? 'pointer' : 'not-allowed',
+              marginTop: '4px'
+            }}
           >
-            {loading ? 'Submitting...' : `Sponsor Poll (${totalCost} DBG for ${selectedSeats.length} Seats)`}
+            {isSubmitting ? 'Submitting Proposal...' : `Burn 50 DBG & Dispatch (${userDbgBalance} Available)`}
           </button>
         </form>
       </div>

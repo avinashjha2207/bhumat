@@ -1,10 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lleeljlvqltfzlidmsqs.supabase.co';
-const supabaseUrl = rawUrl.replace(/[()]/g, '').trim();
-const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsZWVsamx2cWx0ZnpsaWRtc3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODE3NTUsImV4cCI6MjEwNjk1Nzc1NX0.sQdPyFJpjKrt8mZx_xpOh8lgYPxCGrsO7IgDmxiwJfc';
+const supabaseUrl = (
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://exzvzwlqbygftclsyecq.supabase.co'
+).trim();
 
-export const supabase = createClient(supabaseUrl, rawKey.trim());
+const supabaseAnonKey = (
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4enZ6d2xxYnlnZnRjbHN5ZWNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxNjY4NzEsImV4cCI6MjEwNzc0Mjg3MX0.sV4uM432y-v-L7_D822zQYf5w588b_H7c'
+).trim();
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Safe in-memory fallback for iOS Safari Private Browsing
 const memoryStore = new Map<string, string>();

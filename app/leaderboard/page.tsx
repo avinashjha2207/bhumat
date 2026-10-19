@@ -213,11 +213,15 @@ export default function DedicatedLeaderboardPage() {
                             </div>
                             <div style={{ fontSize: '11px', color: '#64748b' }}>
                               {item.state_name}
-                              {item.captain_name !== 'None' && (
-                                <span style={{ marginLeft: '6px', color: '#0284c7', fontWeight: 700 }}>
-                                  • 👑 @{item.captain_name}
-                                </span>
-                              )}
+                              {item.captain_name && item.captain_name !== 'None' && (
+  <span
+    onClick={() => router.push(`/citizen/${encodeURIComponent(item.captain_name)}`)}
+    style={{ marginLeft: '6px', color: '#0284c7', fontWeight: 700, cursor: 'pointer' }}
+    title={`View @${item.captain_name}'s Dossier`}
+  >
+    • 👑 @{item.captain_name} ↗
+  </span>
+)}
                             </div>
                           </div>
                         </div>
@@ -314,31 +318,45 @@ export default function DedicatedLeaderboardPage() {
             {/* PILLAR 3: CITIZEN HALL OF FAME */}
             {activeTab === 'CITIZENS' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Podium Top 3 */}
+                {/* Podium Top 3 with Direct Profile Navigation */}
                 {citizenList.length >= 3 && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1fr', gap: '8px', marginBottom: '8px', alignItems: 'flex-end' }}>
-                    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px 6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '20px' }}>🥈</div>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                        {citizenList[1]?.username}
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 900, color: '#64748b' }}>{citizenList[1]?.xp_score} XP</div>
-                    </div>
-                    <div style={{ backgroundColor: '#ffffff', border: '2px solid #f59e0b', borderRadius: '18px', padding: '16px 6px', textAlign: 'center', boxShadow: '0 4px 12px rgba(245,158,11,0.1)' }}>
-                      <div style={{ fontSize: '24px' }}>👑</div>
-                      <div style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>
-                        {citizenList[0]?.username}
-                      </div>
-                      <div style={{ fontSize: '13px', fontWeight: 900, color: '#d97706' }}>{citizenList[0]?.xp_score} XP</div>
-                    </div>
-                    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '10px 6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '20px' }}>🥉</div>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                        {citizenList[2]?.username}
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: 900, color: '#64748b' }}>{citizenList[2]?.xp_score} XP</div>
-                    </div>
-                  </div>
+  {/* Rank 2 */}
+  <div
+    onClick={() => citizenList[1]?.username && router.push(`/citizen/${encodeURIComponent(citizenList[1].username)}`)}
+    style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px 6px', textAlign: 'center', cursor: 'pointer' }}
+  >
+    <div style={{ fontSize: '20px' }}>🥈</div>
+    <div style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+      @{citizenList[1]?.username} ↗
+    </div>
+    <div style={{ fontSize: '11px', fontWeight: 900, color: '#64748b' }}>{citizenList[1]?.xp_score} XP</div>
+  </div>
+
+  {/* Rank 1 */}
+  <div
+    onClick={() => citizenList[0]?.username && router.push(`/citizen/${encodeURIComponent(citizenList[0].username)}`)}
+    style={{ backgroundColor: '#ffffff', border: '2px solid #f59e0b', borderRadius: '18px', padding: '16px 6px', textAlign: 'center', boxShadow: '0 4px 12px rgba(245,158,11,0.1)', cursor: 'pointer' }}
+  >
+    <div style={{ fontSize: '24px' }}>👑</div>
+    <div style={{ fontSize: '13px', fontWeight: 900, color: '#0284c7', marginTop: '4px' }}>
+      @{citizenList[0]?.username} ↗
+    </div>
+    <div style={{ fontSize: '13px', fontWeight: 900, color: '#d97706' }}>{citizenList[0]?.xp_score} XP</div>
+  </div>
+
+  {/* Rank 3 */}
+  <div
+    onClick={() => citizenList[2]?.username && router.push(`/citizen/${encodeURIComponent(citizenList[2].username)}`)}
+    style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '10px 6px', textAlign: 'center', cursor: 'pointer' }}
+  >
+    <div style={{ fontSize: '20px' }}>🥉</div>
+    <div style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+      @{citizenList[2]?.username} ↗
+    </div>
+    <div style={{ fontSize: '11px', fontWeight: 900, color: '#64748b' }}>{citizenList[2]?.xp_score} XP</div>
+  </div>
+</div>
                 )}
 
                 {/* Ranked List */}
@@ -362,7 +380,12 @@ export default function DedicatedLeaderboardPage() {
                       </span>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>{citizen.username}</span>
+                          <span
+  onClick={() => router.push(`/citizen/${encodeURIComponent(citizen.username)}`)}
+  style={{ fontSize: '13.5px', fontWeight: 800, color: '#0284c7', cursor: 'pointer' }}
+>
+  @{citizen.username} ↗
+</span>
                           {citizen.is_verified && (
                             <span style={{ fontSize: '9px', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', padding: '1px 5px', borderRadius: '4px' }}>
                               ✓ Verified
