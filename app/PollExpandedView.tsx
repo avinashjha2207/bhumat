@@ -104,6 +104,16 @@ export default function PollExpandedView({
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
   const [activeInfoPopup, setActiveInfoPopup] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [mapTooltip, setMapTooltip] = useState<{
+    seatName: string;
+    stateName: string;
+    totalVotes: number;
+    leadingText: string;
+    leadingColor: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  
 
   const [consensusSummary, setConsensusSummary] = useState<{
     bharat: { total: number; lead_id: number; pct: number };
@@ -284,6 +294,14 @@ export default function PollExpandedView({
       if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
     };
   }, [poll.id]);
+
+useEffect(() => {
+    const handleDismissOnScroll = () => {
+      setMapTooltip(null);
+    };
+    window.addEventListener('scroll', handleDismissOnScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleDismissOnScroll);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -535,34 +553,52 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
       .on('click touchstart', function (event: any, d: any) {
         event.stopPropagation();
         const props = d.properties || {};
-        const seatName = props.PC_NAME || props.pc_name || props.name || (lang === 'HI' ? 'अज्ञात' : 'Unknown');
-        const stateName = props.ST_NAME || props.st_name || props.state || (lang === 'HI' ? 'भारत' : 'Bharat');
-        const key = `${clean(seatName)}___${clean(stateName)}`;
-        const match = tallyMap.get(key);
+        const rawSeat = props.PC_NAME || props.pc_name || props.name || '';
+        const rawState = props.ST_NAME || props.st_name || props.state || '';
+        const seatName = rawSeat.trim() || (lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency');
+        const stateName = rawState.trim() || (lang === 'HI' ? 'भारत' : 'Bharat');
 
-        setHoveredSeat({
-          seatName,
-          stateName,
-          leadingOptionText: match ? match.leadingOptionText : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots'),
-          totalVotes: match ? match.totalVotes : 0,
-          trend: match ? match.trend : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')
-        });
+        // Resolve tally for this seat
+        const tally = initialTallies.find(
+          (t: any) => (t.constituency_name && t.constituency_name.toLowerCase() === seatName.toLowerCase()) ||
+                      (t.pc_id && t.pc_id.toLowerCase() === seatName.toLowerCase())
+        );
 
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
-          const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 100);
-          setTooltipPos({
-            x: Math.max(16, Math.min(clientX - rect.left - 70, width - 160)),
-            y: Math.max(10, clientY - rect.top - 80)
-          });
+        const totalV = tally?.total_votes || 0;
+        let leadingIdx = 0;
+        if (tally && totalV > 0) {
+          const v0 = tally.opt_0_votes || 0;
+          const v1 = tally.opt_1_votes || 0;
+          const v2 = tally.opt_2_votes || 0;
+          const v3 = tally.opt_3_votes || 0;
+          const maxV = Math.max(v0, v1, v2, v3);
+          if (maxV === v1) leadingIdx = 1;
+          else if (maxV === v2) leadingIdx = 2;
+          else if (maxV === v3) leadingIdx = 3;
         }
 
+        const opt = poll.options[leadingIdx] || poll.options[0];
+        const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+        const optText = lang === 'HI' ? opt.text_hi : opt.text_en;
+
+        const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : window.innerWidth / 2);
+        const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : 300);
+
         if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+
+        setMapTooltip({
+          seatName,
+          stateName,
+          totalVotes: totalV,
+          leadingText: totalV > 0 ? optText : (lang === 'HI' ? 'मतदान प्रतीक्षित' : 'Awaiting Ballots'),
+          leadingColor: totalV > 0 ? optColor : '#64748b',
+          x: Math.max(16, Math.min(clientX - 90, window.innerWidth - 200)),
+          y: Math.max(80, clientY - 85)
+        });
+
         tooltipTimeoutRef.current = setTimeout(() => {
-          setHoveredSeat(null);
-          setTooltipPos(null);
-        }, 4500);
+          setMapTooltip(null);
+        }, 5000);
       });
 
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
@@ -966,32 +1002,48 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
           </div>
         </div>
 
-        <button
-  onClick={() => setShowParchi(true)}
-  style={{
-    padding: '6px 12px',
-    backgroundColor: '#ffffff',
-    border: '1.5px solid #cbd5e1',
-    borderRadius: '999px',
-    fontSize: '11px',
-    fontWeight: 800,
-    color: '#0f172a',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px'
-  }}
->
-  <span>📜</span>
-  <span>{lang === 'HI' ? 'मत पर्ची' : 'Mat Parchi'}</span>
-</button>
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            onClick={() => setShowParchi(true)}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: '#ffffff',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '12px',
+              color: '#0f172a',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+            }}
+          >
+            <span>📜</span>
+            <span>{lang === 'HI' ? 'मत पर्ची (डिजिटल स्लिप)' : 'Mat Parchi'}</span>
+          </button>
+        </div>
 
         {/* Card 3: 3-Box Comparison Ledger (Dynamic Admin Color Binding) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '14px' }}>
           
           {/* Box 1: BHARAT */}
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b' }}>BHARAT ⓘ</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
+                  {lang === 'HI' ? 'भारत' : 'BHARAT'}
+                </span>
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(lang === 'HI' ? 'अखिल भारतीय स्तर पर इस प्रश्न का वर्तमान सबसे प्रमुख विकल्प।' : 'National consensus: The leading option chosen across all 543 parliamentary seats.');
+                  }}
+                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+                >
+                  ⓘ
+                </span>
+              </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
@@ -1015,9 +1067,20 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
 
           {/* Box 2: STATE */}
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {(consensusSummary?.state?.name || userState || 'STATE').toUpperCase()} ⓘ
-            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
+                  {userState?.toUpperCase() || 'STATE'}
+                </span>
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(lang === 'HI' ? `राज्य स्तर (${userState}) पर सबसे प्रमुख विकल्प।` : `State consensus: The leading option chosen across ${userState}.`);
+                  }}
+                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+                >
+                  ⓘ
+                </span>
+              </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
@@ -1041,9 +1104,20 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
 
           {/* Box 3: CONSTITUENCY (SEAT) */}
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
-            <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {(userSeatName || 'SEAT').toUpperCase()} ⓘ
-            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
+                  {userSeatName?.toUpperCase() || 'SEAT'}
+                </span>
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(lang === 'HI' ? `आपके संसदीय क्षेत्र (${userSeatName}) का स्थानीय जनमत परिणाम।` : `Constituency consensus: The verified local result for ${userSeatName}.`);
+                  }}
+                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+                >
+                  ⓘ
+                </span>
+              </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
@@ -1068,42 +1142,58 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
           </div>
         </div>
 
-{/* Consensus Movement & Historical Shift Feed (Fixed Height, Scrollable Inside) */}
+{/* Citizen Pulse: Contextual Regional Shifts */}
         <div style={{
           backgroundColor: '#ffffff',
           border: '1.5px solid #e2e8f0',
           borderRadius: '20px',
           padding: '16px',
-          marginBottom: '14px',
+          marginBottom: '16px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '14px' }}>📈</span>
-              <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
-                {lang === 'HI' ? 'अंतिम विजिट के बाद से बदलाव (Live Shifts)' : 'What Changed Since You Last Saw'}
+              <span style={{ fontSize: '14px' }}>⚡</span>
+              <span style={{ fontSize: '12px', fontWeight: 850, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                {lang === 'HI' ? 'संसदीय पल्स एवं हालिया रुझान' : 'Constituency Pulse & Recent Shifts'}
               </span>
             </div>
             <span style={{ fontSize: '10px', color: '#059669', fontWeight: 800, backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
-              ● Real-time
+              ● {lang === 'HI' ? 'सक्रिय विमर्श' : 'Live Dialogue'}
             </span>
           </div>
 
-          {/* Fixed-Height Scrollable Activity Container */}
-          <div style={{ maxHeight: '130px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
-            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #10b981' }}>
-              <span style={{ fontWeight: 800, color: '#059669' }}>📍 {userSeatName || 'Your Seat'}:</span>{' '}
-              {userSeatStats && userSeatStats.totalVotes > 0
-                ? `${userSeatStats.leadingOptionText} holds the lead with ${userSeatStats.leadingPercent}% consensus.`
-                : 'Initial ballots forming the baseline for this seat.'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Local Seat Pulse */}
+            <div style={{ fontSize: '11.5px', color: '#1e293b', backgroundColor: '#f0fdf4', padding: '10px 12px', borderRadius: '12px', border: '1px solid #bbf7d0', lineHeight: 1.45 }}>
+              <div style={{ fontWeight: 800, color: '#166534', marginBottom: '2px' }}>
+                📍 {userSeatName || 'Your Seat'}: {userSeatStats?.leadingOptionText || (lang === 'HI' ? 'प्रारंभिक चरण' : 'Early Trend')}
+              </div>
+              <span style={{ color: '#15803d', fontSize: '11px' }}>
+                {userSeatStats && userSeatStats.totalVotes > 0
+                  ? (lang === 'HI'
+                      ? `आपके क्षेत्र के ${userSeatStats.leadingPercent}% नागरिकों ने इस विकल्प का समर्थन किया है।`
+                      : `${userSeatStats.leadingPercent}% of participating local voters favor this stance.`)
+                  : (lang === 'HI'
+                      ? 'आपके क्षेत्र का मत अभी संकलित हो रहा है। अपना मत देकर स्थानीय दिशा तय करें।'
+                      : 'Initial ballots forming the consensus baseline for this constituency.')}
+              </span>
             </div>
-            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #0284c7' }}>
-              <span style={{ fontWeight: 800, color: '#0284c7' }}>🏛️ National Momentum:</span>{' '}
-              {bharatStats.total} total ballots recorded across {tallies.filter(t => t.total_votes > 0).length} active constituencies.
-            </div>
-            <div style={{ fontSize: '11px', color: '#334155', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '10px', borderLeft: '3px solid #f59e0b' }}>
-              <span style={{ fontWeight: 800, color: '#d97706' }}>⚡ Quorum Fortification:</span>{' '}
-              {tallies.filter(t => t.total_votes >= 50).length} seats have reached fortified quorum (&ge;50 votes).
+
+            {/* State Consensus Stance */}
+            <div style={{ fontSize: '11.5px', color: '#1e293b', backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0', lineHeight: 1.45 }}>
+              <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: '2px' }}>
+                🏛️ {userState || 'State'} {lang === 'HI' ? 'सहमति' : 'Consensus'}: {consensusSummary?.state?.lead_id !== undefined ? (poll.options[consensusSummary.state.lead_id]?.text_en || 'Active') : 'Balanced'}
+              </div>
+              <span style={{ color: '#64748b', fontSize: '11px' }}>
+                {consensusSummary?.state?.total && consensusSummary.state.total > 0
+                  ? (lang === 'HI'
+                      ? `राज्य भर के विभिन्न क्षेत्रों में विमर्श तीव्र हो रहा है।`
+                      : `State-wide civic participation actively shaping the regional majority.`)
+                  : (lang === 'HI'
+                      ? 'राज्य के विभिन्न क्षेत्रों से रुझान आने शुरू हो रहे हैं।'
+                      : 'Regional trends are crystallizing as citizens participate across the state.')}
+              </span>
             </div>
           </div>
         </div>
@@ -1360,6 +1450,49 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Map Touch Popup (Dismisses on tap, 5s timeout, or scroll) */}
+        {mapTooltip && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setMapTooltip(null);
+            }}
+            style={{
+              position: 'fixed',
+              left: `${mapTooltip.x}px`,
+              top: `${mapTooltip.y}px`,
+              zIndex: 160,
+              backgroundColor: '#0f172a',
+              color: '#ffffff',
+              borderRadius: '12px',
+              padding: '8px 12px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              border: '1.5px solid #334155',
+              maxWidth: '190px',
+              cursor: 'pointer',
+              pointerEvents: 'auto'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {mapTooltip.seatName}
+              </span>
+              <span style={{ fontSize: '9px', color: '#94a3b8', flexShrink: 0 }}>
+                {mapTooltip.totalVotes} {mapTooltip.totalVotes === 1 ? 'vote' : 'votes'}
+              </span>
+            </div>
+            <div style={{ fontSize: '9.5px', color: '#94a3b8', marginBottom: '4px' }}>
+              {mapTooltip.stateName}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: mapTooltip.leadingColor, flexShrink: 0 }} />
+              <span style={{ fontSize: '10.5px', fontWeight: 800, color: mapTooltip.leadingColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {mapTooltip.leadingText}
+              </span>
             </div>
           </div>
         )}

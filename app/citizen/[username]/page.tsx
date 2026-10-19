@@ -10,28 +10,88 @@ export default function PublicCitizenProfilePage() {
   const params = useParams();
   const router = useRouter();
   const username = params?.username as string;
-
+  
   const [profile, setProfile] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<boolean>(false);
+  
 
   useEffect(() => {
-    async function loadCitizen() {
+    async function loadCitizenProfile() {
       if (!username) return;
-      setLoading(true);
       try {
-        const { data, error } = await supabase.rpc('get_public_citizen_profile', {
-          p_username: decodeURIComponent(username),
-        });
-        if (!error && data?.success) {
-          setProfile(data);
+        setLoading(true);
+        setError(false);
+        const cleanUsername = decodeURIComponent(username as string).trim();
+
+        // Query voter_wallets for this citizen
+        const { data, error: dbErr } = await supabase
+          .from('voter_wallets')
+          .select('*')
+          .ilike('username', cleanUsername)
+          .maybeSingle();
+
+        if (dbErr || !data) {
+          setProfile(null);
+          setError(true);
+          return;
         }
-      } catch (e) {
-        console.error(e);
+
+        // Fetch user's public LokMat voting history
+        let publicHistory: any[] = [];
+        try {
+          const { data: histData } = await supabase
+            .from('lokmat_votes')
+            .select('*')
+            .eq('voter_token', data.voter_token)
+            .order('created_at', { ascending: false })
+            .limit(10);
+          if (histData) publicHistory = histData;
+        } catch (hErr) {
+          console.warn('History fetch skipped:', hErr);
+        }
+
+        const totalVotes = Number(data.total_votes || 0);
+        const xpScore = totalVotes * 30;
+
+        // Construct normalized profile object matching JSX expectations
+        const formattedProfile = {
+          username: data.username || cleanUsername,
+          is_verified: Boolean(data.is_verified || data.phone_number || data.email),
+          constituency_name: data.home_seat || 'Bharat',
+          state_name: data.home_state || 'Bharat',
+          lifetime_votes: totalVotes,
+          season_votes: totalVotes,
+          season_lokmat_votes: Number(data.lokmat_votes || 0),
+          season_janmat_votes: Number(data.janmat_votes || 0),
+          sponsored_polls_count: 0,
+          xp_score: xpScore,
+          caq_pct: 88,
+          voting_since: data.voting_since || data.created_at,
+          seat_locked_at: data.updated_at || data.created_at,
+          badges: [
+            { title: '🌱 Prathamik Nagrik', desc: 'Participated in sovereign consensus', color: '#10b981' },
+            ...(totalVotes >= 10 ? [{ title: '🏛️ Jagruk Nagrik', desc: 'Active policy auditor', color: '#0284c7' }] : []),
+            ...(totalVotes >= 25 ? [{ title: '🛡️ Lok Prahari', desc: 'Constituency guardian', color: '#8b5cf6' }] : [])
+          ],
+          history: publicHistory.map((h: any, idx: number) => ({
+            receipt_code: `TXN-${(h.id || idx).toString().slice(0, 8).toUpperCase()}`,
+            question_title: h.poll_title || 'LokMat Cultural Pulse',
+            selected_choice: h.selected_option_text || 'Option Selected',
+            selected_option_id: Number(h.selected_option || 0)
+          }))
+        };
+
+        setProfile(formattedProfile);
+      } catch (err) {
+        console.error('Citizen profile fetch error:', err);
+        setError(true);
+        setProfile(null);
       } finally {
         setLoading(false);
       }
     }
-    loadCitizen();
+    loadCitizenProfile();
   }, [username]);
 
   const handleShareProfile = () => {

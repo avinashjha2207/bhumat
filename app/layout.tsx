@@ -1,4 +1,14 @@
+
 import type { Metadata, Viewport } from 'next';
+
+import { Noto_Sans_Devanagari } from 'next/font/google';
+
+const notoDevanagari = Noto_Sans_Devanagari({
+  subsets: ['devanagari'],
+  weight: ['400', '600', '700', '800'],
+  display: 'swap',
+  variable: '--font-devanagari'
+});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -46,8 +56,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body style={{ margin: 0, padding: 0, backgroundColor: '#f8fafc' }}>
+    <html lang="en" className={notoDevanagari.variable}>
+      <body className={notoDevanagari.className}>
         {children}
       </body>
     </html>

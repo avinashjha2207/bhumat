@@ -22,7 +22,7 @@ export default function AuthModal({
   lang = 'EN'
 }: AuthModalProps) {
   const isJanMat = requiredFor === 'JanMat';
-  const [authMethod, setAuthMethod] = useState<'PHONE' | 'EMAIL'>(isJanMat ? 'PHONE' : 'EMAIL');
+  const [authMethod, setAuthMethod] = useState<'PHONE' | 'EMAIL'>('PHONE');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -43,6 +43,7 @@ export default function AuthModal({
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
+    setDevOtpHint(null);
 
     try {
       if (authMethod === 'PHONE') {
@@ -52,40 +53,35 @@ export default function AuthModal({
           setLoading(false);
           return;
         }
-
         const { data, error } = await supabase.rpc('request_phone_otp', {
           p_phone: cleanPhone
         });
-
         if (error || !data?.success) {
           throw new Error(data?.error || error?.message || 'Failed to dispatch OTP');
         }
-
         if (data?.dev_otp) {
           setDevOtpHint(data.dev_otp);
           setOtp(data.dev_otp);
         }
         setStep('OTP');
       } else {
-        if (!email.includes('@') || !email.includes('.')) {
+        const cleanEmail = email.trim().toLowerCase();
+        if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
           setErrorMsg(lang === 'HI' ? 'मान्य ईमेल पता दर्ज करें' : 'Please enter a valid email address');
           setLoading(false);
           return;
         }
-
-        const emailToken = 'em_' + Array.from(
-          new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(email.trim().toLowerCase())))
-        ).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 20);
-
-        await supabase.from('voter_wallets').upsert({
-          voter_token: emailToken,
-          dbg_balance: 1,
-          is_verified: false,
-          voting_since: new Date().toISOString()
-        }, { onConflict: 'voter_token' });
-
-        onSuccess(emailToken, email.trim(), false);
-        onClose();
+        const { data, error } = await supabase.rpc('request_email_otp', {
+          p_email: cleanEmail
+        });
+        if (error || !data?.success) {
+          throw new Error(data?.error || error?.message || 'Failed to dispatch email verification OTP');
+        }
+        if (data?.dev_otp) {
+          setDevOtpHint(data.dev_otp);
+          setOtp(data.dev_otp);
+        }
+        setStep('OTP');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication request failed');
@@ -100,23 +96,46 @@ export default function AuthModal({
     setLoading(true);
 
     try {
-      const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10);
-      const guestToken = typeof window !== 'undefined' ? localStorage.getItem('bhumat_voter_token') : null;
+      if (authMethod === 'PHONE') {
+        const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10);
+        const guestToken = typeof window !== 'undefined' ? localStorage.getItem('bhumat_voter_token') : null;
+        const { data, error } = await supabase.rpc('verify_phone_otp', {
+          p_phone: cleanPhone,
+          p_otp: otp.trim(),
+          p_guest_token: guestToken,
+          p_state: userState,
+          p_seat: userSeat
+        });
+        if (error || !data?.success) {
+          throw new Error(data?.error || error?.message || 'Invalid OTP code');
+        }
+        onSuccess(data.voter_token, cleanPhone, true);
+        onClose();
+      } else {
+        const cleanEmail = email.trim().toLowerCase();
+        const { data, error } = await supabase.rpc('verify_email_otp', {
+          p_email: cleanEmail,
+          p_otp: otp.trim(),
+          p_home_seat: userSeat || 'Darbhanga',
+          p_home_state: userState || 'Bihar'
+        });
+        if (error || !data?.success) {
+          throw new Error(data?.error || error?.message || 'Invalid or expired OTP code');
+        }
 
-      const { data, error } = await supabase.rpc('verify_phone_otp', {
-        p_phone: cleanPhone,
-        p_otp: otp.trim(),
-        p_guest_token: guestToken,
-        p_state: userState,
-        p_seat: userSeat
-      });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bhumat_voter_token', data.voter_token);
+          localStorage.setItem('bhumat_username', data.username);
+          localStorage.setItem('bhumat_user_email', cleanEmail);
+          localStorage.setItem('bhumat_user_seat', data.home_seat);
+          localStorage.setItem('bhumat_user_state', data.home_state);
+          localStorage.setItem('bhumat_dbg_balance', String(data.dbg_balance ?? 5));
+          document.cookie = `bhumat_voter_token=${data.voter_token}; path=/; max-age=31536000; SameSite=Lax;`;
+        }
 
-      if (error || !data?.success) {
-        throw new Error(data?.error || error?.message || 'Invalid OTP code');
+        onSuccess(data.voter_token, cleanEmail, true);
+        onClose();
       }
-
-      onSuccess(data.voter_token, cleanPhone, true);
-      onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'Verification failed');
     } finally {
@@ -142,7 +161,6 @@ export default function AuthModal({
         >
           ✕
         </button>
-
         <div style={{ textAlign: 'center', marginBottom: '14px' }}>
           <div style={{ fontSize: '32px', marginBottom: '4px' }}>
             {isJanMat ? '🛡️' : '🗳️'}
@@ -158,8 +176,8 @@ export default function AuthModal({
                   ? 'जनमत (संवैधानिक व नीतिगत आडिट) हेतु एकमुश्त मोबाइल OTP आवश्यक है ताकि यह सुनिश्चित हो सके कि आप भारत के वास्तविक नागरिक हैं।'
                   : 'One-time mobile OTP verification is required for JanMat polls to ensure that only resident citizens audit public policy.')
               : (lang === 'HI'
-                  ? 'लोकमत (सांस्कृतिक एवं सामाजिक संवाद) में मत देने हेतु आप ईमेल या मोबाइल किसी से भी जुड़ सकते हैं। जनमत के नीतिगत आडिट के लिए बाद में मोबाइल OTP से एकमुश्त सत्यापन किया जा सकता है।'
-                  : 'Sign in with Email or Mobile OTP. Email lets you participate freely in LokMat cultural debates, while JanMat civic audits will invite a one-time mobile verification later.')}
+                  ? 'लोकमत (सांस्कृतिक एवं सामाजिक संवाद) में मत देने हेतु आप ईमेल या मोबाइल किसी से भी जुड़ सकते हैं। 6-अंकों के सुरक्षित OTP से सत्यापन पूरा करें।'
+                  : 'Sign in securely with verified Mobile or Email OTP to protect your citizen passport.')}
           </p>
         </div>
 
@@ -184,18 +202,18 @@ export default function AuthModal({
           <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
             <button
               type="button"
-              onClick={() => setAuthMethod('EMAIL')}
+              onClick={() => { setAuthMethod('EMAIL'); setErrorMsg(''); }}
               style={{
                 flex: 1, padding: '7px 0', borderRadius: '8px', border: `1.5px solid ${authMethod === 'EMAIL' ? '#0284c7' : '#cbd5e1'}`,
                 backgroundColor: authMethod === 'EMAIL' ? '#e0f2fe' : '#ffffff',
                 color: authMethod === 'EMAIL' ? '#0369a1' : '#475569', fontSize: '11px', fontWeight: 800, cursor: 'pointer'
               }}
             >
-              ✉️ {lang === 'HI' ? 'ईमेल' : 'Email'}
+              ✉️ {lang === 'HI' ? 'ईमेल OTP' : 'Email OTP'}
             </button>
             <button
               type="button"
-              onClick={() => setAuthMethod('PHONE')}
+              onClick={() => { setAuthMethod('PHONE'); setErrorMsg(''); }}
               style={{
                 flex: 1, padding: '7px 0', borderRadius: '8px', border: `1.5px solid ${authMethod === 'PHONE' ? '#059669' : '#cbd5e1'}`,
                 backgroundColor: authMethod === 'PHONE' ? '#ecfdf5' : '#ffffff',
@@ -231,7 +249,7 @@ export default function AuthModal({
             ) : (
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  {lang === 'HI' ? 'ईमेल पता' : 'Email Address'}
+                  {lang === 'HI' ? 'नागरिक ईमेल पता' : 'Citizen Email Address'}
                 </label>
                 <input
                   type="email"
@@ -239,17 +257,15 @@ export default function AuthModal({
                   placeholder="citizen@bharat.in"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid #cbd5e1', borderRadius: '10px', fontSize: '13px', fontWeight: 700, outline: 'none' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid #0284c7', borderRadius: '10px', fontSize: '13px', fontWeight: 700, outline: 'none' }}
                 />
               </div>
             )}
-
             {errorMsg && (
               <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: 700 }}>
                 {errorMsg}
               </div>
             )}
-
             <button
               type="submit"
               disabled={loading}
@@ -261,8 +277,8 @@ export default function AuthModal({
               {loading
                 ? (lang === 'HI' ? 'प्रतीक्षा करें...' : 'Processing...')
                 : authMethod === 'PHONE'
-                  ? (lang === 'HI' ? 'OTP प्राप्त करें ❯' : 'Get Verification OTP ❯')
-                  : (lang === 'HI' ? 'प्रवेश करें ❯' : 'Continue ❯')}
+                  ? (lang === 'HI' ? 'मोबाइल OTP प्राप्त करें ❯' : 'Get Mobile OTP ❯')
+                  : (lang === 'HI' ? 'ईमेल OTP प्राप्त करें ❯' : 'Get Email OTP ❯')}
             </button>
           </form>
         ) : (
@@ -274,19 +290,22 @@ export default function AuthModal({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setStep('INPUT')}
+                  onClick={() => { setStep('INPUT'); setOtp(''); }}
                   style={{ background: 'none', border: 'none', fontSize: '10.5px', color: '#0284c7', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {lang === 'HI' ? 'नंबर बदलें' : 'Change number'}
+                  {authMethod === 'PHONE'
+                    ? (lang === 'HI' ? 'नंबर बदलें' : 'Change number')
+                    : (lang === 'HI' ? 'ईमेल बदलें' : 'Change email')}
                 </button>
               </div>
-
+              <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>
+                {lang === 'HI' ? 'कोड भेजा गया:' : 'Code sent to:'} <strong>{authMethod === 'PHONE' ? `+91 ${phone}` : email}</strong>
+              </div>
               {devOtpHint && (
                 <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '6px 10px', borderRadius: '8px', fontSize: '11px', color: '#065f46', fontWeight: 800, marginBottom: '6px' }}>
                   ⚡ Auto-filled Dev OTP: {devOtpHint}
                 </div>
               )}
-
               <input
                 type="text"
                 required
@@ -301,13 +320,11 @@ export default function AuthModal({
                 }}
               />
             </div>
-
             {errorMsg && (
               <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: 700 }}>
                 {errorMsg}
               </div>
             )}
-
             <button
               type="submit"
               disabled={loading}
@@ -316,7 +333,7 @@ export default function AuthModal({
                 borderRadius: '12px', fontSize: '13px', fontWeight: 800, cursor: loading ? 'wait' : 'pointer', marginTop: '4px'
               }}
             >
-              {loading ? (lang === 'HI' ? 'सत्यापित हो रहा है...' : 'Verifying...') : (lang === 'HI' ? 'सत्यापित करें और मत डालें ❯' : 'Verify & Cast Ballot ❯')}
+              {loading ? (lang === 'HI' ? 'सत्यापित हो रहा है...' : 'Verifying...') : (lang === 'HI' ? 'सत्यापित करें और प्रवेश करें ❯' : 'Verify & Enter ❯')}
             </button>
           </form>
         )}

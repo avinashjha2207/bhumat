@@ -93,7 +93,7 @@ export default function DrishtiMap({
     fetchTallies();
 
     const tallyChannel = supabase
-      .channel(`state_tallies_${pollId}`)
+      .channel(`state_tallies_${pollId}_${Math.random().toString(36).substring(7)}`)
       .on(
         'postgres_changes',
         {
@@ -103,40 +103,71 @@ export default function DrishtiMap({
           filter: `poll_id=eq.${pollId}`,
         },
         (payload: any) => {
-          if (payload.new) {
+          const updated = payload.new;
+          if (updated) {
             setTallies((prev) => {
+              const cleanSeat = clean(updated.constituency_name);
+              const cleanState = clean(updated.state_name);
               const idx = prev.findIndex(
-                (t) =>
-                  clean(t.constituency_name) === clean(payload.new.constituency_name) &&
-                  clean(t.state_name) === clean(payload.new.state_name)
+                (t) => clean(t.constituency_name) === cleanSeat && clean(t.state_name) === cleanState
               );
               if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = payload.new;
-                return updated;
+                const next = [...prev];
+                next[idx] = updated;
+                return next;
               }
-              return [...prev, payload.new];
+              return [...prev, updated];
             });
+
+            // Trigger Realtime Neon Ripple on map
+            if (updated.constituency_name) {
+              const cleanSeat = clean(updated.constituency_name);
+              let maxVotes = -1;
+              let leadingIdx = 0;
+              options.forEach((_, optIdx) => {
+                const c = Number(updated[`opt_${optIdx}_votes`] ?? updated[`option_${optIdx}_votes`] ?? 0);
+                if (c > maxVotes) {
+                  maxVotes = c;
+                  leadingIdx = optIdx;
+                }
+              });
+              const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+              setLivePulses((prev) => ({
+                ...prev,
+                [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 },
+              }));
+            }
           }
         }
       )
       .subscribe();
 
+    // Listen to live tally updates to pulse the active seat with its winning color
     const ballotPulseChannel = supabase
-      .channel(`state_ballot_pulse_${pollId}`)
+      .channel(`state_ballot_pulse_${pollId}_${Math.random().toString(36).substring(7)}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
-          table: 'ballot_box',
+          table: 'constituency_tallies',
           filter: `poll_id=eq.${pollId}`,
         },
         (payload: any) => {
-          const newBallot = payload.new;
-          if (newBallot && newBallot.constituency_name) {
-            const cleanSeat = clean(newBallot.constituency_name);
-            const optColor = OPTION_PALETTE[Number(newBallot.selected_option || 0) % OPTION_PALETTE.length];
+          const updated = payload.new;
+          if (updated && updated.constituency_name) {
+            const cleanSeat = clean(updated.constituency_name);
+            // Resolve leading color
+            let maxVotes = -1;
+            let leadingIdx = 0;
+            options.forEach((_, idx) => {
+              const c = Number(updated[`opt_${idx}_votes`] ?? updated[`option_${idx}_votes`] ?? 0);
+              if (c > maxVotes) {
+                maxVotes = c;
+                leadingIdx = idx;
+              }
+            });
+            const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
             setLivePulses((prev) => ({
               ...prev,
               [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 },
