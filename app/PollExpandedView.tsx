@@ -296,12 +296,12 @@ export default function PollExpandedView({
   }, [poll.id]);
 
 useEffect(() => {
-    const handleDismissOnScroll = () => {
-      setMapTooltip(null);
-    };
-    window.addEventListener('scroll', handleDismissOnScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleDismissOnScroll);
-  }, []);
+  const handleScrollDismiss = () => {
+    if (mapTooltip) setMapTooltip(null);
+  };
+  window.addEventListener('scroll', handleScrollDismiss, { passive: true });
+  return () => window.removeEventListener('scroll', handleScrollDismiss);
+}, [mapTooltip]);
 
   useEffect(() => {
     let isMounted = true;

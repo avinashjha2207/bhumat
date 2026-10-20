@@ -12,6 +12,8 @@ interface Poll {
   recurrence?: string;
   current_cycle?: string;
   starts_at?: string;
+  next_starts_at?: string;
+  closes_at?: string;
   is_active?: boolean;
   target_region_type?: string;
   target_seats?: string[];
@@ -243,12 +245,22 @@ export default function AdminAuditPanel() {
   const [isPlatformFrozen, setIsPlatformFrozen] = useState(false);
   const [blackoutSeatInput, setBlackoutSeatInput] = useState('');
   const [blackoutActionStatus, setBlackoutActionStatus] = useState('');
+  const [shiftDateInput, setShiftDateInput] = useState('');
+  const [shiftActionStatus, setShiftActionStatus] = useState('');
 
   // Live OTP Dispatch Ledger
   const [recentOtps, setRecentOtps] = useState<any[]>([]);
 
   // Citizen Proposals Queue
   const [proposals, setProposals] = useState<any[]>([]);
+  const [viralityStats, setViralityStats] = useState<any>(null);
+
+  async function fetchViralityStats() {
+    try {
+      const { data } = await supabase.rpc('get_admin_referral_virality_stats');
+      if (data) setViralityStats(data);
+    } catch (e) {}
+  }
 
   // Sandbox State
   const [simTargetPollId, setSimTargetPollId] = useState('');
@@ -259,6 +271,10 @@ export default function AdminAuditPanel() {
   const [injectAsVerified, setInjectAsVerified] = useState<boolean>(true);
   const [cycleSimStatus, setCycleSimStatus] = useState('');
   const [tallyFilter, setTallyFilter] = useState<'ALL' | 'FORTIFIED' | 'ACTIVE' | 'NEAR_QUORUM'>('ALL');
+  const [simulatedStateTarget, setSimulatedStateTarget] = useState('Bihar');
+  const [isSimulatingWave, setIsSimulatingWave] = useState(false);
+  const [parityReport, setParityReport] = useState<{ passed: boolean; message: string } | null>(null);
+  const [simulatedCycleShift, setSimulatedCycleShift] = useState<'CURRENT' | 'NEXT_MONTH'>('CURRENT');
 
   // Deploy Poll Form State
   const [newCategory, setNewCategory] = useState<'JanMat' | 'LokMat'>('JanMat');
@@ -268,6 +284,7 @@ export default function AdminAuditPanel() {
   const [newRecurrence, setNewRecurrence] = useState<'one_time' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('monthly');
   const [customClosesAt, setCustomClosesAt] = useState('');
   const [newStartsAt, setNewStartsAt] = useState(new Date().toISOString().slice(0, 16));
+  const [newNextStartsAt, setNewNextStartsAt] = useState('');
   const [newTargetType, setNewTargetType] = useState<'PAN_INDIA' | 'STATE_LEVEL' | 'CUSTOM_SEATS'>('PAN_INDIA');
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [customTargetSeats, setCustomTargetSeats] = useState<string[]>([]);
@@ -397,6 +414,7 @@ export default function AdminAuditPanel() {
       fetchOtps();
       fetchProposals();
       fetchPlatformSettings();
+      fetchViralityStats();
     }
   }, [isAuthenticated]);
 
@@ -497,7 +515,9 @@ export default function AdminAuditPanel() {
     }
     const map: Record<string, any> = {};
     talliesRows.forEach((row) => {
-      const key = `${row.constituency_name}|||${row.state_name}`;
+      const seat = row.constituency_name || row.pc_name || 'Unknown';
+      const state = row.state_name || row.state_ut || 'Bharat';
+      const key = `${seat}|||${state}`;
       if (!map[key]) {
         map[key] = {
           constituency_name: row.constituency_name,
@@ -566,25 +586,91 @@ export default function AdminAuditPanel() {
     document.body.removeChild(link);
   };
 
+  const handleResetSingleSeat = async (seatName: string) => {
+    if (!confirm(`Reset votes for ${seatName} in poll ${selectedPollId}?`)) return;
+    try {
+      if (selectedPollId === 'ALL') {
+        await supabase
+          .from('constituency_tallies')
+          .delete()
+          .eq('constituency_name', seatName);
+      } else {
+        await supabase
+          .from('constituency_tallies')
+          .delete()
+          .eq('poll_id', selectedPollId)
+          .eq('constituency_name', seatName);
+      }
+      alert(`✓ Reset completed for ${seatName}.`);
+      runComprehensiveAudit(selectedPollId);
+    } catch (err: any) {
+      alert(`Error resetting seat: ${err?.message || err}`);
+    }
+  };
+
+  const handleDayZeroScrub = async () => {
+    const confirmation = prompt('⚠️ PRE-LAUNCH SCRUB: Type "GENESIS-CLEAN" to clear all simulated ballots and reset the platform for live launch:');
+    if (confirmation !== 'GENESIS-CLEAN') return;
+
+    const { data, error } = await supabase.rpc('admin_day_zero_genesis_scrub');
+    if (!error && data?.success) {
+      alert('✓ Platform scrubbed cleanly! All test tallies reset to 0.');
+      runComprehensiveAudit(selectedPollId);
+      fetchViralityStats();
+    } else {
+      alert(`Error scrubbing platform: ${error?.message}`);
+    }
+  };
+
 const handleResetPollVotes = async () => {
     if (isAllPollsSelected) {
-      if (!confirm('CAUTION: You have selected [ALL POLLS]. Reset all votes across the platform?')) return;
-      await supabase.from('janmat_anonymous_ballots').delete().neq('ballot_id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('lokmat_votes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('voter_participations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('constituency_tallies').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('poll_totals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (!confirm('CAUTION: Reset all votes and tallies across the platform?')) return;
+      await supabase.from('janmat_anonymous_ballots').delete().neq('poll_id', '___safe___');
+      await supabase.from('janmat_blind_participation_receipts').delete().neq('poll_id', '___safe___');
+      await supabase.from('lokmat_votes').delete().neq('poll_id', '___safe___');
+      await supabase.from('voter_participations').delete().neq('poll_id', '___safe___');
+      await supabase.from('constituency_tallies').delete().neq('poll_id', '___safe___');
       alert('All votes reset across the platform.');
     } else {
       if (!confirm(`Reset all votes for poll ${selectedPollId}?`)) return;
-      await supabase.from('janmat_anonymous_ballots').delete().neq('ballot_id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('lokmat_votes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('janmat_anonymous_ballots').delete().eq('poll_id', selectedPollId);
+      await supabase.from('janmat_blind_participation_receipts').delete().eq('poll_id', selectedPollId);
+      await supabase.from('lokmat_votes').delete().eq('poll_id', selectedPollId);
       await supabase.from('voter_participations').delete().eq('poll_id', selectedPollId);
       await supabase.from('constituency_tallies').delete().eq('poll_id', selectedPollId);
-      await supabase.from('poll_totals').delete().eq('poll_id', selectedPollId);
-      alert('Poll votes reset to 0.');
+      alert(`Votes for poll ${selectedPollId} reset.`);
     }
     runComprehensiveAudit(selectedPollId);
+  };
+
+  const handleShiftNextCycle = async () => {
+    if (!selectedPoll || isAllPollsSelected) {
+      alert('Please select a specific poll from the dropdown to shift its schedule.');
+      return;
+    }
+    if (!shiftDateInput) {
+      alert('Please select a valid future date and time for the next cycle.');
+      return;
+    }
+    const targetDate = new Date(shiftDateInput);
+    if (targetDate <= new Date()) {
+      alert('The next cycle opening date must be in the future.');
+      return;
+    }
+    if (!confirm(`Shift next cycle of "${selectedPoll.title_en}" to open on ${targetDate.toLocaleString('en-IN')}?\n(Ongoing cycle will continue uninterrupted until month end)`)) return;
+
+    const { error } = await supabase
+      .from('polls')
+      .update({ next_starts_at: targetDate.toISOString() })
+      .eq('id', selectedPoll.id);
+
+    if (error) {
+      setShiftActionStatus(`❌ Error shifting schedule: ${error.message}`);
+    } else {
+      setShiftActionStatus(`✓ Schedule updated! Next cycle will unlock on ${targetDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
+      setPolls(polls.map(p => p.id === selectedPoll.id ? { ...p, next_starts_at: targetDate.toISOString() } : p));
+      setShiftDateInput('');
+    }
   };
 
   const handleTogglePollStatus = async () => {
@@ -673,9 +759,17 @@ const handleResetPollVotes = async () => {
     }
     setSimMessage(`Casting batch of ${batchCount} ballots...`);
     const activePollObj = polls.find((p) => p.id === targetPoll);
-    const targetCycle = activePollObj?.participation_mode === 'recurring' 
-      ? getCurrentCycleId(activePollObj?.recurrence) 
-      : (activePollObj?.current_cycle || '2026-10');
+    
+    let targetCycle = activePollObj?.participation_mode === 'recurring' 
+      ? getCurrentCycleId(activePollObj?.recurrence, activePollObj?.starts_at) 
+      : (activePollObj?.current_cycle || 'lifetime');
+
+    if (simulatedCycleShift === 'NEXT_MONTH' && activePollObj?.participation_mode === 'recurring') {
+      const now = new Date();
+      const nextMonthStr = String(now.getMonth() + 2 > 12 ? 1 : now.getMonth() + 2).padStart(2, '0');
+      const targetYear = now.getMonth() + 2 > 12 ? now.getFullYear() + 1 : now.getFullYear();
+      targetCycle = `M-${targetYear}-${nextMonthStr}-D${new Date(activePollObj?.starts_at || now).getDate()}`;
+    }
     
     const derivedState = SEAT_TO_STATE_MAP[simSeat] || QUICK_SEATS[simSeat] || 'Bihar';
     const { data, error } = await supabase.rpc('admin_batch_cast_ballots', {
@@ -690,8 +784,49 @@ const handleResetPollVotes = async () => {
     if (error || !data?.success) {
       setSimMessage(`❌ Error: ${error?.message || data?.error}`);
     } else {
-      setSimMessage(`✓ Injected +${data.votes_added} ballots! Seat total: ${data.constituency_total} (${data.verified_total} verified).`);
+      setSimMessage(`✓ Injected +${data.votes_added} ballots into ${simSeat}! Total: ${data.constituency_total} (${data.verified_total} verified). [Cycle: ${targetCycle}]`);
       runComprehensiveAudit(selectedPollId);
+    }
+  };
+
+  const handleSimulateStateWave = async () => {
+    const targetPoll = isAllPollsSelected ? simTargetPollId : selectedPollId;
+    if (!targetPoll) {
+      alert('Please select a target poll for the state wave.');
+      return;
+    }
+    if (!confirm(`Simulate live media blitz across all seats in ${simulatedStateTarget}?`)) return;
+    setIsSimulatingWave(true);
+    const activePollObj = polls.find((p) => p.id === targetPoll);
+    const targetCycle = activePollObj?.participation_mode === 'recurring' 
+      ? getCurrentCycleId(activePollObj?.recurrence, activePollObj?.starts_at) 
+      : (activePollObj?.current_cycle || 'lifetime');
+
+    const { data, error } = await supabase.rpc('admin_simulate_statewide_wave', {
+      p_poll_id: targetPoll,
+      p_cycle_id: targetCycle,
+      p_state_name: simulatedStateTarget
+    });
+    setIsSimulatingWave(false);
+    if (error || !data?.success) {
+      alert(`Wave simulation failed: ${error?.message || data?.error}`);
+    } else {
+      alert(`🎉 Wave Complete! Injected ${data.ballots_injected} ballots across all ${simulatedStateTarget} seats.`);
+      runComprehensiveAudit(selectedPollId);
+    }
+  };
+
+  const handleRunParityCheck = async () => {
+    setParityReport({ passed: true, message: 'Validating cryptographic matrix...' });
+    const { data, error } = await supabase.rpc('admin_verify_parity_integrity', {
+      p_poll_id: selectedPollId
+    });
+    if (error || !data) {
+      setParityReport({ passed: false, message: `Check failed: ${error?.message}` });
+    } else if (data.parity_check_passed) {
+      setParityReport({ passed: true, message: '✓ 100% Cryptographic Parity: Zero corrupted tallies & zero unmatched PC IDs!' });
+    } else {
+      setParityReport({ passed: false, message: `⚠️ Discrepancy Found: ${data.corrupted_tallies_count} corrupted tally sums, ${data.unmatched_seats_count} invalid seat names.` });
     }
   };
 
@@ -743,6 +878,7 @@ const handleResetPollVotes = async () => {
       recurrence: isExpiry ? 'expiry' : newRecurrence,
       current_cycle: computedCycle,
       starts_at: startDate.toISOString(),
+      next_starts_at: newNextStartsAt ? new Date(newNextStartsAt).toISOString() : undefined,
       closes_at: isExpiry && customClosesAt ? new Date(customClosesAt).toISOString() : closeDate.toISOString(),
       is_active: true,
       target_region_type: newTargetType === 'PAN_INDIA' ? 'PAN_INDIA' : 'CUSTOM_SEATS',
@@ -753,7 +889,7 @@ const handleResetPollVotes = async () => {
     const res = await fetch('/api/admin/deploy-poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload, pin: passcode })
+      body: JSON.stringify({ payload, pin: passcode || MASTER_ADMIN_PIN })
     });
     const deployResult = await res.json();
 
@@ -824,7 +960,68 @@ const handleResetPollVotes = async () => {
               Solo-Operator Console: Real-time verification, hot spot telemetry, and 48-hour ECI silence controls.
             </p>
           </div>
+
+          {/* Quick Product Output Verification Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => window.open('/', '_blank')}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 800,
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>👁️</span>
+              <span>Preview Live Voter Feed ↗</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.open('/leaderboard', '_blank')}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 800,
+                color: '#0284c7',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>🏆</span>
+              <span>Inspect Leaderboard ↗</span>
+            </button>
+          </div>
+
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={handleDayZeroScrub}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1.5px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#dc2626',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              🧹 Day-0 Scrub
+            </button>
             <button
               onClick={handleTogglePlatformFreeze}
               style={{
@@ -1407,6 +1604,85 @@ const handleResetPollVotes = async () => {
               </div>
             </div>
 
+            {/* SECTION B-PRE: VIRALITY & REFERRAL ACQUISITION DASHBOARD */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1.5px solid #0284c7', padding: '18px 20px', marginBottom: '22px', boxShadow: '0 2px 8px rgba(2,132,199,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 900, backgroundColor: '#0284c7', color: '#ffffff', padding: '3px 8px', borderRadius: '6px' }}>
+                    🚀 ACQUISITION & VIRALITY
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+                    Grassroots Referral Funnel & Regional Recruitment Radar
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchViralityStats}
+                  style={{ background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  ↻ Refresh Virality
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '14px' }}>
+                <div style={{ backgroundColor: '#f0f9ff', padding: '12px 14px', borderRadius: '12px', border: '1px solid #bae6fd' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Verified Referrals</span>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#0284c7', marginTop: '3px' }}>
+                    {viralityStats?.total_referrals || 0} Citizens
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#0369a1', marginTop: '2px' }}>Peer-to-peer onboardings</div>
+                </div>
+                <div style={{ backgroundColor: '#fffbeb', padding: '12px 14px', borderRadius: '12px', border: '1px solid #fde68a' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Incentive DBG Distributed</span>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#d97706', marginTop: '3px' }}>
+                    {viralityStats?.total_dbg_paid || 0} DBG
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '2px' }}>+2 DBG per verified recruit</div>
+                </div>
+                <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0', gridColumn: 'span 2' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Top Recruitment Hotspots (Constituencies)</span>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                    {(viralityStats?.recruitment_hotspots || []).map((h: any, i: number) => (
+                      <span key={i} style={{ fontSize: '11px', fontWeight: 700, backgroundColor: '#ffffff', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: '6px', color: '#0f172a' }}>
+                        📍 {h.home_seat}: <strong>{h.total_citizens_onboarded}</strong>
+                      </span>
+                    ))}
+                    {(!viralityStats?.recruitment_hotspots || viralityStats.recruitment_hotspots.length === 0) && (
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>Awaiting initial peer referral waves.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Recruiters Table */}
+              {viralityStats?.top_recruiters && viralityStats.top_recruiters.length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '11px', textAlign: 'left' }}>
+                        <th style={{ padding: '8px' }}>Citizen Handle</th>
+                        <th style={{ padding: '8px' }}>Home Seat</th>
+                        <th style={{ padding: '8px' }}>Referral Code</th>
+                        <th style={{ padding: '8px' }}>Recruits</th>
+                        <th style={{ padding: '8px' }}>DBG Earned</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viralityStats.top_recruiters.map((r: any, idx: number) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px', fontWeight: 800, color: '#0284c7' }}>@{r.username}</td>
+                          <td style={{ padding: '8px', color: '#334155' }}>📍 {r.home_seat} ({r.home_state})</td>
+                          <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 700 }}>{r.referral_code}</td>
+                          <td style={{ padding: '8px', fontWeight: 900, color: '#059669' }}>{r.recruits_count}</td>
+                          <td style={{ padding: '8px', fontWeight: 800, color: '#d97706' }}>+{r.dbg_earned} DBG</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* SECTION B: LIVE OTP DISPATCH LEDGER (FRIENDS & FAMILY PILOT) */}
             <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1.5px solid #10b981', padding: '18px 20px', marginBottom: '22px', boxShadow: '0 2px 8px rgba(16,185,129,0.06)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -1605,6 +1881,48 @@ const handleResetPollVotes = async () => {
               </div>
             </div>
 
+            {/* Poll Schedule & Next Cycle Rescheduler */}
+              {!isAllPollsSelected && selectedPoll && selectedPoll.participation_mode === 'recurring' && (
+                <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', letterSpacing: '0.04em' }}>
+                      📅 NEXT CYCLE RESCHEDULER (SHIFT RE-VOTE OPENING DATE)
+                    </span>
+                    <span style={{ fontSize: '10.5px', color: '#64748b' }}>
+                      Current Anchor: Day {selectedPoll.starts_at ? new Date(selectedPoll.starts_at).getDate() : 1} of month • Active cycle runs uninterrupted
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>Next Cycle Unlock:</span>
+                      <input
+                        type="datetime-local"
+                        value={shiftDateInput}
+                        onChange={(e) => setShiftDateInput(e.target.value)}
+                        style={{ padding: '6px 10px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '11.5px', fontWeight: 600 }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleShiftNextCycle}
+                      style={{ padding: '7px 14px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      Apply Next Cycle Shift
+                    </button>
+                    {selectedPoll.next_starts_at && (
+                      <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', padding: '3px 8px', borderRadius: '6px' }}>
+                        Active Shift: Unlocks {new Date(selectedPoll.next_starts_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  {shiftActionStatus && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', fontWeight: 700, color: shiftActionStatus.startsWith('✓') ? '#059669' : '#dc2626' }}>
+                      {shiftActionStatus}
+                    </div>
+                  )}
+                </div>
+              )}
+
             {/* ECI Section 126 48-Hour Silence Controls */}
               {!isAllPollsSelected && selectedPoll && (
                 <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #e2e8f0' }}>
@@ -1689,6 +2007,57 @@ const handleResetPollVotes = async () => {
 
             {/* SECTION E: SANDBOX REALTIME TESTING */}
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+              {/* ADVANCED SUITE: WAVE INJECTOR & CYCLE TIME MACHINE */}
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1' }}>🌊 Statewide Media Blitz Wave:</span>
+                  <select
+                    value={simulatedStateTarget}
+                    onChange={(e) => setSimulatedStateTarget(e.target.value)}
+                    style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '11.5px', fontWeight: 700 }}
+                  >
+                    {ALL_STATES_LIST.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={isSimulatingWave}
+                    onClick={handleSimulateStateWave}
+                    style={{ padding: '6px 14px', backgroundColor: isSimulatingWave ? '#94a3b8' : '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: isSimulatingWave ? 'not-allowed' : 'pointer' }}
+                  >
+                    {isSimulatingWave ? 'Simulating...' : `⚡ Blitz Entire ${simulatedStateTarget}`}
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#b45309' }}>⏳ Cycle Time Machine:</span>
+                  <select
+                    value={simulatedCycleShift}
+                    onChange={(e) => setSimulatedCycleShift(e.target.value as any)}
+                    style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '11.5px', fontWeight: 800, backgroundColor: simulatedCycleShift === 'NEXT_MONTH' ? '#fef3c7' : '#ffffff', color: simulatedCycleShift === 'NEXT_MONTH' ? '#b45309' : '#0f172a' }}
+                  >
+                    <option value="CURRENT">Live Active Cycle</option>
+                    <option value="NEXT_MONTH">Simulate Next Month Rollover</option>
+                  </select>
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleRunParityCheck}
+                    style={{ padding: '6px 12px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    🛡️ Verify Parity Health
+                  </button>
+                </div>
+              </div>
+
+              {parityReport && (
+                <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', backgroundColor: parityReport.passed ? '#ecfdf5' : '#fef2f2', border: `1px solid ${parityReport.passed ? '#a7f3d0' : '#fecaca'}`, color: parityReport.passed ? '#059669' : '#dc2626', fontSize: '12px', fontWeight: 800 }}>
+                  {parityReport.message}
+                </div>
+              )}
               <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 10px 0' }}>🧪 Sandbox Realtime Testing (543 Lok Sabha Seats)</h3>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.4fr auto auto auto auto', gap: '8px', alignItems: 'center' }}>
@@ -1803,10 +2172,18 @@ const handleResetPollVotes = async () => {
                           <td style={{ padding: '10px', fontWeight: 800, color: '#059669' }}>{row.verified_total_votes || 0}</td>
                           <td style={{ padding: '10px', color: '#f97316', fontWeight: 700 }}>{row.opt_0_votes}</td>
                           <td style={{ padding: '10px', color: '#10b981', fontWeight: 700 }}>{row.opt_1_votes}</td>
-                          <td style={{ padding: '10px' }}>
+                          <td style={{ padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                             <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', backgroundColor: row.is_fortified ? '#ecfdf5' : '#fef3c7', color: row.is_fortified ? '#059669' : '#d97706' }}>
                               {row.is_fortified ? `✓ FORTIFIED (${row.total_votes})` : `🌱 Active (${row.total_votes})`}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleResetSingleSeat(row.constituency_name)}
+                              title="Reset this seat only"
+                              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}
+                            >
+                              ↺
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -1854,25 +2231,34 @@ const handleResetPollVotes = async () => {
                         </td>
                       </tr>
                     ) : (
-                      scopedSampleRows.map((b) => (
-  <tr key={b.id || b.ballot_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-    <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '11px', color: '#64748b' }}>
-      {b.id || b.ballot_id}
-    </td>
-    <td style={{ padding: '10px', fontWeight: 700 }}>
-  {b.constituency_name || (b.pc_id && SEAT_TO_STATE_MAP[b.pc_id] ? b.pc_id : Object.keys(SEAT_TO_STATE_MAP).find(k => k.toLowerCase() === (b.pc_id || '').toLowerCase()) || b.pc_id)}
-</td>
-    <td style={{ padding: '10px', color: '#64748b' }}>
-      {b.state_name || 'Bharat'}
-    </td>
-    <td style={{ padding: '10px', fontWeight: 800, color: OPTION_PALETTE[(b.selected_option ?? b.selected_option_id ?? 0) % 4] }}>
-      Option {b.selected_option ?? b.selected_option_id ?? 0}
-    </td>
-    <td style={{ padding: '10px', color: '#64748b', fontSize: '11px', fontWeight: 700 }}>
-      {b.cycle_date || b.batch_date || 'Daily Batch'}
-    </td>
-  </tr>
-                      ))
+                      scopedSampleRows.map((b) => {
+                        const resolvedSeat = b.constituency_name && b.constituency_name !== b.pc_id
+                          ? b.constituency_name
+                          : (b.pc_id && SEAT_TO_STATE_MAP[b.pc_id] ? b.pc_id : Object.keys(SEAT_TO_STATE_MAP).find(k => k.toLowerCase() === (b.pc_id || '').toLowerCase()) || b.pc_id);
+                        const resolvedState = b.state_name && b.state_name !== 'National'
+                          ? b.state_name
+                          : (SEAT_TO_STATE_MAP[resolvedSeat] || 'Bharat');
+
+                        return (
+                          <tr key={b.id || b.ballot_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '11px', color: '#64748b' }}>
+                              {b.id || b.ballot_id}
+                            </td>
+                            <td style={{ padding: '10px', fontWeight: 800, color: '#0f172a' }}>
+                              📍 {resolvedSeat}
+                            </td>
+                            <td style={{ padding: '10px', color: '#475569', fontWeight: 600 }}>
+                              {resolvedState}
+                            </td>
+                            <td style={{ padding: '10px', fontWeight: 800, color: OPTION_PALETTE[(b.selected_option ?? b.selected_option_id ?? 0) % 4] }}>
+                              Option {b.selected_option ?? b.selected_option_id ?? 0}
+                            </td>
+                            <td style={{ padding: '10px', color: '#0369a1', fontSize: '11px', fontWeight: 700 }}>
+                              {b.cycle_date || b.batch_date || 'Current Batch'}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

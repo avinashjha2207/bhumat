@@ -64,8 +64,20 @@ export default function DrishtiMap({
   const pendingUpdatesRef = useRef<any[]>([]);
   const renderThrottleRef = useRef<NodeJS.Timeout | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+useEffect(() => {
+  const dismissTooltip = () => {
+    setHoveredSeat(null);
+    setTooltipPos(null);
+  };
+  window.addEventListener('scroll', dismissTooltip, { passive: true });
+  return () => {
+    window.removeEventListener('scroll', dismissTooltip);
+    if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+  };
+}, []);
 
   const clean = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -251,10 +263,10 @@ export default function DrishtiMap({
       const sName = props.PC_NAME || props.pc_name || props.name || (lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency');
       const row = tallyLookup.get(clean(sName));
 
-      let leadText = lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots';
-      let stanceColor = '#94a3b8';
+      let leadText = lang === 'HI' ? 'अग्रदूत बनें (प्रथम मत प्रतीक्षित)' : 'Be the First Voice (0 Ballots)';
+      let stanceColor = '#0284c7';
       let totalVotes = 0;
-      let trendBadge = lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting';
+      let trendBadge = lang === 'HI' ? '🌱 अग्रदूत अवसर' : '🌱 Pioneer Seat';
       let winningOptIdx: number | null = null;
       let isTie = false;
 
@@ -491,6 +503,11 @@ export default function DrishtiMap({
       onClick={() => {
         setHoveredSeat(null);
         setTooltipPos(null);
+        if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
+tooltipTimeoutRef.current = setTimeout(() => {
+  setHoveredSeat(null);
+  setTooltipPos(null);
+}, 3500);
       }}
       style={{
         position: 'relative',
@@ -553,9 +570,13 @@ export default function DrishtiMap({
       </div>
 
       {hoveredSeat && tooltipPos && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
+  <div
+    onClick={(e) => {
+      e.stopPropagation();
+      setHoveredSeat(null);
+      setTooltipPos(null);
+    }}
+    style={{
             position: 'absolute',
             left: `${tooltipPos.x}px`,
             top: `${tooltipPos.y}px`,

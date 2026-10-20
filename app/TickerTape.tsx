@@ -24,14 +24,18 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
           .eq('poll_id', activePoll.id);
 
         if (data && data.length > 0 && !error && isMounted) {
-          const list: TickerItem[] = data
-            .filter((row: any) => Number(row.total_votes || 0) > 0)
-            .map((row: any) => {
-              const total = Number(row.total_votes || 0);
-              const isTie = Boolean(row.is_tie);
-              const optIndex = Number(row.leading_option || 0);
-              let statusText = '';
+          // 1. Deduplicate by seat name
+          const seatMap = new Map<string, TickerItem>();
+          data
+            .filter((row: any) => Number(row.total_votes || row.total_ballots || 0) > 0)
+            .forEach((row: any) => {
+              const seatName = (row.constituency_name || row.pc_name || '').trim();
+              if (!seatName || seatMap.has(seatName.toLowerCase())) return;
 
+              const total = Number(row.total_votes || row.total_ballots || 0);
+              const isTie = Boolean(row.is_tie);
+              const optIndex = Number(row.leading_option ?? row.leading_option_id ?? 0);
+              let statusText = '';
               if (isTie) {
                 statusText = lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)';
               } else {
@@ -40,17 +44,17 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
                   ? (lang === 'EN' ? optObj.text_en : optObj.text_hi).split('/')[0].trim()
                   : `Option ${optIndex + 1}`;
               }
-
               const trendTag = total >= 20
                 ? (lang === 'HI' ? 'सत्यापित' : 'Fortified')
                 : (lang === 'HI' ? 'रुझान' : 'Early Trend');
 
-              return {
-                seat: row.constituency_name,
+              seatMap.set(seatName.toLowerCase(), {
+                seat: seatName,
                 verdict: `${statusText} • ${trendTag}`
-              };
+              });
             });
 
+          const list = Array.from(seatMap.values());
           if (list.length > 0) {
             setTickerItems(list);
             return;
@@ -102,8 +106,11 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
         }
       ];
 
-  const rawList = hasLiveVotes ? tickerItems : fallbackItems;
-  const items = rawList.length < 5 ? [...rawList, ...rawList, ...rawList, ...rawList] : [...rawList, ...rawList];
+  // If only 1-2 live seats have voted, interleave fallback brand messages so the same seat isn't duplicated consecutively
+  const rawList = hasLiveVotes
+    ? (tickerItems.length === 1 ? [tickerItems[0], fallbackItems[0], tickerItems[0], fallbackItems[1]] : tickerItems)
+    : fallbackItems;
+  const items = [...rawList, ...rawList];
 
   return (
     <div

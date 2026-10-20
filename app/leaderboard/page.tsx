@@ -63,6 +63,21 @@ export default function DedicatedLeaderboardPage() {
 
   useEffect(() => {
     loadLeaderboardData();
+
+    // Subscribe to realtime changes on constituency tallies and wallets
+    const channel = supabase
+      .channel('leaderboard_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'constituency_tallies' }, () => {
+        loadLeaderboardData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_wallets' }, () => {
+        loadLeaderboardData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const displayedSeats = useMemo(() => {
@@ -434,6 +449,79 @@ export default function DedicatedLeaderboardPage() {
           </div>
         </div>
       )}
+
+{/* 5-Tab Standard Navigation Dock */}
+      <nav
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '62px',
+          backgroundColor: '#ffffff',
+          borderTop: '1px solid #e2e8f0',
+          zIndex: 99,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingBottom: 'env(safe-area-inset-bottom, 6px)',
+          boxShadow: '0 -2px 10px rgba(0,0,0,0.04)'
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '460px',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 4px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => router.push('/?tab=search')}
+            style={{ flex: 1, background: 'none', border: 'none', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1 }}>🔍</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, marginTop: '4px' }}>Search</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/?tab=schedule')}
+            style={{ flex: 1, background: 'none', border: 'none', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1 }}>📅</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, marginTop: '4px' }}>Schedule</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            style={{ flex: 1, background: 'none', border: 'none', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1 }}>🗳️</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, marginTop: '4px' }}>Vote</span>
+          </button>
+          <button
+            type="button"
+            style={{ flex: 1, background: 'none', border: 'none', color: '#0284c7', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1, transform: 'scale(1.08)' }}>🏆</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 900, marginTop: '4px' }}>Rankings</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/?tab=profile')}
+            style={{ flex: 1, background: 'none', border: 'none', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1 }}>👤</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, marginTop: '4px' }}>Profile</span>
+          </button>
+        </div>
+      </nav>
+
     </div>
   );
 }
