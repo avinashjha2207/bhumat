@@ -515,8 +515,11 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        if (userSeatName && clean(userSeatName) === seat) {
+          return '#0284c7';
+        }
         if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
-          return '#0f172a';
+          return '#0ea5e9';
         }
         const match = tallyMap.get(`${seat}___${state}`);
         if (match && match.totalVotes >= 50) return '#ffffff';
@@ -526,8 +529,11 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        if (userSeatName && clean(userSeatName) === seat) {
+          return 2.8;
+        }
         if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) {
-          return 2.0;
+          return 2.4;
         }
         const match = tallyMap.get(`${seat}___${state}`);
         if (match && match.totalVotes >= 50) return 0.9;
@@ -748,7 +754,13 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
       return lang === 'HI' ? `अगला मतदान ${formatted} को खुलेगा` : `Next vote unlocks on ${formatted}`;
     }
     const r = (poll.recurrence || 'monthly').toLowerCase();
-    if (r === 'lifetime' || r === 'one_time') return lang === 'HI' ? 'चक्र समाप्ति तक मत सक्रिय' : 'Ballot active until cycle concludes';
+    if (r === 'lifetime' || r === 'one_time') {
+      const d = poll.next_starts_at 
+        ? new Date(poll.next_starts_at) 
+        : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+      const dateFormatted = d.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      return lang === 'HI' ? `मतदान चक्र समाप्ति: ${dateFormatted}` : `Ballot active until ${dateFormatted}`;
+    }
     return lang === 'HI' ? 'अगला मतदान आगामी सत्र में खुलेगा' : 'Next ballot window unlocks next cycle';
   };
 
@@ -923,10 +935,10 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               {getNextWindowText()}
             </span>
           </div>
-          <h2 style={{ fontSize: '17px', fontWeight: 850, margin: '0 0 6px 0', lineHeight: 1.35, color: '#0f172a' }}>
+          <h2 style={{ fontSize: '17.5px', fontWeight: 850, margin: '0 0 8px 0', lineHeight: 1.4, color: '#0f172a' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
           </h2>
-          <p style={{ fontSize: '12.5px', color: '#64748b', margin: '0', lineHeight: 1.45, fontWeight: 500 }}>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0', lineHeight: 1.5, fontWeight: 500 }}>
             {lang === 'EN' ? poll.title_hi : poll.title_en}
           </p>
 
