@@ -1946,6 +1946,35 @@ export default function BhuMatApp() {
                     🌆 JanMat
                   </button>
                 </div>
+
+                {/* Daily WhatsApp Broadcast Channel Strip */}
+            <a
+              href="https://whatsapp.com/channel/0029Vb4QYvX5Ui2R"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                textDecoration: 'none',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '7px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '13px' }}>📢</span>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>
+                  {lang === 'HI' ? 'दैनिक 8 PM ऑडिट हेतु व्हाट्सएप पर अपडेट रहें' : 'Stay notified for daily 8 PM JanMat Audits'}
+                </span>
+              </div>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#16a34a' }}>
+                {lang === 'HI' ? 'चैनल देखें ↗' : 'Channel ↗'}
+              </span>
+            </a>
                 
                 {liveAccessiblePolls.map((poll) => {
                   const isJanMat = poll.category === 'JanMat';
@@ -2475,15 +2504,13 @@ export default function BhuMatApp() {
                             </div>
                             <div style={{ width: '100%', marginBottom: '4px' }}>
                               <DrishtiMap
-                                selectedConstituencyName={selectedSeat?.name}
-                                selectedState={selectedSeat?.state}
-                                pollId={poll.id}
-                                userVotedOptionIdx={userChoiceIdx ?? null}
-                                options={poll.options}
-                                optimisticLocalVote={hasVotedThisCycle}
-                                lang={lang}
-                                verifiedOnly={false}
-                              />
+                      selectedConstituencyName={selectedSeat?.name}
+                      selectedState={selectedSeat?.state || 'Bihar'}
+                      pollId={poll.id}
+                      options={poll.options}
+                      userVotedOptionIdx={sessionBallotChoices[`${poll.id}___${dynamicCycle}`] ?? sessionBallotChoices[`${poll.id}___lifetime`]}
+                      lang={lang}
+                    />
                             </div>
                           </div>
 
@@ -2540,14 +2567,15 @@ export default function BhuMatApp() {
                               </div>
 
                               {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 0 ? (
-                                <div style={{
-  display: 'grid',
-  gridTemplateColumns: `repeat(${Math.min(stateBastionsByPoll[poll.id].length, 3)}, minmax(0, 1fr))`,
-  gap: '6px',
-  width: '100%',
-  boxSizing: 'border-box'
-}}>
-  {stateBastionsByPoll[poll.id].map((bastion: any, bIdx: number) => {
+                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(
+                                  // Deduplicate by constituency_name so a single seat never renders multiple times
+                                  stateBastionsByPoll[poll.id].filter((v: any, i: number, a: any[]) => a.findIndex((t: any) => (t.constituency_name || t.pc_name) === (v.constituency_name || v.pc_name)) === i).length, 
+                                  3
+                                )}, 1fr)`, gap: '6px' }}>
+                                  {stateBastionsByPoll[poll.id]
+                                    .filter((v: any, i: number, a: any[]) => a.findIndex((t: any) => (t.constituency_name || t.pc_name) === (v.constituency_name || v.pc_name)) === i)
+                                    .slice(0, 3)
+                                    .map((bastion: any, bIdx: number) => {
     const opt = poll.options[bastion.leading_opt_idx] || poll.options[0];
     const optColor = OPTION_PALETTE[(bastion.leading_opt_idx ?? 0) % OPTION_PALETTE.length];
     const badges = ['🥇', '🥈', '🥉'];
@@ -2762,7 +2790,16 @@ export default function BhuMatApp() {
 
         {/* TAB 2: DEDICATED POLL SEARCH & EXPLORER */}
         {activeTab === 'search' && (
-          <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              width: '100%',
+              maxWidth: '480px',
+              margin: '0 auto',
+              boxSizing: 'border-box',
+              paddingBottom: '140px'
+            }}>
             {/* Contextual Tip Banner for Search */}
             <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2873,7 +2910,7 @@ export default function BhuMatApp() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '40px' }}>
               {searchPollMatches.length === 0 ? (
                 <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 20px', textAlign: 'center', color: '#64748b', fontSize: '13px', border: '1px solid #e2e8f0' }}>
                   <div style={{ fontSize: '28px', marginBottom: '8px' }}>🔎</div>
@@ -2889,9 +2926,15 @@ export default function BhuMatApp() {
               ) : (
                 searchPollMatches.map((poll) => {
                   const isJanMat = poll.category === 'JanMat';
-                  const dynamicCycle = poll.participation_mode === 'recurring' ? getCurrentCycleId(poll.recurrence) : 'lifetime';
-                  const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
-                  const hasVotedThisCycle = votedCycleKeys.includes(cycleVoteKey);
+                  const dynamicCycle = poll.participation_mode === 'recurring'
+            ? getCurrentCycleId(poll.recurrence, poll.starts_at)
+            : (poll.current_cycle || 'lifetime');
+          const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
+          const hasVotedThisCycle = Boolean(
+            votedCycleKeys.includes(cycleVoteKey) ||
+            votedCycleKeys.some((k) => k.startsWith(`${poll.id}___`)) ||
+            (flippedOverrides && flippedOverrides[poll.id])
+          );
                   const handleCardClick = () => {
                     if (hasVotedThisCycle) {
                       openExpandedView(poll);
@@ -3084,10 +3127,19 @@ export default function BhuMatApp() {
                       const isSelected = selectedCalendarDay === dayNum;
                       const isWeekend = (startOffset + idx) % 7 >= 5;
                       const dayPolls = polls.filter((p) => {
-                        if (!p.starts_at) return false;
-                        const pd = new Date(p.starts_at);
-                        return pd.getDate() === dayNum && pd.getMonth() === currentMonth;
-                      });
+  if (!p.starts_at) return false;
+  const pd = new Date(p.starts_at);
+  const isExactStartDay = pd.getDate() === dayNum && pd.getMonth() === currentMonth;
+  if (isExactStartDay) return true;
+
+  // Active ongoing poll for the current day
+  const today = new Date();
+  const isViewingToday = dayNum === today.getDate() && currentMonth === today.getMonth();
+  if (isViewingToday && p.is_active) {
+    return pd <= today;
+  }
+  return false;
+});
                       const hasActualLokMat = dayPolls.some((p) => p.category === 'LokMat');
                       const hasActualJanMat = dayPolls.some((p) => p.category === 'JanMat');
                       return (

@@ -265,10 +265,13 @@ useEffect(() => {
     const pathGenerator = d3.geoPath().projection(projection);
 
     const mapGroup = svg.append('g').attr('class', 'state-static-viewport');
+    // Build fast lookup by normalized constituency name with graceful baseline fallback
+  // Build fast lookup by normalized constituency name with graceful baseline fallback
     const tallyLookup = new Map<string, any>();
-    tallies.forEach((t) => {
-      const seatKey = clean(t.constituency_name);
-      tallyLookup.set(seatKey, t);
+    const sourceTallies = (tallies && tallies.length > 0) ? tallies : [];
+    sourceTallies.forEach((t: any) => {
+      const pc = clean(t.pc_name || t.constituency_name || t.pc_id || '');
+      if (pc) tallyLookup.set(pc, t);
     });
 
     const triggerTooltip = (event: any, d: any, persistTimer = 4500) => {
@@ -372,27 +375,27 @@ useEffect(() => {
           return UNPOLLED_SEAT_COLOR;
         }
 
-        let highestVotes = -1;
-        let winningOptIdx: number | null = null;
-        let isTie = false;
-        let total = 0;
+        const total = Number(row.total_ballots ?? row.total_votes ?? 0);
+        let winningOptIdx = row.leading_option_id !== undefined && row.leading_option_id !== null ? Number(row.leading_option_id) : null;
+        const isTie = Boolean(row.is_tie);
 
-        options.forEach((_, idx) => {
-          const c = Number(row[`opt_${idx}_votes`] ?? row[`option_${idx}_votes`]) || 0;
-          total += c;
-          if (c > highestVotes) {
-            highestVotes = c;
-            winningOptIdx = idx;
-            isTie = false;
-          } else if (c === highestVotes && c > 0) {
-            isTie = true;
+        // Fallback: Calculate leader from individual option counts if leading_option_id is null
+        if (winningOptIdx === null && total > 0) {
+          const counts = [
+            Number(row.opt_0_count ?? row.opt_0_votes ?? 0),
+            Number(row.opt_1_count ?? row.opt_1_votes ?? 0),
+            Number(row.opt_2_count ?? row.opt_2_votes ?? 0),
+            Number(row.opt_3_count ?? row.opt_3_votes ?? 0)
+          ];
+          const maxVal = Math.max(...counts);
+          if (maxVal > 0) {
+            winningOptIdx = counts.indexOf(maxVal);
           }
-        });
+        }
 
         if (total === 0 && optimisticLocalVote && clean(selectedConstituencyName || '') === seatName && userVotedOptionIdx !== null) {
           return getConstituencyTierColor(userVotedOptionIdx, 1, false);
         }
-
         return getConstituencyTierColor(winningOptIdx, total, isTie);
       })
       .attr('stroke', (d: any) => {
@@ -562,31 +565,77 @@ tooltipTimeoutRef.current = setTimeout(() => {
         }
       `}</style>
 
-      {/* State Badge */}
-      {selectedState && (
-        <div style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'flex-start',
-          alignItems: 'center',
-          padding: '0 4px 6px 4px',
-          boxSizing: 'border-box'
-        }}>
-          <span style={{
-            fontSize: '10.5px',
-            fontWeight: 800,
-            color: '#334155',
-            backgroundColor: '#f1f5f9',
-            border: '1px solid #cbd5e1',
-            padding: '2px 8px',
-            borderRadius: '6px',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase'
+      {/* State Badge & Pioneer State Civic Anchor */}
+      {selectedState && (() => {
+        // Compute total ballots cast across the current state
+        const cleanTargetState = clean(selectedState);
+        let stateTotalBallots = 0;
+        (tallies || []).forEach((t: any) => {
+          const st = clean(t.state_name || t.state_ut || '');
+          if (st === cleanTargetState) {
+            stateTotalBallots += Number(t.total_ballots ?? t.total_votes ?? 0);
+          }
+        });
+
+        const seatCount = geoData?.features
+          ? geoData.features.filter((f: any) => clean(f.properties?.ST_NAME || f.properties?.st_name || f.properties?.state || '') === cleanTargetState).length
+          : 0;
+
+        const isPioneer = stateTotalBallots < 10;
+
+        return (
+          <div style={{
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+            padding: '0 4px 6px 4px',
+            boxSizing: 'border-box',
           }}>
-            📍 {selectedState.toUpperCase()} {geoData?.features ? `(${geoData.features.filter((f: any) => clean(f.properties?.ST_NAME || f.properties?.st_name || f.properties?.state || '') === clean(selectedState)).length} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
-          </span>
-        </div>
-      )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{
+                fontSize: '10.5px',
+                fontWeight: 800,
+                color: '#334155',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}>
+                📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>
+                {stateTotalBallots} {lang === 'HI' ? 'कुल मत' : 'State Votes'}
+              </span>
+            </div>
+
+            {isPioneer && (
+              <div style={{
+                backgroundColor: '#f0fdf4',
+                border: '1px dashed #86efac',
+                borderRadius: '8px',
+                padding: '4px 8px',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: '#166534',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                lineHeight: 1.35
+              }}>
+                <span>🌱</span>
+                <span>
+                  {lang === 'HI'
+                    ? 'अग्रदूत राज्य: अपनी लोकसभा सीट को राज्य के नक्शे पर चमकाने वाले पहले नागरिक बनें।'
+                    : 'Pioneer State: Be among the first to cast a ballot and light up your constituency.'}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Strict Normalized Viewport (230px Height) with 16px Touch Gutter */}
       <div style={{ width: '100%', height: '230px', padding: '0 16px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'pan-y' }}>

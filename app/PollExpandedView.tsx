@@ -126,25 +126,67 @@ export default function PollExpandedView({
     bharat: { total: number; lead_id: number; pct: number };
     state: { name: string; total: number; lead_id: number; pct: number };
     seat: { name: string; total: number; lead_id: number; pct: number; is_tie: boolean };
-  } | null>(null);
+  } | null>(() => {
+    if (!initialTallies || initialTallies.length === 0) return null;
+    let bTotal = 0;
+    let sTotal = 0;
+    let userTally: any = null;
+    const cleanSeat = (userSeatName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanSt = (userState || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    initialTallies.forEach(t => {
+      const v = Number(t.total_votes || t.total_ballots || 0);
+      bTotal += v;
+      const tSt = (t.state_name || t.state_ut || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const tSeat = (t.constituency_name || t.pc_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (cleanSt && tSt === cleanSt) sTotal += v;
+      if (cleanSeat && tSeat === cleanSeat) userTally = t;
+    });
+
+    return {
+      bharat: { total: bTotal, lead_id: 0, pct: 0 },
+      state: { name: userState || 'State', total: sTotal, lead_id: 0, pct: 0 },
+      seat: { name: userSeatName || 'Seat', total: Number(userTally?.total_votes || 0), lead_id: 0, pct: 0, is_tie: false }
+    };
+  });
 
   useEffect(() => {
     async function loadConsensus() {
       if (!poll?.id) return;
       try {
-        const targetCycleId = telemetryHorizon === 'ALL_TIME'
-          ? 'lifetime'
-          : (poll.participation_mode === 'recurring'
-              ? getCurrentCycleId(poll.recurrence, poll.starts_at)
-              : (poll.current_cycle || 'lifetime'));
+        const isRecurring = poll.participation_mode === 'recurring' && (poll.recurrence || '').toLowerCase() !== 'one_time';
+        const dynamicCycle = isRecurring 
+          ? getCurrentCycleId(poll.recurrence, poll.starts_at) 
+          : 'lifetime';
 
+        // 1. In ALL_TIME, query lifetime directly
+        if (telemetryHorizon === 'ALL_TIME' || !isRecurring) {
+          const { data, error } = await supabase.rpc('get_poll_consensus_summary', {
+            p_poll_id: poll.id,
+            p_seat_name: userSeatName || 'Bharat',
+            p_cycle_id: 'lifetime'
+          });
+          if (!error && data) setConsensusSummary(data);
+          return;
+        }
+
+        // 2. In CURRENT, attempt to fetch current cycle
         const { data, error } = await supabase.rpc('get_poll_consensus_summary', {
           p_poll_id: poll.id,
           p_seat_name: userSeatName || 'Bharat',
-          p_cycle_id: targetCycleId
+          p_cycle_id: dynamicCycle
         });
-        if (!error && data) {
+
+        // 3. If current cycle has recorded ballots, use it; otherwise fallback to lifetime baseline
+        if (!error && data && data.bharat && data.bharat.total > 0) {
           setConsensusSummary(data);
+        } else {
+          const { data: fallbackData } = await supabase.rpc('get_poll_consensus_summary', {
+            p_poll_id: poll.id,
+            p_seat_name: userSeatName || 'Bharat',
+            p_cycle_id: 'lifetime'
+          });
+          if (fallbackData) setConsensusSummary(fallbackData);
         }
       } catch (err) {
         console.error('Consensus summary fetch error:', err);
@@ -214,22 +256,51 @@ export default function PollExpandedView({
 
   useEffect(() => {
     async function fetchTallies() {
-      let query = supabase
-        .from('constituency_tallies')
-        .select('*')
-        .eq('poll_id', poll.id);
+      if (!poll?.id) return;
+      setIsLoadingGeo(true);
 
-      // Filter by dynamic cycle only when viewing the Active Cycle on a recurring poll
-      if (isRecurring && telemetryHorizon === 'CURRENT' && dynamicCycle) {
-        query = query.eq('cycle_id', dynamicCycle);
-      }
+      const isRecurring = poll.participation_mode === 'recurring' && (poll.recurrence || '').toLowerCase() !== 'one_time';
+      const dynamicCycle = isRecurring 
+        ? getCurrentCycleId(poll.recurrence, poll.starts_at) 
+        : (poll.current_cycle || 'lifetime');
 
-      const { data, error } = await query;
-      if (!error && data) {
-        setTallies(data);
+      try {
+        // 1. If viewing Current cycle on a recurring poll, attempt to fetch specific cycle tallies
+        if (isRecurring && telemetryHorizon === 'CURRENT' && dynamicCycle && dynamicCycle !== 'lifetime') {
+          const { data: cycleData, error: cycleErr } = await supabase
+            .from('constituency_tallies')
+            .select('*')
+            .eq('poll_id', poll.id)
+            .eq('cycle_id', dynamicCycle);
+
+          if (!cycleErr && cycleData && cycleData.length > 0) {
+            setTallies(cycleData);
+            setIsLoadingGeo(false);
+            return;
+          }
+        }
+
+        // 2. Fallback / All-Time: Fetch all poll tallies
+        const { data, error } = await supabase
+          .from('constituency_tallies')
+          .select('*')
+          .eq('poll_id', poll.id);
+
+        if (!error && data && data.length > 0) {
+          setTallies(data);
+        } else if (initialTallies && initialTallies.length > 0) {
+          // Never drop to empty if initial tallies were provided by the feed
+          setTallies(initialTallies);
+        }
+      } catch (err) {
+        console.error('Error fetching tallies in PollExpandedView:', err);
+        if (initialTallies && initialTallies.length > 0) {
+          setTallies(initialTallies);
+        }
+      } finally {
+        setIsLoadingGeo(false);
       }
     }
-    fetchTallies();
 
     const tallyChannel = supabase
       .channel(`expanded_tallies_${poll.id}`)
@@ -863,15 +934,20 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
         setHoveredSeat(null);
       }}
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         backgroundColor: '#f8fafc',
         color: '#0f172a',
         display: 'flex',
         flexDirection: 'column',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        animation: 'expandedViewFadeIn 0.2s ease-out'
       }}
     >
       <style>{`
+      @keyframes expandedViewFadeIn {
+          from { opacity: 0; background-color: #f8fafc; }
+          to { opacity: 1; background-color: #f8fafc; }
+        }
         @keyframes radarExpandWave {
           0% { r: 5px; opacity: 0.95; stroke-width: 2.5px; }
           100% { r: 32px; opacity: 0; stroke-width: 0.3px; }
@@ -1043,7 +1119,11 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
             }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
                 {telemetryHorizon === 'CURRENT'
-                  ? (lang === 'HI' ? `🟢 सक्रिय चक्र (${dynamicCycle})` : `🟢 Active Cycle (${dynamicCycle})`)
+                  ? (() => {
+                      const now = new Date();
+                      const monthName = now.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' });
+                      return lang === 'HI' ? `🟢 सक्रिय चक्र • ${monthName}` : `🟢 Active Cycle • ${monthName}`;
+                    })()
                   : (lang === 'HI' ? '📜 सर्वकालिक ऐतिहासिक रुझान' : '📜 All-Time Trend (Consolidated)')}
               </span>
               <div style={{ display: 'flex', gap: '4px', backgroundColor: '#e2e8f0', padding: '2px', borderRadius: '8px' }}>

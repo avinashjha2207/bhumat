@@ -295,6 +295,45 @@ export default function MatParchiModal({
         {/* SHARING ACTIONS DOCK                                           */}
         {/* ============================================================== */}
         <div style={{ padding: '0 18px 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Official WhatsApp Channel Habit Banner */}
+          <a
+            href="https://whatsapp.com/channel/0029Vb4QYvX5Ui2R" // Replace with your actual BhuMat WhatsApp Channel link
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              textDecoration: 'none',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #86efac',
+              borderRadius: '12px',
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '2px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>📢</span>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#166534' }}>
+                  {lang === 'HI' ? 'भूमत व्हाट्सएप चैनल से जुड़ें' : 'Join BhuMat WhatsApp Channel'}
+                </div>
+                <div style={{ fontSize: '9.5px', color: '#15803d', fontWeight: 600 }}>
+                  {lang === 'HI' ? 'दैनिक 8 AM एवं 8 PM जनमत अलर्ट प्राप्त करें' : 'Get daily 8 AM & 8 PM drop alerts'}
+                </div>
+              </div>
+            </div>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 800,
+              color: '#ffffff',
+              backgroundColor: '#16a34a',
+              padding: '4px 8px',
+              borderRadius: '6px'
+            }}>
+              {lang === 'HI' ? 'जुड़ें ↗' : 'Follow ↗'}
+            </span>
+          </a>
           {/* Action 1: High-Conversion Status Image Share */}
           <button
             type="button"
