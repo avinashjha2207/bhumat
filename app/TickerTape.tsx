@@ -70,8 +70,29 @@ export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: a
     }
 
     fetchLiveTicker();
+
+    // Subscribe to Postgres Realtime for instant updates on ballot cast
+    const channel = supabase
+      .channel(`realtime_ticker_${activePoll.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'constituency_tallies',
+          filter: `poll_id=eq.${activePoll.id}`
+        },
+        () => {
+          if (isMounted) {
+            fetchLiveTicker();
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       isMounted = false;
+      supabase.removeChannel(channel);
     };
   }, [activePoll?.id, activePoll?.options, lang]);
 

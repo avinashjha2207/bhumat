@@ -5,7 +5,7 @@ import { supabase } from './utils/supabaseClient';
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
-const TIE_COLOR = '#475569';
+const TIE_COLOR = '#f59e0b'; // Radiant Gold for Split Mat / Contested Seats
 const RADAR_GREEN = '#10b981';
 
 const TIER_HUE_MAP: Record<number, number> = {
@@ -18,9 +18,10 @@ const TIER_HUE_MAP: Record<number, number> = {
 function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean): string {
   if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
   if (isTie) {
-    if (totalVotes >= 50) return '#334155';
-    if (totalVotes >= 25) return '#475569';
-    return '#94a3b8';
+    // Golden gradient for Split Mat (Tie) depending on consensus density
+    if (totalVotes >= 50) return '#d97706'; // Rich Golden Bronze
+    if (totalVotes >= 25) return '#f59e0b'; // Vibrant Amber Gold
+    return '#fcd34d'; // Light Gold Early Contested
   }
   const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
   if (totalVotes >= 150) return `hsl(${hue}, 100%, 42%)`;
@@ -40,6 +41,8 @@ interface DrishtiMapProps {
   selectedConstituencyName?: string;
   selectedState?: string;
   pollId: string;
+  cycleHorizon?: 'current' | 'all_time';
+  cycleId?: string;
   userVotedOptionIdx?: number | null;
   options: Option[];
   optimisticLocalVote?: boolean;
@@ -51,6 +54,8 @@ export default function DrishtiMap({
   selectedConstituencyName,
   selectedState,
   pollId,
+  cycleHorizon = 'all_time',
+  cycleId,
   userVotedOptionIdx,
   options,
   optimisticLocalVote = false,
@@ -64,8 +69,9 @@ export default function DrishtiMap({
   const pendingUpdatesRef = useRef<any[]>([]);
   const renderThrottleRef = useRef<NodeJS.Timeout | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
-const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedSeatKey, setSelectedSeatKey] = useState<string | null>(null);
+  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 useEffect(() => {
   const dismissTooltip = () => {
@@ -96,10 +102,17 @@ useEffect(() => {
 
   useEffect(() => {
     async function fetchTallies() {
-      const { data, error } = await supabase
+      let query = supabase
         .from('constituency_tallies')
         .select('*')
         .eq('poll_id', pollId);
+
+      // If viewing strictly the Current Cycle for a recurring poll
+      if (cycleHorizon === 'current' && cycleId) {
+        query = query.eq('cycle_id', cycleId);
+      }
+
+      const { data, error } = await query;
       if (!error && data) {
         setTallies(data);
       }
@@ -224,7 +237,7 @@ useEffect(() => {
       clearInterval(pulseInterval);
       if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
     };
-  }, [pollId]);
+  }, [pollId, cycleHorizon, cycleId]);
 
   useEffect(() => {
     if (!geoData || !selectedState || !svgRef.current || !containerRef.current) return;
@@ -385,6 +398,8 @@ useEffect(() => {
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
+        if (selectedSeatKey === seatName) return '#0284c7';
+        if (selectedConstituencyName && clean(selectedConstituencyName) === seatName) return '#10b981';
         const row = tallyLookup.get(seatName);
         const total = Number(row?.total_votes) || 0;
         return total >= 50 ? '#ffffff' : '#cbd5e1';
@@ -392,6 +407,8 @@ useEffect(() => {
       .attr('stroke-width', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
+        if (selectedSeatKey === seatName) return 2.8;
+        if (selectedConstituencyName && clean(selectedConstituencyName) === seatName) return 2.2;
         const row = tallyLookup.get(seatName);
         const total = Number(row?.total_votes) || 0;
         return total >= 50 ? 1.0 : 0.6;
@@ -429,20 +446,30 @@ useEffect(() => {
       })
       .on('click touchstart', function (event: any, d: any) {
         event.stopPropagation();
+        const p = d.properties || {};
+        const sKey = clean(p.PC_NAME || p.pc_name || p.name || '');
+        setSelectedSeatKey(sKey);
+
         mapGroup.selectAll('path.constituency')
           .attr('stroke', (dt: any) => {
             const dp = dt.properties || {};
-            const r = tallyLookup.get(clean(dp.PC_NAME || dp.pc_name || ''));
+            const itemKey = clean(dp.PC_NAME || dp.pc_name || '');
+            if (itemKey === sKey) return '#0284c7';
+            if (selectedConstituencyName && clean(selectedConstituencyName) === itemKey) return '#10b981';
+            const r = tallyLookup.get(itemKey);
             return (Number(r?.total_votes) || 0) >= 50 ? '#ffffff' : '#cbd5e1';
           })
           .attr('stroke-width', (dt: any) => {
             const dp = dt.properties || {};
-            const r = tallyLookup.get(clean(dp.PC_NAME || dp.pc_name || ''));
+            const itemKey = clean(dp.PC_NAME || dp.pc_name || '');
+            if (itemKey === sKey) return 3.0;
+            if (selectedConstituencyName && clean(selectedConstituencyName) === itemKey) return 2.2;
+            const r = tallyLookup.get(itemKey);
             return (Number(r?.total_votes) || 0) >= 50 ? 1.0 : 0.6;
           });
 
-        d3.select(this).attr('stroke', '#0284c7').attr('stroke-width', 2.4);
-        triggerTooltip(event, d, 4500);
+        d3.select(this).raise(); // Bring to top of stack
+        triggerTooltip(event, d, 6000);
       });
 
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
@@ -495,7 +522,7 @@ useEffect(() => {
         }
       }
     }
-  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, userVotedOptionIdx, optimisticLocalVote, options, lang]);
+  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, selectedSeatKey, userVotedOptionIdx, optimisticLocalVote, options, lang]);
 
   return (
     <div
@@ -561,8 +588,8 @@ tooltipTimeoutRef.current = setTimeout(() => {
         </div>
       )}
 
-      {/* Strict Normalized Viewport (230px Height) */}
-      <div style={{ width: '100%', height: '230px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Strict Normalized Viewport (230px Height) with 16px Touch Gutter */}
+      <div style={{ width: '100%', height: '230px', padding: '0 16px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'pan-y' }}>
         <svg
           ref={svgRef}
           style={{ width: '100%', height: '100%', display: 'block', touchAction: 'pan-y' }}

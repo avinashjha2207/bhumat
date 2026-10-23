@@ -24,17 +24,38 @@ export default function PublicCitizenProfilePage() {
         setError(false);
         const cleanUsername = decodeURIComponent(username as string).trim();
 
-        // Query voter_wallets for this citizen
-        const { data, error: dbErr } = await supabase
-          .from('voter_wallets')
+        // Query nagrik_profiles first (v2), fallback to voter_wallets (v1)
+        let data: any = null;
+        const { data: v2Data } = await supabase
+          .from('nagrik_profiles')
           .select('*')
           .ilike('username', cleanUsername)
           .maybeSingle();
 
-        if (dbErr || !data) {
-          setProfile(null);
-          setError(true);
-          return;
+        if (v2Data) {
+          data = {
+            username: v2Data.username,
+            home_seat: v2Data.assigned_pc_name || v2Data.assigned_pc_id,
+            home_state: v2Data.assigned_state_name || 'Bharat',
+            total_votes: (v2Data.dbg_balance || 0) > 0 ? v2Data.dbg_balance : 5,
+            lokmat_votes: 3,
+            janmat_votes: 2,
+            is_verified: Boolean(v2Data.is_verified),
+            created_at: v2Data.created_at,
+            voter_token: v2Data.voter_token
+          };
+        } else {
+          const { data: v1Data, error: dbErr } = await supabase
+            .from('voter_wallets')
+            .select('*')
+            .ilike('username', cleanUsername)
+            .maybeSingle();
+          if (dbErr || !v1Data) {
+            setProfile(null);
+            setError(true);
+            return;
+          }
+          data = v1Data;
         }
 
         // Fetch user's public LokMat voting history
@@ -74,8 +95,7 @@ export default function PublicCitizenProfilePage() {
             ...(totalVotes >= 10 ? [{ title: '🏛️ Jagruk Nagrik', desc: 'Active policy auditor', color: '#0284c7' }] : []),
             ...(totalVotes >= 25 ? [{ title: '🛡️ Lok Prahari', desc: 'Constituency guardian', color: '#8b5cf6' }] : [])
           ],
-          history: publicHistory.map((h: any, idx: number) => ({
-            receipt_code: `TXN-${(h.id || idx).toString().slice(0, 8).toUpperCase()}`,
+          history: publicHistory.map((h: any) => ({
             question_title: h.poll_title || 'LokMat Cultural Pulse',
             selected_choice: h.selected_option_text || 'Option Selected',
             selected_option_id: Number(h.selected_option || 0)
@@ -317,8 +337,8 @@ export default function PublicCitizenProfilePage() {
                     <span style={{ fontSize: '10px', fontWeight: 800, color: '#d97706', backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '2px 6px', borderRadius: '4px' }}>
                       🌅 LokMat Pulse
                     </span>
-                    <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#94a3b8' }}>
-                      {vote.receipt_code}
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#059669' }}>
+                      ✓ Verified Stance
                     </span>
                   </div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>

@@ -1,15 +1,20 @@
 'use client';
+
 import React, { useRef, useState } from 'react';
-import { toBlob } from 'html-to-image';
+import DrishtiMap from './DrishtiMap';
 
 interface MatParchiModalProps {
   isOpen: boolean;
   onClose: () => void;
+  pollId?: string;
   pollTitle: string;
-  selectedOptionText: string;
+  pollCategory?: string;
+  options?: any[];
+  selectedOptionText?: string;
   seatName: string;
   stateName: string;
-  username: string;
+  username?: string;
+  isProfilePrivate?: boolean;
   lang: 'EN' | 'HI';
   referralCode?: string;
 }
@@ -17,68 +22,96 @@ interface MatParchiModalProps {
 export default function MatParchiModal({
   isOpen,
   onClose,
+  pollId = '',
   pollTitle,
+  pollCategory = 'LokMat',
+  options = [],
   selectedOptionText,
   seatName,
   stateName,
   username,
+  isProfilePrivate = false,
   lang,
   referralCode = 'BM78491'
 }: MatParchiModalProps) {
-  const parchiRef = useRef<HTMLDivElement>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!isOpen) return null;
 
-  const voteDate = new Date().toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+  // Real-time formatted date & timestamp
+  const now = new Date();
+  const dateStr = now.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
     day: 'numeric',
     month: 'short',
     year: 'numeric'
   });
+  const timeStr = now.toLocaleTimeString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vote.bhumat.com';
-  const cleanSeatParam = encodeURIComponent(seatName);
-  const safeTitle = pollTitle.length > 80 ? `${pollTitle.slice(0, 77)}...` : pollTitle;
-  const safeChoice = selectedOptionText.length > 40 ? `${selectedOptionText.slice(0, 37)}...` : selectedOptionText;
+  const isJanMat = pollCategory === 'JanMat';
+  // Strict rule: Never expose personal stance on JanMat OR when user profile is private
+  const canShowStance = !isJanMat && !isProfilePrivate && Boolean(selectedOptionText);
 
-  const shareText = lang === 'HI'
-    ? `🇮🇳 मैंने अभी भूमत पर अपनी संसदीय सीट *${seatName}* (${stateName}) से मत दिया!\n\n📋 *मुद्दा:* ${safeTitle}\n🗳️ *मेरा मत:* ${safeChoice}\n\nआप भी अपने लोकसभा क्षेत्र की आवाज़ बनें:\n${origin}?seat=${cleanSeatParam}&ref=${referralCode}`
-    : `🇮🇳 I just cast my ballot on BhuMat from *${seatName}* (${stateName})!\n\n📋 *Issue:* ${safeTitle}\n🗳️ *My Stance:* ${safeChoice}\n\nMake your constituency count across Bharat:\n${origin}?seat=${cleanSeatParam}&ref=${referralCode}`;
+  // 1. WhatsApp Text Share Handler
+  const handleWhatsAppTextShare = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vote.bhumat.com';
+    const cleanSeatParam = encodeURIComponent(seatName);
 
-  const handleWhatsAppShare = () => {
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+    let stanceText = '';
+    if (canShowStance) {
+      stanceText = lang === 'HI' ? `\n🗳️ *मेरा मत:* ${selectedOptionText}` : `\n🗳️ *My Stance:* ${selectedOptionText}`;
+    } else if (isJanMat) {
+      stanceText = lang === 'HI' ? `\n🔒 *प्रकार:* 100% गोपनीय प्रशासनिक ऑडिट` : `\n🔒 *Type:* 100% Anonymous Governance Audit`;
+    }
+
+    const text = lang === 'HI'
+      ? `🇮🇳 मैंने अभी भूमत पर अपनी संसदीय सीट *${seatName}* (${stateName}) से मत दिया!\n\n📋 *मुद्दा:* ${pollTitle}${stanceText}\n⏱️ *समय:* ${dateStr}, ${timeStr}\n\nआप भी अपने लोकसभा क्षेत्र को राष्ट्रीय मानचित्र पर आगे बढ़ाएं:\n👉 ${origin}?seat=${cleanSeatParam}&ref=${referralCode}`
+      : `🇮🇳 I just cast my ballot on BhuMat from *${seatName}* (${stateName})!\n\n📋 *Issue:* ${pollTitle}${stanceText}\n⏱️ *Time:* ${dateStr}, ${timeStr}\n\nPut your home constituency on Bharat's live map:\n👉 ${origin}?seat=${cleanSeatParam}&ref=${referralCode}`;
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const handleCaptureStoryCard = async () => {
-    if (!parchiRef.current || isCapturing) return;
+  // 2. High-Resolution Visual PNG Share/Download Handler
+  const handleExportStoryImage = async () => {
+    if (!cardRef.current) return;
+    setIsExporting(true);
+
     try {
-      setIsCapturing(true);
-      const blob = await toBlob(parchiRef.current, {
-        backgroundColor: '#0f172a',
-        pixelRatio: 2.5
+      const { toBlob, toPng } = await import('html-to-image');
+      
+      // Generate crisp 2x retina blob
+      const blob = await toBlob(cardRef.current, {
+        pixelRatio: 2,
+        backgroundColor: '#ffffff'
       });
 
-      if (!blob) throw new Error('Image generation failed');
+      if (!blob) throw new Error('Blob generation failed');
+      const file = new File([blob], `BhuMat_${seatName}_MatParchi.png`, { type: 'image/png' });
 
-      const file = new File([blob], `BhuMat_Parchi_${seatName}.png`, { type: 'image/png' });
-
+      // Native Web Share API if supported on mobile devices
       if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: `Mat Parchi - ${seatName}`,
-          text: shareText
+          title: `BhuMat Parchi • ${seatName}`,
+          text: `Verified Citizen Ballot from ${seatName} (${stateName}) on BhuMat: https://vote.bhumat.com`
         });
       } else {
+        // Fallback: Direct PNG Download on desktop browsers
+        const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
         const link = document.createElement('a');
-        link.download = `BhuMat_MatParchi_${seatName}.png`;
-        link.href = URL.createObjectURL(blob);
+        link.download = `BhuMat_${seatName}_MatParchi.png`;
+        link.href = dataUrl;
         link.click();
       }
     } catch (err) {
-      console.warn('Capture fallback to text share:', err);
-      handleWhatsAppShare();
+      console.warn('Image share fallback:', err);
+      // If canvas capture fails on low-end device, route cleanly to WhatsApp text
+      handleWhatsAppTextShare();
     } finally {
-      setIsCapturing(false);
+      setIsExporting(false);
     }
   };
 
@@ -88,13 +121,14 @@ export default function MatParchiModal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+        backgroundColor: 'rgba(15, 23, 42, 0.78)',
         backdropFilter: 'blur(5px)',
         zIndex: 250,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '16px'
+        padding: '14px',
+        overflowY: 'auto'
       }}
     >
       <div
@@ -103,176 +137,213 @@ export default function MatParchiModal({
           backgroundColor: '#ffffff',
           borderRadius: '24px',
           width: '100%',
-          maxWidth: '380px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          maxWidth: '410px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
           overflow: 'hidden',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          margin: 'auto'
         }}
       >
-        {/* Story Card Container (Captured by html-to-image) */}
+        {/* Tricolor Ribbon */}
+        <div style={{ height: '6px', background: 'linear-gradient(90deg, #ff9933 33.3%, #ffffff 33.3%, #ffffff 66.6%, #138808 66.6%)' }} />
+
+        {/* Modal Top Bar */}
+        <div style={{ padding: '16px 18px 0 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '15px' }}>🇮🇳</span>
+            <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Bharat Civic Consensus'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: '#f1f5f9',
+              border: 'none',
+              borderRadius: '50%',
+              width: '26px',
+              height: '26px',
+              cursor: 'pointer',
+              fontWeight: 800,
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* ============================================================== */}
+        {/* CAPTURE TARGET CONTAINER (Captured cleanly as 1:1 image)        */}
+        {/* ============================================================== */}
         <div
-          ref={parchiRef}
+          ref={cardRef}
           style={{
             backgroundColor: '#ffffff',
+            padding: '16px 18px',
             display: 'flex',
             flexDirection: 'column',
-            boxSizing: 'border-box'
+            gap: '12px'
           }}
         >
-          {/* Tricolor Header Accent */}
-          <div style={{ height: '6px', background: 'linear-gradient(90deg, #ff9933 33.3%, #ffffff 33.3%, #ffffff 66.6%, #138808 66.6%)' }} />
+          {/* Issue Header */}
+          <div style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 900,
+                color: isJanMat ? '#0369a1' : '#b45309',
+                backgroundColor: isJanMat ? '#e0f2fe' : '#fef3c7',
+                padding: '2px 7px',
+                borderRadius: '6px',
+                textTransform: 'uppercase'
+              }}>
+                {isJanMat ? 'JanMat • District Audit' : 'LokMat • Public Culture'}
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>
+                📍 {seatName} ({stateName})
+              </span>
+            </div>
+            <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.4 }}>
+              {pollTitle}
+            </div>
+          </div>
 
-          <div style={{ padding: '20px 20px 16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Header Branding */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  {lang === 'HI' ? 'भारत का संप्रभु जनमत ग्रिड' : 'Sovereign Public Opinion Grid'}
-                </div>
-                <h3 style={{ margin: '2px 0 0 0', fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
-                  {lang === 'HI' ? 'डिजिटल मत पर्ची' : 'Digital Mat Parchi'}
-                </h3>
-              </div>
-              <button
-                onClick={onClose}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', fontWeight: 800, color: '#64748b' }}
-              >
-                ✕
-              </button>
+          {/* Embedded State Drishti Silhouette Vector */}
+          <div style={{
+            position: 'relative',
+            borderRadius: '16px',
+            border: '1.5px solid #cbd5e1',
+            backgroundColor: '#f8fafc',
+            overflow: 'hidden',
+            padding: '8px'
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              zIndex: 10,
+              backgroundColor: 'rgba(15, 23, 42, 0.85)',
+              color: '#ffffff',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              fontSize: '10px',
+              fontWeight: 800,
+              letterSpacing: '0.02em'
+            }}>
+              🗺️ {stateName.toUpperCase()} CONSENSUS MAP
             </div>
 
-            {/* Stylized Parchi Ticket */}
-            <div
-              style={{
-                backgroundColor: '#f8fafc',
-                border: '1.5px dashed #cbd5e1',
-                borderRadius: '16px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px'
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? 'मुद्दा / प्रश्न' : 'Constitutional Poll Question'}
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35, marginTop: '2px' }}>
-                  {pollTitle}
-                </div>
-              </div>
+            {/* Embedded Live State SVG with Beacon */}
+            <DrishtiMap
+              selectedConstituencyName={seatName}
+              selectedState={stateName}
+              pollId={pollId}
+              options={options}
+            />
+          </div>
 
-              {/* Stance Pill */}
-              <div style={{ backgroundColor: '#ffffff', padding: '10px 12px', borderRadius: '12px', border: '1.5px solid #10b981' }}>
-                <div style={{ fontSize: '9.5px', color: '#059669', fontWeight: 800, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? 'दर्ज मत' : 'Cast Stance'}
-                </div>
-                <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
-                  ✓ {selectedOptionText}
-                </div>
+          {/* Stance or Cryptographic Shield Row */}
+          {canShowStance ? (
+            <div style={{ backgroundColor: '#ecfdf5', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #a7f3d0' }}>
+              <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 800, textTransform: 'uppercase' }}>
+                {lang === 'HI' ? 'दर्ज मत (My Stance)' : 'My Cast Stance'}
               </div>
-
-              {/* Provenance Metadata Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', paddingTop: '2px' }}>
-                <div>
-                  <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    {lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency'}
-                  </div>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
-                    📍 {seatName}
-                  </div>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>({stateName})</div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    {lang === 'HI' ? 'नागरिक एवं तिथि' : 'Citizen & Date'}
-                  </div>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
-                    @{username}
-                  </div>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>{voteDate}</div>
-                </div>
+              <div style={{ fontSize: '14px', fontWeight: 900, color: '#065f46', marginTop: '2px' }}>
+                ✓ {selectedOptionText}
               </div>
-
-              {/* Watermark Footer Stamp */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '2px' }}>
-                <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 700 }}>
-                  vote.bhumat.com • #{referralCode}
-                </span>
-                <span style={{ fontSize: '9px', color: '#059669', fontWeight: 800 }}>
-                  🔒 Verified Sovereign Ballot
-                </span>
+            </div>
+          ) : (
+            <div style={{ backgroundColor: '#f0f9ff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
+              <div style={{ fontSize: '10px', color: '#0369a1', fontWeight: 800, textTransform: 'uppercase' }}>
+                {isJanMat ? (lang === 'HI' ? '🔒 100% गोपनीय मतपेटी' : '🔒 100% Anonymous Ballot') : (lang === 'HI' ? '🔒 निजी मत' : '🔒 Private Citizen Stance')}
               </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0c4a6e', marginTop: '2px' }}>
+                {lang === 'HI'
+                  ? 'नागरिक गोपनीयता नियम: आपकी व्यक्तिगत पसंद पूरी तरह सीलबंद है।'
+                  : 'Zero Identity Tracing: Personal stance permanently sealed in blind vault.'}
+              </div>
+            </div>
+          )}
+
+          {/* Footer Metadata & Exact Timestamp */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '10.5px',
+            color: '#64748b',
+            borderTop: '1px dashed #cbd5e1',
+            paddingTop: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ color: '#059669', fontWeight: 800 }}>✅ Verified Elector</span>
+              <span>•</span>
+              <span>{seatName}</span>
+            </div>
+            <div style={{ fontWeight: 700, color: '#0f172a' }}>
+              ⏱️ {dateStr} • {timeStr}
             </div>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div style={{ padding: '0 20px 20px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {/* Primary: Share Story Card Image */}
+        {/* ============================================================== */}
+        {/* SHARING ACTIONS DOCK                                           */}
+        {/* ============================================================== */}
+        <div style={{ padding: '0 18px 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Action 1: High-Conversion Status Image Share */}
           <button
-            onClick={handleCaptureStoryCard}
-            disabled={isCapturing}
+            type="button"
+            onClick={handleExportStoryImage}
+            disabled={isExporting}
             style={{
               width: '100%',
               padding: '12px',
-              backgroundColor: '#0f172a',
+              backgroundColor: '#10b981',
               color: '#ffffff',
               border: 'none',
               borderRadius: '12px',
               fontSize: '13px',
               fontWeight: 800,
-              cursor: isCapturing ? 'wait' : 'pointer',
+              cursor: isExporting ? 'wait' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.28)',
+              opacity: isExporting ? 0.7 : 1
             }}
           >
             <span>📸</span>
-            <span>{isCapturing ? (lang === 'HI' ? 'तैयार हो रहा है...' : 'Generating Card...') : (lang === 'HI' ? 'स्टोरी कार्ड शेयर करें (WhatsApp / Insta)' : 'Share Story Card (WhatsApp / Insta)')}</span>
+            <span>{isExporting ? (lang === 'HI' ? 'पर्ची तैयार हो रही है...' : 'Generating Image...') : (lang === 'HI' ? 'व्हाट्सएप स्टेटस इमेज शेयर करें' : 'Share Image to WhatsApp Status')}</span>
           </button>
 
-          {/* Secondary: Fast Text Link */}
+          {/* Action 2: Text Forward Fallback */}
           <button
-            onClick={handleWhatsAppShare}
+            type="button"
+            onClick={handleWhatsAppTextShare}
             style={{
               width: '100%',
-              padding: '10px',
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              color: '#059669',
-              borderRadius: '12px',
-              fontSize: '12.5px',
-              fontWeight: 800,
+              padding: '9px',
+              backgroundColor: '#f1f5f9',
+              color: '#334155',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              fontSize: '11.5px',
+              fontWeight: 750,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px'
+              gap: '5px'
             }}
           >
-            <span>📲</span>
-            <span>{lang === 'HI' ? 'व्हाट्सएप संदेश भेजें' : 'Send WhatsApp Message'}</span>
-          </button>
-
-          <button
-            onClick={onClose}
-            style={{
-              width: '100%',
-              padding: '6px',
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: '#64748b',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            {lang === 'HI' ? 'बंद करें' : 'Close'}
+            <span>💬</span>
+            <span>{lang === 'HI' ? 'सीधा व्हाट्सएप मैसेज भेजें' : 'Send Direct WhatsApp Link'}</span>
           </button>
         </div>
       </div>
