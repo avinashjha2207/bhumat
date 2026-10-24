@@ -293,8 +293,10 @@ export default function AdminAuditPanel() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = sessionStorage.getItem('bhumat_admin_auth');
+      const storedPin = sessionStorage.getItem('bhumat_admin_pin');
       if (stored === 'true') {
         setIsAuthenticated(true);
+        if (storedPin) setPasscode(storedPin);
       }
     }
   }, []);
@@ -304,6 +306,10 @@ export default function AdminAuditPanel() {
     if (passcode === MASTER_ADMIN_PIN) {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('bhumat_admin_auth', 'true');
+      }
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bhumat_admin_auth', 'true');
+        sessionStorage.setItem('bhumat_admin_pin', passcode);
       }
       setIsAuthenticated(true);
       setAuthError('');

@@ -243,6 +243,9 @@ export default function BhuMatApp() {
   const [activeTab, setActiveTab] = useState<'search' | 'vote' | 'schedule' | 'profile'>('vote');
   const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>('OVERVIEW');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(() => new Date().getDate());
+  const [scheduleCategoryFilter, setScheduleCategoryFilter] = useState<'ALL' | 'LokMat' | 'JanMat'>('ALL');
+  const [showCalendarView, setShowCalendarView] = useState<boolean>(false);
+  const [scheduleMonthOffset, setScheduleMonthOffset] = useState<number>(0); // 0 = current running month, 1 = next month
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
@@ -3029,26 +3032,40 @@ export default function BhuMatApp() {
 
         {/* TAB 3: SCHEDULE & CADENCE */}
         {activeTab === 'schedule' && (() => {
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const currentMonth = now.getMonth();
-          const seasonNumber = currentMonth + 1;
-          const activeMonthName = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
-          const activeMonthShort = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'short' }).toUpperCase();
-          const seasonTitleText = lang === 'HI'
-            ? `${activeMonthName} सत्र (सत्र ${seasonNumber} • ${currentYear})`
-            : `${activeMonthName} Season (Season ${seasonNumber} • ${currentYear})`;
-          const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-          const firstDayRaw = new Date(currentYear, currentMonth, 1).getDay();
-          const startOffset = (firstDayRaw + 6) % 7;
-          const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
-          const selectedDateObj = new Date(currentYear, currentMonth, selectedCalendarDay);
-          const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
-          const pollsForSelectedDay = polls.filter((p) => {
-            if (!p.starts_at) return true;
-            const pd = new Date(p.starts_at);
-            return pd.getDate() === selectedCalendarDay && pd.getMonth() === currentMonth;
-          });
+          const baseDate = new Date();
+    baseDate.setMonth(baseDate.getMonth() + (scheduleMonthOffset || 0));
+    const currentYear = baseDate.getFullYear();
+    const currentMonth = baseDate.getMonth();
+    const seasonNumber = currentMonth + 1;
+    const activeMonthName = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
+    const activeMonthShort = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'short' }).toUpperCase();
+    const seasonTitleText = lang === 'HI'
+      ? `${activeMonthName} सत्र (सत्र ${seasonNumber} • ${currentYear})`
+      : `${activeMonthName} Season (Season ${seasonNumber} • ${currentYear})`;
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const firstDayRaw = new Date(currentYear, currentMonth, 1).getDay();
+    const startOffset = (firstDayRaw + 6) % 7;
+    const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+    const safeSelectedDay = Math.min(selectedCalendarDay, daysInMonth);
+    const selectedDateObj = new Date(currentYear, currentMonth, safeSelectedDay);
+    const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
+    
+    // Calendar day polls filter: checks exact day or active ongoing drop
+    const today = new Date();
+    const isViewingCurrentMonth = currentMonth === today.getMonth() && currentYear === today.getFullYear();
+
+    const pollsForSelectedDay = polls.filter((p) => {
+      if (!p.starts_at) return false;
+      const pd = new Date(p.starts_at);
+      const isExactDay = pd.getDate() === safeSelectedDay && pd.getMonth() === currentMonth && pd.getFullYear() === currentYear;
+      if (isExactDay) return true;
+
+      // If viewing current today on active month, include ongoing active drops
+      if (isViewingCurrentMonth && safeSelectedDay === today.getDate() && p.is_active) {
+        return pd <= today;
+      }
+      return false;
+    });
 
           if (scheduleViewMode === 'CALENDAR') {
             return (
@@ -3091,6 +3108,52 @@ export default function BhuMatApp() {
                   padding: '18px 16px',
                   boxShadow: '0 4px 16px rgba(0,0,0,0.02)'
                 }}>
+                  {/* Running Month vs Next Month Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+              <button
+                type="button"
+                disabled={scheduleMonthOffset === 0}
+                onClick={() => setScheduleMonthOffset(0)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: scheduleMonthOffset === 0 ? '#f1f5f9' : '#ffffff',
+                  color: scheduleMonthOffset === 0 ? '#94a3b8' : '#0f172a',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: scheduleMonthOffset === 0 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                ◀ {lang === 'HI' ? 'चालू माह' : 'Current Month'}
+              </button>
+
+              <span style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a' }}>
+                {(() => {
+                  const d = new Date();
+                  d.setMonth(d.getMonth() + scheduleMonthOffset);
+                  return d.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' });
+                })()}
+              </span>
+
+              <button
+                type="button"
+                disabled={scheduleMonthOffset === 1}
+                onClick={() => setScheduleMonthOffset(1)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: scheduleMonthOffset === 1 ? '#f1f5f9' : '#ffffff',
+                  color: scheduleMonthOffset === 1 ? '#94a3b8' : '#0f172a',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: scheduleMonthOffset === 1 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {lang === 'HI' ? 'अगला माह' : 'Next Month'} ▶
+              </button>
+            </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9' }}>
                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {lang === 'HI' ? 'दैनिक ड्रॉप चक्र' : 'Daily Cadence Matrix'}
@@ -3409,71 +3472,110 @@ export default function BhuMatApp() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 4px 0 4px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    {lang === 'EN' ? `Upcoming Scheduled Drops (${scheduledQueueList.length})` : `आगामी निर्धारित मत (${scheduledQueueList.length})`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setScheduleViewMode('CALENDAR')}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      backgroundColor: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      padding: '4px 10px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      color: '#0f172a',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <span>📅</span>
-                    <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
-                  </button>
+              
+
+            {/* Row 1: Clean Header with Calendar View aligned flush right */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {lang === 'HI' ? 'आगामी निर्धारित ड्रॉप्स' : 'Upcoming Scheduled Drops'} ({scheduledQueueList.length})
                 </div>
-                {scheduledQueueList.length === 0 ? (
-                  <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
-                    {lang === 'EN'
-                      ? '✓ All scheduled drops for this cycle are live in your Vote feed.'
-                      : '✓ इस चक्र के सभी निर्धारित प्रश्न आपके वोट फीड में सक्रिय हैं।'}
-                  </div>
-                ) : (
-                  scheduledQueueList.map((item) => {
-                    const sched = evaluatePollSchedule(item);
-                    const isItemJanMat = item.category === 'JanMat';
-                    return (
-                      <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{
-                            fontSize: '10.5px',
-                            fontWeight: 800,
-                            color: isItemJanMat ? '#059669' : '#d97706',
-                            backgroundColor: isItemJanMat ? '#ecfdf5' : '#fffbeb',
-                            padding: '2px 8px',
-                            borderRadius: '999px',
-                            border: `1px solid ${isItemJanMat ? '#a7f3d0' : '#fde68a'}`
-                          }}>
-                            ● {item.category}
-                          </span>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '2px 8px', borderRadius: '6px' }}>
-                            🔒 {sched.nextUnlockLabel}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155', lineHeight: 1.35 }}>
-                          {lang === 'EN' ? item.title_en : item.title_hi}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 500 }}>
-                          {lang === 'EN' ? item.title_hi : item.title_en}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                <button
+                  type="button"
+                  onClick={() => setScheduleViewMode('CALENDAR')}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#0f172a',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                  }}
+                >
+                  <span>📅</span>
+                  <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
+                </button>
               </div>
+
+              {/* Row 2: Clean LokMat / JanMat Filter Strip */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                {(['ALL', 'LokMat', 'JanMat'] as const).map((cat) => {
+                  const isCatActive = scheduleCategoryFilter === cat;
+                  const label = cat === 'ALL'
+                    ? (lang === 'HI' ? 'सभी ड्रॉप्स' : 'All Drops')
+                    : (cat === 'LokMat' ? '🌅 LokMat' : '🌆 JanMat');
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setScheduleCategoryFilter(cat)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        border: isCatActive ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                        backgroundColor: isCatActive ? '#0f172a' : '#ffffff',
+                        color: isCatActive ? '#ffffff' : '#475569',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scheduled Drops List */}
+              {scheduledQueueList.length === 0 ? (
+                <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
+                  {lang === 'EN'
+                    ? '✓ All scheduled drops for this cycle are live in your Vote feed.'
+                    : '✓ इस चक्र के सभी निर्धारित प्रश्न आपके वोट फीड में सक्रिय हैं।'}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {scheduledQueueList
+                    .filter((item) => scheduleCategoryFilter === 'ALL' || item.category === scheduleCategoryFilter)
+                    .sort((a, b) => new Date(a.starts_at || 0).getTime() - new Date(b.starts_at || 0).getTime())
+                    .map((item) => {
+                      const sched = evaluatePollSchedule(item);
+                      const isItemJanMat = item.category === 'JanMat';
+                      return (
+                        <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{
+                              fontSize: '10.5px',
+                              fontWeight: 800,
+                              color: isItemJanMat ? '#059669' : '#d97706',
+                              backgroundColor: isItemJanMat ? '#ecfdf5' : '#fffbeb',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              border: `1px solid ${isItemJanMat ? '#a7f3d0' : '#fde68a'}`
+                            }}>
+                              ● {item.category}
+                            </span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '2px 8px', borderRadius: '6px' }}>
+                              🔒 {sched.nextUnlockLabel ? sched.nextUnlockLabel.replace(/\s20\d{2},?/, '') : (lang === 'HI' ? 'निर्धारित' : 'Scheduled')}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155', lineHeight: 1.35 }}>
+                            {lang === 'EN' ? item.title_en : item.title_hi}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 500 }}>
+                            {lang === 'EN' ? item.title_hi : item.title_en}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           );
         })()}
