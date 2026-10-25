@@ -47,6 +47,11 @@ export default function SearchTab({
   setActiveTab,
   searchInputRef
 }: SearchTabProps) {
+  const [scheduledNotice, setScheduledNotice] = React.useState<string | null>(null);
+  const now = new Date();
+  const activeCount = polls.filter((p: any) => p.is_active && (!p.starts_at || new Date(p.starts_at) <= now)).length;
+  const scheduledCount = polls.filter((p: any) => p.starts_at && new Date(p.starts_at) > now).length;
+
   return (
     <div style={{
       display: 'flex',
@@ -73,9 +78,14 @@ export default function SearchTab({
           <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '6px', letterSpacing: '0.04em' }}>
             {lang === 'EN' ? 'OPINION ARCHIVE' : 'सभी जनमत'}
           </span>
-          <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>
-            ● {polls.filter(p => p.is_active).length} {lang === 'EN' ? 'Active Polls' : 'सक्रिय मत'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 7px', borderRadius: '6px' }}>
+              🟢 {activeCount} {lang === 'EN' ? 'Active' : 'सक्रिय'}
+            </span>
+            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '2px 7px', borderRadius: '6px' }}>
+              🗓️ {scheduledCount} {lang === 'EN' ? 'Scheduled' : 'निर्धारित'}
+            </span>
+          </div>
         </div>
         <h2 style={{ fontSize: '18px', fontWeight: 850, margin: '6px 0 4px 0', color: '#0f172a', letterSpacing: '-0.015em' }}>
           {lang === 'EN' ? 'Search Public Opinion' : 'सार्वजनिक जनमत खोजें'}
@@ -198,7 +208,25 @@ export default function SearchTab({
               (flippedOverrides && flippedOverrides[poll.id])
             );
 
+            const isScheduledFuture = poll.starts_at && new Date(poll.starts_at) > new Date();
+
             const handleCardClick = () => {
+              if (isScheduledFuture) {
+                const dateStr = new Date(poll.starts_at!).toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                setScheduledNotice(
+                  lang === 'HI'
+                    ? `🔒 यह मत ${dateStr} को खुलेगा। निर्धारित समय पर मतदान उपलब्ध होगा।`
+                    : `🔒 Drops on ${dateStr}. Voting opens once live.`
+                );
+                setTimeout(() => setScheduledNotice(null), 3500);
+                return;
+              }
+
               if (hasVotedThisCycle) {
                 openExpandedView(poll);
               } else {
@@ -288,6 +316,27 @@ export default function SearchTab({
           })
         )}
       </div>
+      {scheduledNotice && (
+        <div style={{
+          position: 'fixed',
+          bottom: '80px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#0f172a',
+          color: '#ffffff',
+          padding: '10px 16px',
+          borderRadius: '12px',
+          fontSize: '11.5px',
+          fontWeight: 700,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          maxWidth: '360px',
+          textAlign: 'center',
+          lineHeight: 1.4
+        }}>
+          {scheduledNotice}
+        </div>
+      )}
     </div>
   );
 }

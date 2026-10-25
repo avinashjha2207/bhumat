@@ -170,7 +170,7 @@ export default function MatParchiModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '15px' }}>🇮🇳</span>
             <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Bharat Public Opinion'}
+              {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Public Opinion of Bharat'}
             </span>
           </div>
           <button
@@ -243,16 +243,35 @@ export default function MatParchiModal({
               position: 'absolute',
               top: '12px',
               left: '12px',
+              right: '12px',
               zIndex: 10,
-              backgroundColor: 'rgba(15, 23, 42, 0.85)',
-              color: '#ffffff',
-              padding: '3px 8px',
-              borderRadius: '6px',
-              fontSize: '10px',
-              fontWeight: 800,
-              letterSpacing: '0.02em'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              pointerEvents: 'none'
             }}>
-              🗺️ {stateName.toUpperCase()} CONSENSUS MAP
+              <span style={{
+                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                color: '#ffffff',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '10px',
+                fontWeight: 800,
+                letterSpacing: '0.02em'
+              }}>
+                🗺️ {stateName.toUpperCase()} CONSENSUS MAP
+              </span>
+              <span style={{
+                backgroundColor: '#ecfdf5',
+                color: '#065f46',
+                border: '1px solid #a7f3d0',
+                padding: '2px 7px',
+                borderRadius: '6px',
+                fontSize: '9.5px',
+                fontWeight: 800
+              }}>
+                {lang === 'HI' ? '● भूमत दृष्टि' : '● Drishti Map'}
+              </span>
             </div>
 
             {/* Embedded Live State SVG with Beacon */}
@@ -277,7 +296,8 @@ export default function MatParchiModal({
                 {options.map((opt, idx) => {
                   const palette = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
                   const color = palette[idx % palette.length];
-                  const label = lang === 'HI' ? (opt.text_hi || opt.text_en) : opt.text_en;
+                  const rawLabel = lang === 'HI' ? (opt.text_hi || opt.text_en) : opt.text_en;
+                  const label = rawLabel ? rawLabel.split('(')[0].trim() : '';
                   return (
                     <div key={opt.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 800, color: '#334155' }}>
                       <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
@@ -293,10 +313,10 @@ export default function MatParchiModal({
           {canShowStance ? (
             <div style={{ backgroundColor: '#ecfdf5', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #a7f3d0' }}>
               <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 800, textTransform: 'uppercase' }}>
-                {lang === 'HI' ? 'दर्ज मत (My Stance)' : 'My Cast Stance'}
+                {lang === 'HI' ? 'दर्ज मत (My Vote)' : 'My Vote'}
               </div>
               <div style={{ fontSize: '14px', fontWeight: 900, color: '#065f46', marginTop: '2px' }}>
-                ✓ {selectedOptionText}
+                ✓ {selectedOptionText ? selectedOptionText.split('(')[0].trim() : ''}
               </div>
             </div>
           ) : (

@@ -1234,7 +1234,18 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;
 
                   return (
-                    <div key={opt.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div
+                      key={opt.id}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        padding: isUserChoice ? '6px 8px' : '0',
+                        borderRadius: isUserChoice ? '10px' : '0',
+                        backgroundColor: isUserChoice ? `${optColor}0A` : 'transparent',
+                        borderLeft: isUserChoice ? `3px solid ${optColor}` : 'none'
+                      }}
+                    >
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                           <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: optColor, marginTop: '4px', flexShrink: 0 }} />
@@ -1250,12 +1261,7 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {isUserChoice && (
-                            <span style={{ fontSize: '10px', color: '#059669', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, whiteSpace: 'nowrap' }}>
-                              ✓ {lang === 'HI' ? 'आप' : 'You'}
-                            </span>
-                          )}
-                          <span style={{ fontWeight: 900, color: optColor, minWidth: '38px', textAlign: 'right', fontSize: '14px' }}>
+                          <span style={{ fontWeight: 900, color: optColor, minWidth: '38px', textAlign: 'right', fontSize: '14px', fontVariantNumeric: 'tabular-nums' }}>
                             {optPct}%
                           </span>
                         </div>
@@ -1316,34 +1322,15 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                 display: isAllBallotsFlipped ? 'block' : 'none'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
-                    📈 {lang === 'HI' ? 'जनमत प्रवृत्ति वक्र (समय अनुसार)' : 'Public Sentiment vs. Time Curve'}
-                  </div>
-                  <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
-                    {telemetryHorizon === 'CURRENT'
-                      ? (lang === 'HI' ? 'सक्रिय चक्र (दैनिक प्रगति)' : 'Active Cycle (Daily Trajectory)')
-                      : (lang === 'HI' ? 'सर्वकालिक बहु-चक्र तुलना' : 'All-Time Multi-Cycle Progression')}
-                  </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                  📈 {lang === 'HI' ? 'जनमत प्रवृत्ति वक्र (समय अनुसार)' : 'Public Sentiment vs. Time Curve'}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAllBallotsFlipped(false)}
-                  style={{
-                    background: '#f1f5f9',
-                    border: '1.2px solid #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '5px 10px',
-                    fontSize: '11px',
-                    fontWeight: 750,
-                    color: '#334155',
-                    cursor: 'pointer',
-                    lineHeight: 1
-                  }}
-                >
-                  ↺ {lang === 'HI' ? 'बार देखें' : 'View Bars'}
-                </button>
+                <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
+                  {telemetryHorizon === 'CURRENT'
+                    ? (lang === 'HI' ? 'सक्रिय चक्र (दैनिक प्रगति)' : 'Active Cycle (Daily Trajectory)')
+                    : (lang === 'HI' ? 'सर्वकालिक बहु-चक्र तुलना' : 'All-Time Multi-Cycle Progression')}
+                </div>
               </div>
 
               {/* Dynamic Momentum & Inflection Time Series Graph */}
@@ -1461,6 +1448,37 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   );
                 })}
               </div>
+
+              {/* View Bars Button (Placed Row Below Options) */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginTop: '16px',
+                paddingTop: '12px',
+                borderTop: '1px dashed #cbd5e1'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setIsAllBallotsFlipped(false)}
+                  style={{
+                    background: '#f8fafc',
+                    border: '1.2px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '11px',
+                    fontWeight: 750,
+                    color: '#0284c7',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    lineHeight: 1
+                  }}
+                >
+                  <span>📊</span>
+                  <span>{lang === 'HI' ? 'बार विश्लेषण देखें ↺' : 'View Breakdown Bars ↺'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1522,10 +1540,12 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               height: '32px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              padding: '0 4px',
+              lineHeight: 1.25
             }}>
               {(consensusSummary?.bharat?.total || 0) > 0
-                ? (poll.options[consensusSummary.bharat.lead_id]?.text_en || 'Leading')
+                ? ((poll.options[consensusSummary.bharat.lead_id]?.text_en || 'Leading').split('(')[0].trim())
                 : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots')}
             </div>
             <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
@@ -1564,10 +1584,12 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               height: '32px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              padding: '0 4px',
+              lineHeight: 1.25
             }}>
               {(consensusSummary?.state?.total || 0) > 0
-                ? (poll.options[consensusSummary.state.lead_id]?.text_en || 'Leading')
+                ? ((poll.options[consensusSummary.state.lead_id]?.text_en || 'Leading').split('(')[0].trim())
                 : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots')}
             </div>
             <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
@@ -1608,10 +1630,12 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               height: '32px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              padding: '0 4px',
+              lineHeight: 1.25
             }}>
               {(consensusSummary?.seat?.total || 0) > 0
-                ? (consensusSummary.seat.is_tie ? 'Split Mat (Tie)' : poll.options[consensusSummary.seat.lead_id]?.text_en || 'Leading')
+                ? (consensusSummary.seat.is_tie ? 'Split Mat' : (poll.options[consensusSummary.seat.lead_id]?.text_en || 'Leading').split('(')[0].trim())
                 : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
             <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>

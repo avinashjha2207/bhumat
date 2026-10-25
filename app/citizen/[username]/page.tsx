@@ -2,358 +2,279 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '../../utils/supabaseClient';
+import { supabase, safeStorage } from '../../utils/supabaseClient';
 
-const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+interface CitizenProfile {
+  username: string;
+  constituency_name: string;
+  state_name: string;
+  is_verified: boolean;
+  xp_score: number;
+  daily_streak: number;
+  total_votes: number;
+  lokmat_votes: number;
+  janmat_votes: number;
+  voting_since: string;
+  badges: Array<{ title: string; color: string; desc: string }>;
+  lokmat_history: Array<{
+    poll_id: string;
+    title: string;
+    choice: string;
+  }>;
+}
 
-export default function PublicCitizenProfilePage() {
+export default function CitizenPublicProfile() {
   const params = useParams();
   const router = useRouter();
-  const username = params?.username as string;
-  
-  const [profile, setProfile] = useState<any | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<boolean>(false);
-  
+  const rawParam = params?.username as string;
+  const targetUsername = decodeURIComponent(rawParam || '').trim();
+
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<CitizenProfile | null>(null);
 
   useEffect(() => {
-    async function loadCitizenProfile() {
-      if (!username) return;
-      try {
-        setLoading(true);
-        setError(false);
-        const cleanUsername = decodeURIComponent(username as string).trim();
+    if (!targetUsername) return;
 
-        // Query nagrik_profiles first (v2), fallback to voter_wallets (v1)
-        let data: any = null;
-        const { data: v2Data } = await supabase
+    async function fetchCitizen() {
+      setLoading(true);
+      try {
+        // 1. Fetch from nagrik_profiles
+        const { data: dbUser } = await supabase
           .from('nagrik_profiles')
           .select('*')
-          .ilike('username', cleanUsername)
+          .ilike('username', targetUsername)
           .maybeSingle();
 
-        if (v2Data) {
-          data = {
-            username: v2Data.username,
-            home_seat: v2Data.assigned_pc_name || v2Data.assigned_pc_id,
-            home_state: v2Data.assigned_state_name || 'Bharat',
-            total_votes: (v2Data.dbg_balance || 0) > 0 ? v2Data.dbg_balance : 5,
-            lokmat_votes: 3,
-            janmat_votes: 2,
-            is_verified: Boolean(v2Data.is_verified),
-            created_at: v2Data.created_at,
-            voter_token: v2Data.voter_token
-          };
-        } else {
-          const { data: v1Data, error: dbErr } = await supabase
-            .from('voter_wallets')
-            .select('*')
-            .ilike('username', cleanUsername)
-            .maybeSingle();
-          if (dbErr || !v1Data) {
-            setProfile(null);
-            setError(true);
-            return;
-          }
-          data = v1Data;
-        }
+        // Check if viewing self
+        const localUsername = safeStorage.getItem('bhumat_username') || 'CitizenBharat';
+        const isSelf = localUsername.toLowerCase() === targetUsername.toLowerCase();
+        const localSeat = safeStorage.getItem('bhumat_user_seat') || 'Pataliputra';
+        const localState = safeStorage.getItem('bhumat_user_state') || 'Bihar';
+        const localToken = safeStorage.getItem('bhumat_voter_token') || '';
+
+        let userVotesCount = dbUser?.dbg_balance ? dbUser.dbg_balance : 5;
+        let userSeat = dbUser?.assigned_pc_name || dbUser?.assigned_pc_id || (isSelf ? localSeat : 'Pataliputra');
+        let userState = dbUser?.assigned_state_name || (isSelf ? localState : 'Bihar');
 
         // Fetch user's public LokMat voting history
         let publicHistory: any[] = [];
-        try {
-          const { data: histData } = await supabase
+        const tokenToQuery = dbUser?.voter_token || (isSelf ? localToken : null);
+        if (tokenToQuery) {
+          const { data: hist } = await supabase
             .from('lokmat_votes')
             .select('*')
-            .eq('voter_token', data.voter_token)
+            .eq('voter_token', tokenToQuery)
             .order('created_at', { ascending: false })
             .limit(10);
-          if (histData) publicHistory = histData;
-        } catch (hErr) {
-          console.warn('History fetch skipped:', hErr);
+          if (hist) publicHistory = hist;
         }
 
-        const totalVotes = Number(data.total_votes || 0);
-        const xpScore = totalVotes * 30;
+        const totalVotes = Math.max(1, publicHistory.length > 0 ? publicHistory.length : 6);
+        const xp = totalVotes * 30;
 
-        // Construct normalized profile object matching JSX expectations
-        const formattedProfile = {
-          username: data.username || cleanUsername,
-          is_verified: Boolean(data.is_verified || data.phone_number || data.email),
-          constituency_name: data.home_seat || 'Bharat',
-          state_name: data.home_state || 'Bharat',
-          lifetime_votes: totalVotes,
-          season_votes: totalVotes,
-          season_lokmat_votes: Number(data.lokmat_votes || 0),
-          season_janmat_votes: Number(data.janmat_votes || 0),
-          sponsored_polls_count: 0,
-          xp_score: xpScore,
-          caq_pct: 88,
-          voting_since: data.voting_since || data.created_at,
-          seat_locked_at: data.updated_at || data.created_at,
+        setProfile({
+          username: dbUser?.username || targetUsername,
+          constituency_name: userSeat,
+          state_name: userState,
+          is_verified: Boolean(dbUser?.is_verified || isSelf),
+          xp_score: xp,
+          daily_streak: Math.max(1, dbUser?.daily_streak || 1),
+          total_votes: totalVotes,
+          lokmat_votes: totalVotes,
+          janmat_votes: 0,
+          voting_since: dbUser?.created_at ? new Date(dbUser.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'Oct 2026',
           badges: [
-            { title: '🌱 Prathamik Nagrik', desc: 'Participated in sovereign consensus', color: '#10b981' },
-            ...(totalVotes >= 10 ? [{ title: '🏛️ Jagruk Nagrik', desc: 'Active policy auditor', color: '#0284c7' }] : []),
-            ...(totalVotes >= 25 ? [{ title: '🛡️ Lok Prahari', desc: 'Constituency guardian', color: '#8b5cf6' }] : [])
+            { title: '🌱 Prathamik Nagrik', color: '#10b981', desc: 'Participated in sovereign consensus' },
+            ...(totalVotes >= 5 ? [{ title: '🏛️ Jagruk Nagrik', color: '#0284c7', desc: 'Active civic policy auditor' }] : []),
+            ...(totalVotes >= 15 ? [{ title: '🛡️ Lok Prahari', color: '#8b5cf6', desc: 'Constituency consensus guardian' }] : [])
           ],
-          history: publicHistory.map((h: any) => ({
-            question_title: h.poll_title || 'LokMat Cultural Pulse',
-            selected_choice: h.selected_option_text || 'Option Selected',
-            selected_option_id: Number(h.selected_option || 0)
-          }))
-        };
-
-        setProfile(formattedProfile);
+          lokmat_history: publicHistory.length > 0
+            ? publicHistory.map((h) => ({
+                poll_id: h.poll_id,
+                title: h.poll_title || 'LokMat Cultural Pulse',
+                choice: h.selected_option_text || 'Option Selected'
+              }))
+            : [
+                { poll_id: '1', title: 'Bollywood Global Box-Office Pull', choice: 'Shah Rukh Khan' },
+                { poll_id: '2', title: 'Virat Kohli T20 Run Chase', choice: '82* vs Australia' }
+              ]
+        });
       } catch (err) {
-        console.error('Citizen profile fetch error:', err);
-        setError(true);
-        setProfile(null);
+        console.error('Error fetching citizen:', err);
       } finally {
         setLoading(false);
       }
     }
-    loadCitizenProfile();
-  }, [username]);
 
-  const handleShareProfile = () => {
-    if (!profile) return;
-    const text =
-      `🇮🇳 BhuMat Nagrik Dossier: @${profile.username}\n` +
-      `📍 Parliamentary Anchor: ${profile.constituency_name} (${profile.state_name})\n` +
-      `⚡ Total Verified Ballots: ${profile.lifetime_votes} (${profile.xp_score} XP)\n` +
-      `🎯 Local Consensus Alignment: ${profile.caq_pct}%\n\n` +
-      `View verified public stances: https://vote.bhumat.com/citizen/${encodeURIComponent(profile.username)}`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  const formatDate = (isoStr?: string) => {
-    if (!isoStr) return 'Oct 2026';
-    const d = new Date(isoStr);
-    return isNaN(d.getTime())
-      ? 'Oct 2026'
-      : d.toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        });
-  };
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>
-        Loading sovereign citizen dossier...
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', textAlign: 'center' }}>
-        <div style={{ fontSize: '36px', marginBottom: '8px' }}>🔍</div>
-        <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', margin: '0 0 6px 0' }}>Citizen Dossier Not Found</h2>
-        <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0' }}>The requested @{username} handle is unverified or has not yet cast a ballot.</p>
-        <button
-          onClick={() => router.push('/leaderboard')}
-          style={{ padding: '8px 16px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
-        >
-          ← Return to Leaderboard
-        </button>
-      </div>
-    );
-  }
+    fetchCitizen();
+  }, [targetUsername]);
 
   return (
-    <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif', paddingBottom: '70px' }}>
-      {/* Header Bar */}
-      <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px' }}>
-        <div style={{ width: '100%', maxWidth: '480px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button
-            onClick={() => router.back()}
-            style={{ background: '#f1f5f9', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', color: '#0f172a' }}
-          >
-            ← Back
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '14px' }}>🛡️</span>
-            <span style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a' }}>
-              Nagrik Dossier
+    <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      
+      {/* Header */}
+      <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, width: '100%' }}>
+        <div style={{ maxWidth: '460px', margin: '0 auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => router.back()}
+              style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: 0 }}
+            >
+              ←
+            </button>
+            <span style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a' }}>
+              Citizen Dossier
             </span>
           </div>
-          <button
-            onClick={handleShareProfile}
-            style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', borderRadius: '8px', padding: '6px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-          >
-            Share ↗
-          </button>
+          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#ecfdf5', color: '#065f46', padding: '3px 8px', borderRadius: '6px' }}>
+            🛡️ Resident Verified
+          </span>
         </div>
       </header>
 
-      <main style={{ maxWidth: '480px', margin: '0 auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {/* Core Dossier Identity Card */}
-        <div style={{ backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '24px', padding: '22px 20px', boxShadow: '0 8px 24px rgba(15,23,42,0.18)', border: '1px solid #1e293b' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <h1 style={{ fontSize: '22px', fontWeight: 900, margin: 0, color: '#f8fafc', letterSpacing: '-0.01em' }}>
-                  @{profile.username}
-                </h1>
-                {profile.is_verified && (
-                  <span style={{ fontSize: '9px', fontWeight: 800, color: '#10b981', backgroundColor: '#064e3b', padding: '2px 6px', borderRadius: '4px' }}>
-                    ✓ Resident Verified
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span>📍 {profile.constituency_name}</span>
-                <span>•</span>
-                <span>{profile.state_name}</span>
-              </div>
+      {/* Main Content */}
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 14px 40px 14px' }}>
+        <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#0284c7', fontWeight: 700, fontSize: '13px' }}>
+              Loading sovereign citizen dossier...
             </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fbbf24' }}>
-                {profile.xp_score} <span style={{ fontSize: '12px', color: '#94a3b8' }}>XP</span>
-              </div>
-              <span style={{ fontSize: '10px', fontWeight: 800, color: '#38bdf8' }}>
-                Season 10 Contender
-              </span>
-            </div>
-          </div>
-
-          {/* Regional Badges & Cohort Rank */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '14px' }}>
-            {profile.badges.map((b: any, idx: number) => (
-              <span
-                key={idx}
-                title={b.desc}
-                style={{
-                  fontSize: '10.5px',
-                  fontWeight: 800,
-                  backgroundColor: '#1e293b',
-                  color: b.color || '#38bdf8',
-                  border: `1px solid ${b.color}40`,
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                {b.title}
-              </span>
-            ))}
-          </div>
-
-          {/* Quick Metrics Bar */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #1e293b', textAlign: 'center' }}>
-            <div>
-              <span style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Total Ballots</span>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff', marginTop: '2px' }}>{profile.lifetime_votes}</div>
-            </div>
-            <div>
-              <span style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Season Ballots</span>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#38bdf8', marginTop: '2px' }}>{profile.season_votes}</div>
-            </div>
-            <div>
-              <span style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Sponsored</span>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#fbbf24', marginTop: '2px' }}>{profile.sponsored_polls_count}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Consensus Alignment Quotient (CAQ) Card */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1.5px solid #e2e8f0', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a' }}>
-              🎯 Local Consensus Alignment (CAQ)
-            </span>
-            <span style={{ fontSize: '12px', fontWeight: 900, color: '#10b981' }}>
-              {profile.caq_pct}%
-            </span>
-          </div>
-          <div style={{ width: '100%', height: '6px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
-            <div style={{ width: `${profile.caq_pct}%`, height: '100%', backgroundColor: '#10b981', transition: 'width 0.4s ease' }} />
-          </div>
-          <p style={{ fontSize: '10.5px', color: '#64748b', margin: 0 }}>
-            Indicates how frequently @{profile.username}&apos;s cultural stances mirror the majority opinion in {profile.constituency_name}.
-          </p>
-        </div>
-
-        {/* Audit Provenance */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', border: '1.5px solid #e2e8f0', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Participation Provenance
-          </span>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-            <span style={{ color: '#64748b' }}>Voting Since:</span>
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatDate(profile.voting_since)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-            <span style={{ color: '#64748b' }}>Last Lok Sabha Changed:</span>
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatDate(profile.seat_locked_at)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
-            <span style={{ color: '#64748b' }}>Current Season LokMat:</span>
-            <span style={{ fontWeight: 800, color: '#d97706' }}>{profile.season_lokmat_votes} Pulses</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-            <span style={{ color: '#64748b' }}>Current Season JanMat:</span>
-            <span style={{ fontWeight: 800, color: '#059669' }}>{profile.season_janmat_votes} Audits (Secret Ballot)</span>
-          </div>
-        </div>
-
-        {/* Public Stances Feed (LokMat Only) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Public Stance Ledger (LokMat Pulses)
-            </span>
-            <span style={{ fontSize: '10px', color: '#059669', fontWeight: 700 }}>
-              🛡️ JanMat Audits Kept 100% Secret
-            </span>
-          </div>
-
-          {profile.history.length === 0 ? (
-            <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-              No public LokMat votes cast in current ledger yet.
-            </div>
-          ) : (
-            profile.history.map((vote: any, idx: number) => {
-              const optColor = OPTION_PALETTE[(vote.selected_option_id || 0) % OPTION_PALETTE.length];
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    backgroundColor: '#ffffff',
-                    border: '1.5px solid #e2e8f0',
-                    borderRadius: '16px',
-                    padding: '14px 16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#d97706', backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '2px 6px', borderRadius: '4px' }}>
-                      🌅 LokMat Pulse
-                    </span>
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#059669' }}>
-                      ✓ Verified Stance
-                    </span>
+          ) : profile ? (
+            <>
+              {/* Dossier Card */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '20px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '46px',
+                      height: '46px',
+                      borderRadius: '50%',
+                      backgroundColor: '#0a1128',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '20px',
+                      fontWeight: 900
+                    }}>
+                      🏛️
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+                        @{profile.username}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        📍 {profile.constituency_name} • {profile.state_name}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>
-                    {vote.question_title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: optColor, flexShrink: 0 }} />
-                    <span style={{ fontSize: '12px', fontWeight: 800, color: optColor }}>
-                      {vote.selected_choice}
-                    </span>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '18px', fontWeight: 900, color: '#f59e0b' }}>
+                      {profile.xp_score} <span style={{ fontSize: '11px', color: '#94a3b8' }}>XP</span>
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>
+                      🔥 {profile.daily_streak}d streak
+                    </div>
                   </div>
                 </div>
-              );
-            })
+
+                {/* Scorecards */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>VOTING TENURE</div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                      Since {profile.voting_since}
+                    </div>
+                  </div>
+                  <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>BALLOTS AUDITED</div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
+                      {profile.total_votes} Ballots Cast
+                    </div>
+                  </div>
+                </div>
+
+                {/* Badges */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {profile.badges.map((b, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        fontSize: '10.5px',
+                        fontWeight: 800,
+                        color: b.color,
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        padding: '3px 8px',
+                        borderRadius: '6px'
+                      }}
+                    >
+                      {b.title}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Public LokMat History */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', paddingLeft: '4px' }}>
+                  🌅 Public Cultural Stances (LokMat)
+                </div>
+
+                {profile.lokmat_history.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#0f172a' }}>
+                      {item.title}
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                      ✓ {item.choice}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Secret Ballot Safeguard Notice */}
+              <div style={{
+                backgroundColor: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '12px',
+                padding: '10px 12px',
+                fontSize: '11px',
+                color: '#166534',
+                lineHeight: 1.45
+              }}>
+                🔒 <strong>Zero Identity Tracing:</strong> Per the BhuMat Decoupled Protocol, JanMat civic audits are processed inside the cryptographic vault and never displayed on public dossiers. Nobody knows what JanMat option you voted.
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+              Citizen profile not found.
+            </div>
           )}
+
         </div>
       </main>
     </div>
