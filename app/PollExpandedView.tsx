@@ -111,6 +111,7 @@ export default function PollExpandedView({
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
   const [activeInfoPopup, setActiveInfoPopup] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeScorecardTooltip, setActiveScorecardTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [mapTooltip, setMapTooltip] = useState<{
     seatName: string;
     stateName: string;
@@ -1088,9 +1089,15 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
       </header>
 
       {/* Ticker Tape */}
-      <div style={{ padding: '8px 14px 0 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        <TickerTape key={`expanded_ticker_${poll.id}`} activePoll={poll} lang={lang} />
-      </div>
+    <div style={{ padding: '8px 14px 0 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+      <TickerTape
+        key={`expanded_ticker_${poll.id}`}
+        tallies={initialTallies}
+        options={poll.options}
+        pollCategory={poll.category}
+        lang={lang}
+      />
+    </div>
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '12px 14px', maxWidth: '460px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
@@ -1492,9 +1499,14 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                 </span>
                 <span 
                   onClick={(e) => {
-                    e.stopPropagation();
-                    alert(lang === 'HI' ? 'अखिल भारतीय स्तर पर इस प्रश्न का वर्तमान सबसे प्रमुख विकल्प।' : 'National consensus: The leading option chosen across all 543 parliamentary seats.');
-                  }}
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setActiveScorecardTooltip({
+                    text: lang === 'HI' ? 'अखिल भारतीय स्तर पर 543 सीटों में अग्रणी जनमत।' : 'National consensus: Leading public opinion across all 543 parliamentary seats.',
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 8
+                  });
+                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
+                }}
                   style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
                 >
                   ⓘ
@@ -1529,9 +1541,14 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                 </span>
                 <span 
                   onClick={(e) => {
-                    e.stopPropagation();
-                    alert(lang === 'HI' ? `राज्य स्तर (${userState}) पर सबसे प्रमुख विकल्प।` : `State consensus: The leading option chosen across ${userState}.`);
-                  }}
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setActiveScorecardTooltip({
+                    text: lang === 'HI' ? `सम्पूर्ण ${userState || 'राज्य'} में अग्रणी जनमत।` : `State consensus: Leading public opinion across ${userState || 'state'} constituencies.`,
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 8
+                  });
+                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
+                }}
                   style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
                 >
                   ⓘ
@@ -1566,9 +1583,14 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                 </span>
                 <span 
                   onClick={(e) => {
-                    e.stopPropagation();
-                    alert(lang === 'HI' ? `आपके संसदीय क्षेत्र (${userSeatName}) का स्थानीय जनमत परिणाम।` : `Constituency consensus: The verified local result for ${userSeatName}.`);
-                  }}
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setActiveScorecardTooltip({
+                    text: lang === 'HI' ? `${userSeatName || 'संसदीय सीट'} में अग्रणी जनमत।` : `Constituency consensus: Leading public opinion in ${userSeatName || 'your seat'}.`,
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 8
+                  });
+                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
+                }}
                   style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
                 >
                   ⓘ
@@ -2187,6 +2209,33 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
 />
 
       </main>
+      {/* Non-Blocking Floating Scorecard Tooltip */}
+      {activeScorecardTooltip && (
+        <div
+          onClick={() => setActiveScorecardTooltip(null)}
+          style={{
+            position: 'fixed',
+            left: `${activeScorecardTooltip.x}px`,
+            top: `${activeScorecardTooltip.y}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 300,
+            backgroundColor: '#0f172a',
+            color: '#f8fafc',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            fontSize: '11px',
+            fontWeight: 700,
+            maxWidth: '220px',
+            textAlign: 'center',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            border: '1px solid #334155',
+            cursor: 'pointer',
+            lineHeight: 1.35
+          }}
+        >
+          {activeScorecardTooltip.text}
+        </div>
+      )}
     </div>
   );
 }

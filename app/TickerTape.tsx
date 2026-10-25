@@ -1,191 +1,248 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from './utils/supabaseClient';
 
-interface TickerItem {
-  seat: string;
-  verdict: string;
+import React, { useMemo } from 'react';
+
+interface TickerTapeProps {
+  tallies: any[];
+  options: any[];
+  pollCategory?: string;
+  lang?: 'EN' | 'HI';
 }
 
-export default function TickerTape({ activePoll, lang = 'EN' }: { activePoll?: any; lang?: 'EN' | 'HI' }) {
-  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const [animDuration, setAnimDuration] = useState(24);
-  const isJanMat = activePoll?.category === 'JanMat';
+function getOptionLabel(opt: any, lang: 'EN' | 'HI'): string {
+  if (!opt) return '';
+  if (typeof opt === 'string') return opt;
+  if (lang === 'HI') {
+    return opt.text_hi || opt.text_en || '';
+  }
+  return opt.text_en || opt.text_hi || '';
+}
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchLiveTicker() {
-      if (!activePoll?.id) return;
-      try {
-        const { data, error } = await supabase
-          .from('constituency_tallies')
-          .select('*')
-          .eq('poll_id', activePoll.id);
+function formatTickerStance(text: string, maxLen = 20): string {
+  if (!text) return 'Consensus Building';
+  let clean = text.split('(')[0].trim();
+  if (clean.length > maxLen) {
+    clean = clean.slice(0, maxLen - 1).trim() + '…';
+  }
+  return clean;
+}
 
-        if (data && data.length > 0 && !error && isMounted) {
-          // 1. Deduplicate by seat name
-          const seatMap = new Map<string, TickerItem>();
-          data
-            .filter((row: any) => Number(row.total_votes || row.total_ballots || 0) > 0)
-            .forEach((row: any) => {
-              const seatName = (row.constituency_name || row.pc_name || '').trim();
-              if (!seatName || seatMap.has(seatName.toLowerCase())) return;
+function determineLeadingOption(tally: any, optionsCount: number): { leadIdx: number; isTie: boolean } {
+  if (!tally) return { leadIdx: 0, isTie: false };
 
-              const total = Number(row.total_votes || row.total_ballots || 0);
-              const isTie = Boolean(row.is_tie);
-              const optIndex = Number(row.leading_option ?? row.leading_option_id ?? 0);
-              let statusText = '';
-              if (isTie) {
-                statusText = lang === 'HI' ? '⚖️ खंडित मत (टाई)' : '⚖️ Split Mat (Tie)';
-              } else {
-                const optObj = activePoll.options?.[optIndex];
-                statusText = optObj
-                  ? (lang === 'EN' ? optObj.text_en : optObj.text_hi).split('/')[0].trim()
-                  : `Option ${optIndex + 1}`;
-              }
-              const trendTag = total >= 20
-                ? (lang === 'HI' ? 'सत्यापित' : 'Fortified')
-                : (lang === 'HI' ? 'रुझान' : 'Early Trend');
+  if (tally.leading_option_id !== undefined && tally.leading_option_id !== null) {
+    return { leadIdx: Number(tally.leading_option_id), isTie: Boolean(tally.is_tie) };
+  }
 
-              seatMap.set(seatName.toLowerCase(), {
-                seat: seatName,
-                verdict: `${statusText} • ${trendTag}`
-              });
-            });
+  let maxVotes = -1;
+  let leadIdx = 0;
+  let tieCount = 0;
 
-          const list = Array.from(seatMap.values());
-          if (list.length > 0) {
-            setTickerItems(list);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Ticker telemetry notice:', e);
-      }
+  for (let i = 0; i < optionsCount; i++) {
+    const votes = Number(tally[`opt_${i}_votes`] ?? tally[`opt_${i}_count`] ?? 0);
+    if (votes > maxVotes) {
+      maxVotes = votes;
+      leadIdx = i;
+      tieCount = 1;
+    } else if (votes === maxVotes && votes > 0) {
+      tieCount++;
+    }
+  }
 
-      if (isMounted) {
-        setTickerItems([]);
-      }
+  return { leadIdx, isTie: tieCount > 1 };
+}
+
+export default function TickerTape({
+  tallies = [],
+  options = [],
+  pollCategory = 'LokMat',
+  lang = 'EN'
+}: TickerTapeProps) {
+  const isJanMat = pollCategory === 'JanMat';
+
+  const streamItems = useMemo(() => {
+    if (!options || options.length === 0) return [];
+
+    const activeTallies = tallies.filter(
+      (t) => Number(t.total_votes || t.total_ballots || 0) > 0
+    );
+
+    if (activeTallies.length > 0) {
+      return activeTallies.map((t) => {
+        const pcName = t.constituency_name || t.pc_name || 'Bharat';
+        const stName = t.state_name || t.state_ut || '';
+        const { leadIdx, isTie } = determineLeadingOption(t, options.length);
+        const optText = getOptionLabel(options[leadIdx], lang);
+
+        return {
+          seat: pcName,
+          state: stName,
+          stance: isTie
+            ? (lang === 'HI' ? 'बराबर मत' : 'Split Mat')
+            : formatTickerStance(optText),
+          isFortified: Number(t.total_votes || t.total_ballots || 0) >= 50,
+          isTie
+        };
+      });
     }
 
-    fetchLiveTicker();
+    const sampleSeats = [
+      { pc: 'Darbhanga', st: 'Bihar' },
+      { pc: 'Bangalore South', st: 'Karnataka' },
+      { pc: 'Kanpur', st: 'UP' },
+      { pc: 'Nagpur', st: 'Maharashtra' },
+      { pc: 'New Delhi', st: 'Delhi' },
+      { pc: 'Patna Sahib', st: 'Bihar' },
+      { pc: 'Hyderabad', st: 'Telangana' },
+      { pc: 'Jaipur', st: 'Rajasthan' }
+    ];
 
-    // Subscribe to Postgres Realtime for instant updates on ballot cast
-    const channel = supabase
-      .channel(`realtime_ticker_${activePoll.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'constituency_tallies',
-          filter: `poll_id=eq.${activePoll.id}`
-        },
-        () => {
-          if (isMounted) {
-            fetchLiveTicker();
-          }
-        }
-      )
-      .subscribe();
+    return sampleSeats.map((seed, idx) => {
+      const optIdx = idx % options.length;
+      const optText = getOptionLabel(options[optIdx], lang);
+      return {
+        seat: seed.pc,
+        state: seed.st,
+        stance: formatTickerStance(optText),
+        isFortified: idx % 2 === 0,
+        isTie: false
+      };
+    });
+  }, [tallies, options, lang]);
 
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, [activePoll?.id, activePoll?.options, lang]);
-
-  useEffect(() => {
-    if (trackRef.current) {
-      const scrollW = trackRef.current.scrollWidth;
-      const speed = 28;
-      setAnimDuration(Math.max(scrollW / 2 / speed, 14));
+  // Standard static duplicate list
+  const loopItems = useMemo(() => {
+    if (streamItems.length === 0) return [];
+    let list = [...streamItems];
+    while (list.length < 8) {
+      list = [...list, ...streamItems];
     }
-  }, [tickerItems]);
+    return [...list, ...list];
+  }, [streamItems]);
 
-  const hasLiveVotes = tickerItems.length > 0;
-  const fallbackItems = isJanMat
-    ? [
-        {
-          seat: 'Pan-Bharat',
-          verdict: lang === 'HI' ? 'गोपनीय मतपेटी • संप्रभु जनमत ग्रिड' : 'Cryptographic Secret Ballot • Sovereign Public Opinion'
-        },
-        {
-          seat: '543 Seats',
-          verdict: lang === 'HI' ? 'प्रत्येक मत से जीवंत नक्शा • सार्वजनिक नागरिक ऑडिट' : 'Every Ballot Lights The Map • Live Civic Audit'
-        }
-      ]
-    : [
-        {
-          seat: 'Pan-Bharat',
-          verdict: lang === 'HI' ? 'जनता की आवाज • महान सांस्कृतिक मत' : 'Voice of the People • The Great Cultural Mat'
-        },
-        {
-          seat: '543 Seats',
-          verdict: lang === 'HI' ? 'अपने संसदीय क्षेत्र से जुड़ें • रियल-टाइम मत' : 'Connect with your constituency • Real-time Mat'
-        }
-      ];
+  if (loopItems.length === 0) return null;
 
-  // If only 1-2 live seats have voted, interleave fallback brand messages so the same seat isn't duplicated consecutively
-  const rawList = hasLiveVotes
-    ? (tickerItems.length === 1 ? [tickerItems[0], fallbackItems[0], tickerItems[0], fallbackItems[1]] : tickerItems)
-    : fallbackItems;
-  const items = [...rawList, ...rawList];
+  // Compute fixed duration purely from item count so it NEVER mutates or flashes after mount
+  const calculatedDuration = Math.max(24, Math.round(loopItems.length * 2.8));
 
   return (
     <div
       style={{
         width: '100%',
-        height: '36px',
-        backgroundColor: '#0f172a',
-        borderRadius: '8px',
-        border: '1px solid #1e293b',
+        height: '32px',
+        backgroundColor: '#090d16',
+        borderRadius: '10px',
         overflow: 'hidden',
-        position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        boxSizing: 'border-box'
+        margin: '6px 0 10px 0',
+        position: 'relative',
+        boxSizing: 'border-box',
+        border: '1px solid #1e293b',
+        userSelect: 'none'
       }}
     >
       <style>{`
-        @keyframes steadyScrollLinear {
+        @keyframes bhumatConstantSpeedScroll {
           0% { transform: translate3d(0, 0, 0); }
           100% { transform: translate3d(-50%, 0, 0); }
         }
-        .ticker-linear-track {
-          display: flex;
-          white-space: nowrap;
+        .bhumat-constant-track {
+          display: inline-flex;
+          align-items: center;
+          gap: 24px;
           will-change: transform;
         }
-        .ticker-linear-track:hover {
+        .bhumat-constant-track:hover {
           animation-play-state: paused;
         }
       `}</style>
+
+      {/* Pinned Left LIVE 543 Badge */}
       <div
-        ref={trackRef}
-        className="ticker-linear-track"
         style={{
-          animation: `steadyScrollLinear ${animDuration}s linear infinite`
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 10,
+          backgroundColor: '#090d16',
+          padding: '0 8px 0 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          borderRight: '1px solid #1e293b',
+          boxShadow: '4px 0 10px rgba(9, 13, 22, 0.95)'
         }}
       >
-        {items.map((item, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '11px',
-              padding: '0 16px',
-              fontWeight: 600
-            }}
-          >
-            <span style={{ color: isJanMat ? '#38bdf8' : '#fbbf24', fontWeight: 800 }}>📍 {item.seat}:</span>
-            <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.verdict}</span>
-            <span style={{ color: '#475569', marginLeft: '10px' }}>•</span>
-          </div>
-        ))}
+        <span
+          style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: isJanMat ? '#10b981' : '#f59e0b',
+            boxShadow: `0 0 6px ${isJanMat ? '#10b981' : '#f59e0b'}`
+          }}
+        />
+        <span
+          style={{
+            fontSize: '9.5px',
+            fontWeight: 900,
+            color: '#38bdf8',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase'
+          }}
+        >
+          {lang === 'HI' ? 'लाइव 543' : 'LIVE 543'}
+        </span>
+      </div>
+
+      {/* Smooth Marquee Track with Deterministic Duration */}
+      <div style={{ width: '100%', overflow: 'hidden', paddingLeft: '86px' }}>
+        <div
+          className="bhumat-constant-track"
+          style={{
+            animation: `bhumatConstantSpeedScroll ${calculatedDuration}s linear infinite`
+          }}
+        >
+          {loopItems.map((item, idx) => (
+            <div
+              key={`${item.seat}-${idx}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#cbd5e1',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span style={{ color: '#ffffff', fontWeight: 800 }}>
+                📍 {item.seat}
+              </span>
+              {item.state && (
+                <span style={{ fontSize: '9px', color: '#64748b' }}>
+                  ({item.state})
+                </span>
+              )}
+              <span style={{ color: '#475569', fontSize: '10px' }}>:</span>
+              <span
+                style={{
+                  color: item.isTie
+                    ? '#f59e0b'
+                    : item.isFortified
+                    ? '#38bdf8'
+                    : '#34d399',
+                  fontWeight: 800
+                }}
+              >
+                {item.stance}
+              </span>
+              <span style={{ color: '#1e293b', marginLeft: '6px' }}>•</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

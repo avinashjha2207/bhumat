@@ -57,8 +57,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={notoDevanagari.variable}>
-      <body className={notoDevanagari.className}>
+    <html lang="en">
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=overlays-content"
+        />
+      </head>
+      <body style={{ margin: 0, padding: 0, backgroundColor: '#f8fafc' }}>
         {children}
       </body>
     </html>

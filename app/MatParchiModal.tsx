@@ -59,19 +59,36 @@ export default function MatParchiModal({
   const handleWhatsAppTextShare = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vote.bhumat.com';
     const cleanSeatParam = encodeURIComponent(seatName);
+    const cleanPollParam = pollId ? `&poll=${encodeURIComponent(pollId)}` : '';
 
-    let stanceText = '';
-    if (canShowStance) {
-      stanceText = lang === 'HI' ? `\n🗳️ *मेरा मत:* ${selectedOptionText}` : `\n🗳️ *My Stance:* ${selectedOptionText}`;
+    let stanceSnippet = '';
+    if (canShowStance && selectedOptionText) {
+      stanceSnippet = lang === 'HI'
+        ? `\n🗳️ *मेरा रुख:* ${selectedOptionText}`
+        : `\n🗳️ *My Stance:* ${selectedOptionText}`;
     } else if (isJanMat) {
-      stanceText = lang === 'HI' ? `\n🔒 *प्रकार:* 100% गोपनीय प्रशासनिक ऑडिट` : `\n🔒 *Type:* 100% Anonymous Governance Audit`;
+      stanceSnippet = lang === 'HI'
+        ? `\n🔒 *ऑडिट प्रकार:* 100% गोपनीय मतपेटी (Zero Tracking)`
+        : `\n🔒 *Audit Nature:* 100% Anonymous Ballot (Zero Tracking)`;
     }
 
-    const text = lang === 'HI'
-      ? `🇮🇳 मैंने अभी भूमत पर अपनी संसदीय सीट *${seatName}* (${stateName}) से मत दिया!\n\n📋 *मुद्दा:* ${pollTitle}${stanceText}\n⏱️ *समय:* ${dateStr}, ${timeStr}\n\nआप भी अपने लोकसभा क्षेत्र को राष्ट्रीय मानचित्र पर आगे बढ़ाएं:\n👉 ${origin}?seat=${cleanSeatParam}&ref=${referralCode}`
-      : `🇮🇳 I just cast my ballot on BhuMat from *${seatName}* (${stateName})!\n\n📋 *Issue:* ${pollTitle}${stanceText}\n⏱️ *Time:* ${dateStr}, ${timeStr}\n\nPut your home constituency on Bharat's live map:\n👉 ${origin}?seat=${cleanSeatParam}&ref=${referralCode}`;
+    const shareText = lang === 'HI'
+      ? `🇮🇳 *भूमत जनमत मुकाबला • ${seatName} (${stateName})*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📋 *मुद्दा:* ${pollTitle}\n` +
+        `${stanceSnippet}\n\n` +
+        `⚔️ *क्षेत्रीय चुनौती:* क्या ${seatName} राज्य औसत से सहमत है या अलग सोचता है?\n\n` +
+        `👉 *1-टैप में मत दें और अपने क्षेत्र का नक्शा देखें:*\n` +
+        `${origin}?seat=${cleanSeatParam}${cleanPollParam}&ref=${referralCode}`
+      : `🇮🇳 *BhuMat Public Opinion Alert • ${seatName} (${stateName})*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📋 *Issue:* ${pollTitle}\n` +
+        `${stanceSnippet}\n\n` +
+        `⚔️ *Regional Challenge:* Does ${seatName} agree with the state average or stand apart?\n\n` +
+        `👉 *Cast your 1-tap vote and unlock ${seatName} constituency map:*\n` +
+        `${origin}?seat=${cleanSeatParam}${cleanPollParam}&ref=${referralCode}`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
   };
 
   // 2. High-Resolution Visual PNG Share/Download Handler
@@ -153,7 +170,7 @@ export default function MatParchiModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '15px' }}>🇮🇳</span>
             <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Bharat Civic Consensus'}
+              {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Bharat Public Opinion'}
             </span>
           </div>
           <button
@@ -245,6 +262,31 @@ export default function MatParchiModal({
               pollId={pollId}
               options={options}
             />
+
+            {/* Option Color Legend Strip */}
+            {options && options.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px 10px',
+                marginTop: '6px',
+                paddingTop: '6px',
+                borderTop: '1px dashed #cbd5e1',
+                justifyContent: 'center'
+              }}>
+                {options.map((opt, idx) => {
+                  const palette = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+                  const color = palette[idx % palette.length];
+                  const label = lang === 'HI' ? (opt.text_hi || opt.text_en) : opt.text_en;
+                  return (
+                    <div key={opt.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 800, color: '#334155' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                      <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Stance or Cryptographic Shield Row */}
