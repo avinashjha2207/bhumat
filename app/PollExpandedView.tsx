@@ -1227,14 +1227,23 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {poll.options.map((opt, idx) => {
                   const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
-                  const activeTotalVotes = poll.options.reduce((totalAcc, _, oIndex) => {
-                    return totalAcc + tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIndex}_votes`] ?? r[`opt_${oIndex}_count`] ?? 0)), 0);
-                  }, 0);
-                  const optCount = tallies.reduce((sum, r) => {
-                    const c = Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? r[`option_${idx}_votes`]) || 0;
-                    return sum + c;
-                  }, 0);
-                  const optPct = activeTotalVotes > 0 ? Math.round((optCount / activeTotalVotes) * 100) : 0;
+                  const activeCounts = poll.options.map((_, oIdx) =>
+                    tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIdx}_votes`] ?? r[`opt_${oIdx}_count`] ?? 0)), 0)
+                  );
+                  const activeTotalVotes = activeCounts.reduce((a, b) => a + b, 0);
+
+                  // Largest Remainder Method: Guarantees strict 100% sum across all options
+                  const optPct = (() => {
+                    if (activeTotalVotes === 0) return Math.round(100 / poll.options.length);
+                    const exacts = activeCounts.map(c => (c / activeTotalVotes) * 100);
+                    const floors = exacts.map(e => Math.floor(e));
+                    let deficit = 100 - floors.reduce((a, b) => a + b, 0);
+                    const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+                    for (let r = 0; r < deficit; r++) {
+                      floors[diffs[r % diffs.length].i] += 1;
+                    }
+                    return floors[idx] ?? 0;
+                  })();
                   const isUserChoice = poll.category !== 'JanMat' && userVotedOptionIdx === idx;
                   const primaryText = lang === 'EN' ? opt.text_en : opt.text_hi;
                   const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;
@@ -1359,13 +1368,21 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   const activeTotalSum = poll.options.reduce((acc, _, oIdx) => {
                     return acc + tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIdx}_votes`] ?? r[`opt_${oIdx}_count`] ?? 0)), 0);
                   }, 0);
-                  const terminalPercentages = poll.options.map((_, idx) => {
-                    const optCount = tallies.reduce((sum, r) => {
-                      const c = Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0);
-                      return sum + c;
-                    }, 0);
-                    return activeTotalSum > 0 ? Math.round((optCount / activeTotalSum) * 100) : Math.round(100 / poll.options.length);
-                  });
+                  const optionVoteCounts = poll.options.map((_, oIdx) =>
+                    tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIdx}_votes`] ?? r[`opt_${oIdx}_count`] ?? 0)), 0)
+                  );
+                  // Apply Largest Remainder Method so curve endpoints match the breakdown bars exactly
+                  const terminalPercentages = (() => {
+                    if (activeTotalSum === 0) return poll.options.map(() => Math.round(100 / poll.options.length));
+                    const exacts = optionVoteCounts.map(c => (c / activeTotalSum) * 100);
+                    const floors = exacts.map(e => Math.floor(e));
+                    let deficit = 100 - floors.reduce((a, b) => a + b, 0);
+                    const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+                    for (let r = 0; r < deficit; r++) {
+                      floors[diffs[r % diffs.length].i] += 1;
+                    }
+                    return floors;
+                  })();
 
                   // 8-Node Inflection Sampling across timeline (captures spikes, surges & crossovers)
                   const sampleNodes = [0, 0.15, 0.32, 0.48, 0.65, 0.8, 0.92, 1.0];

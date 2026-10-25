@@ -2224,15 +2224,25 @@ export default function BhuMatApp() {
                                   const isUserChoice = !isJanMat && userChoiceIdx === idx;
                                   const showChoiceHighlight = isUserChoice && hasVotedThisCycle;
                                   const pollTallies = cachedTalliesByPoll[poll.id] || [];
-                    const activeTotalVotes = poll.options.reduce((acc: number, _: any, oIdx: number) => {
-                      return acc + pollTallies.reduce((sum: number, t: any) => {
-                        return sum + Number(t[`opt_${oIdx}_votes`] ?? t[`opt_${oIdx}_count`] ?? 0);
-                      }, 0);
-                    }, 0);
-                    const natOptVotes = pollTallies.reduce((sum: number, t: any) => {
-                      return sum + Number(t[`opt_${idx}_votes`] ?? t[`opt_${idx}_count`] ?? 0);
-                    }, 0);
-                    const optPct = activeTotalVotes > 0 ? Math.round((natOptVotes / activeTotalVotes) * 100) : 0;
+                                  const activeCounts = poll.options.map((_, oIdx) =>
+                                    pollTallies.reduce((sum: number, t: any) => {
+                                      return sum + Number(t[`opt_${oIdx}_votes`] ?? t[`opt_${oIdx}_count`] ?? 0);
+                                    }, 0)
+                                  );
+                                  const activeTotalVotes = activeCounts.reduce((a, b) => a + b, 0);
+                                  
+                                  // Largest Remainder Method: Guarantees strict 100% sum
+                                  const optPct = (() => {
+                                    if (activeTotalVotes === 0) return Math.round(100 / poll.options.length);
+                                    const exacts = activeCounts.map(c => (c / activeTotalVotes) * 100);
+                                    const floors = exacts.map(e => Math.floor(e));
+                                    let rem = 100 - floors.reduce((a, b) => a + b, 0);
+                                    const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+                                    for (let r = 0; r < rem; r++) {
+                                      floors[diffs[r % diffs.length].i] += 1;
+                                    }
+                                    return floors[idx] ?? 0;
+                                  })();
                                   return (
                                     <button
                                       key={opt.id}
@@ -2470,20 +2480,48 @@ export default function BhuMatApp() {
                                 : (poll.current_cycle || 'lifetime');
                               const userChoice = sessionBallotChoices[`${poll.id}___${dynamicCycle}`];
                               const tallies = cachedTalliesByPoll[poll.id] || [];
-                              const seatNorm = selectedSeat?.name?.toLowerCase().trim() || '';
-                              const stateNorm = selectedSeat?.state?.toLowerCase().trim() || '';
+                              const seatNorm = (selectedSeat?.name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+const stateNorm = (selectedSeat?.state || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
 
-                              const homeTally = tallies.find((t: any) =>
-                                (t.constituency_name && t.constituency_name.toLowerCase().trim() === seatNorm) ||
-                                (t.pc_name && t.pc_name.toLowerCase().trim() === seatNorm)
-                              );
+// 1. Declare stateTallies once, matching both state_name and state_ut robustly
+const stateTallies = (tallies || []).filter((t: any) => {
+  const rowSt = (t.state_name || t.state_ut || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  return rowSt === stateNorm;
+});
 
-                              const stateTallies = tallies.filter((t: any) =>
-                                t.state_name && t.state_name.toLowerCase().trim() === stateNorm
-                              );
+// 2. Find homeTally from stateTallies or fallback to entire tallies array
+const homeTally = stateTallies.find((t: any) => {
+  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  return rowSeat === seatNorm;
+}) || (tallies || []).find((t: any) => {
+  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  return rowSeat === seatNorm;
+});
 
-                              // Read true raw votes from authoritative tally
-                              const homeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
+// 3. Read true raw votes from authoritative tally
+const homeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
+
+// 4. Map turfStandings cleanly, ensuring home seat is guaranteed with homeTotal
+let hasHomeInStandings = false;
+const turfStandings = stateTallies.map((t: any) => {
+  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  const isHome = rowSeat === seatNorm;
+  if (isHome) hasHomeInStandings = true;
+  return {
+    seat: t.constituency_name || t.pc_name || 'Constituency',
+    total_votes: isHome ? homeTotal : Number(t.total_votes || t.total_ballots || 0),
+    is_home: isHome
+  };
+});
+
+// If home seat had 0 initial records in stateTallies, append it directly with homeTotal
+if (!hasHomeInStandings && selectedSeat?.name) {
+  turfStandings.push({
+    seat: selectedSeat.name,
+    total_votes: homeTotal,
+    is_home: true
+  });
+}
                               const chosenOptIdx = userChoice !== undefined ? userChoice : 0;
                               const optKeyCount = `opt_${chosenOptIdx}_count`;
                               const optKeyVotes = `opt_${chosenOptIdx}_votes`;

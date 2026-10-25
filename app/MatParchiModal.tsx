@@ -64,8 +64,20 @@ export default function MatParchiModal({
             activeRows.reduce((sum: number, r: any) => sum + (Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0)), 0)
           );
           const total = counts.reduce((a, b) => a + b, 0);
-          if (total > 0) {
-            setOptionPercentages(counts.map(c => Math.round((c / total) * 100)));
+          
+          if (total === 0) {
+            const base = Math.floor(100 / options.length);
+            const rem = 100 - base * options.length;
+            setOptionPercentages(options.map((_, i) => (i < rem ? base + 1 : base)));
+          } else {
+            const exacts = counts.map(c => (c / total) * 100);
+            const floors = exacts.map(e => Math.floor(e));
+            let deficit = 100 - floors.reduce((a, b) => a + b, 0);
+            const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+            for (let r = 0; r < deficit; r++) {
+              floors[diffs[r % diffs.length].i] += 1;
+            }
+            setOptionPercentages(floors);
           }
         }
       } catch (err) {
