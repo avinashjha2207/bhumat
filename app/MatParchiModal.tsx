@@ -50,9 +50,18 @@ export default function MatParchiModal({
           .select('*')
           .eq('poll_id', pollId);
 
-        if (data && data.length > 0 && options.length > 0) {
+        const cleanSt = (stateName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const stateRows = (data || []).filter((r: any) => {
+          const rSt = (r.state_name || r.state_ut || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return rSt === cleanSt;
+        });
+
+        // Scope to state rows if present, fallback to national
+        const activeRows = stateRows.length > 0 ? stateRows : (data || []);
+
+        if (activeRows.length > 0 && options.length > 0) {
           const counts = options.map((_, idx) =>
-            data.reduce((sum: number, r: any) => sum + (Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0)), 0)
+            activeRows.reduce((sum: number, r: any) => sum + (Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0)), 0)
           );
           const total = counts.reduce((a, b) => a + b, 0);
           if (total > 0) {

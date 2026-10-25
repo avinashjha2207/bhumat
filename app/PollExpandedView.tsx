@@ -444,17 +444,15 @@ useEffect(() => {
 
     tallies.forEach((row: any) => {
       const counts: Record<number, number> = {};
-      const rowTotal = Number(row.total_votes || 0);
       let calculatedSum = 0;
-
       poll.options.forEach((_, idx) => {
-        const c = Number(row[`opt_${idx}_votes`] ?? row[`option_${idx}_votes`]) || 0;
+        const c = Number(row[`opt_${idx}_votes`] ?? row[`option_${idx}_votes`] ?? row[`opt_${idx}_count`] ?? 0);
         counts[idx] = c;
         calculatedSum += c;
         bharatCounts[idx] = (bharatCounts[idx] || 0) + c;
       });
-
-      const seatTotal = Math.max(rowTotal, calculatedSum);
+      // seatTotal must be the exact sum of active poll options
+      const seatTotal = calculatedSum;
       totalBharatVotes += seatTotal;
 
       const isCurrentState = targetUserStateClean && clean(row.state_name) === targetUserStateClean;
@@ -1229,11 +1227,14 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {poll.options.map((opt, idx) => {
                   const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                  const activeTotalVotes = poll.options.reduce((totalAcc, _, oIndex) => {
+                    return totalAcc + tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIndex}_votes`] ?? r[`opt_${oIndex}_count`] ?? 0)), 0);
+                  }, 0);
                   const optCount = tallies.reduce((sum, r) => {
-                    const c = Number(r[`opt_${idx}_votes`] ?? r[`option_${idx}_votes`]) || 0;
+                    const c = Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? r[`option_${idx}_votes`]) || 0;
                     return sum + c;
                   }, 0);
-                  const optPct = bharatStats.total > 0 ? Math.round((optCount / bharatStats.total) * 100) : 0;
+                  const optPct = activeTotalVotes > 0 ? Math.round((optCount / activeTotalVotes) * 100) : 0;
                   const isUserChoice = poll.category !== 'JanMat' && userVotedOptionIdx === idx;
                   const primaryText = lang === 'EN' ? opt.text_en : opt.text_hi;
                   const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;
@@ -1355,13 +1356,15 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                     { label: lang === 'HI' ? 'आज' : 'Today', x: 315, isCurrent: true }
                   ];
 
-                  const totalVotes = bharatStats.total || 0;
+                  const activeTotalSum = poll.options.reduce((acc, _, oIdx) => {
+                    return acc + tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIdx}_votes`] ?? r[`opt_${oIdx}_count`] ?? 0)), 0);
+                  }, 0);
                   const terminalPercentages = poll.options.map((_, idx) => {
                     const optCount = tallies.reduce((sum, r) => {
-                      const c = Number(r[`opt_${idx}_votes`] ?? r[`option_${idx}_votes`]) || 0;
+                      const c = Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0);
                       return sum + c;
                     }, 0);
-                    return totalVotes > 0 ? Math.round((optCount / totalVotes) * 100) : Math.round(100 / poll.options.length);
+                    return activeTotalSum > 0 ? Math.round((optCount / activeTotalSum) * 100) : Math.round(100 / poll.options.length);
                   });
 
                   // 8-Node Inflection Sampling across timeline (captures spikes, surges & crossovers)

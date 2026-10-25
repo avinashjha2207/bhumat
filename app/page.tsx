@@ -2224,9 +2224,15 @@ export default function BhuMatApp() {
                                   const isUserChoice = !isJanMat && userChoiceIdx === idx;
                                   const showChoiceHighlight = isUserChoice && hasVotedThisCycle;
                                   const pollTallies = cachedTalliesByPoll[poll.id] || [];
-                                  const natTotal = pollTallies.reduce((sum: number, t: any) => sum + (Number(t.total_ballots || t.total_votes) || 0), 0);
-                                  const natOptVotes = pollTallies.reduce((sum: number, t: any) => sum + (Number(t[`opt_${idx}_count`] ?? t[`opt_${idx}_votes`]) || 0), 0);
-                                  const optPct = natTotal > 0 ? Math.round((natOptVotes / natTotal) * 100) : 0;
+                    const activeTotalVotes = poll.options.reduce((acc: number, _: any, oIdx: number) => {
+                      return acc + pollTallies.reduce((sum: number, t: any) => {
+                        return sum + Number(t[`opt_${oIdx}_votes`] ?? t[`opt_${oIdx}_count`] ?? 0);
+                      }, 0);
+                    }, 0);
+                    const natOptVotes = pollTallies.reduce((sum: number, t: any) => {
+                      return sum + Number(t[`opt_${idx}_votes`] ?? t[`opt_${idx}_count`] ?? 0);
+                    }, 0);
+                    const optPct = activeTotalVotes > 0 ? Math.round((natOptVotes / activeTotalVotes) * 100) : 0;
                                   return (
                                     <button
                                       key={opt.id}
@@ -2476,18 +2482,15 @@ export default function BhuMatApp() {
                                 t.state_name && t.state_name.toLowerCase().trim() === stateNorm
                               );
 
-                              // Read raw votes and guarantee optimistic inclusion of the user's active ballot
-                              const rawHomeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
-                              const homeTotal = Math.max(1, rawHomeTotal);
-                              
+                              // Read true raw votes from authoritative tally
+                              const homeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
                               const chosenOptIdx = userChoice !== undefined ? userChoice : 0;
                               const optKeyCount = `opt_${chosenOptIdx}_count`;
                               const optKeyVotes = `opt_${chosenOptIdx}_votes`;
-                              const rawHomeChosen = Number(homeTally?.[optKeyCount] ?? homeTally?.[optKeyVotes] ?? 0);
+                              const homeChosenVotes = Number(homeTally?.[optKeyCount] ?? homeTally?.[optKeyVotes] ?? 0);
                               
-                              // Since the user voted for chosenOptIdx, local chosen votes must be at least 1
-                              const homeChosenVotes = Math.max(1, rawHomeChosen);
-                              const homePct = Math.min(100, Math.max(1, Math.round((homeChosenVotes / homeTotal) * 100)));
+                              const homePct = homeTotal > 0 ? Math.round((homeChosenVotes / homeTotal) * 100) : 0;
+                              const isPioneer = homeTotal <= 1;
 
                               // State calculations
                               let stateTotal = 0;
@@ -2499,7 +2502,7 @@ export default function BhuMatApp() {
                               const statePct = stateTotal > 0 ? Math.round((stateChosenVotes / stateTotal) * 100) : homePct;
                               const delta = homePct - statePct;
 
-                              const isPioneer = rawHomeTotal <= 1;
+                             
                               const chosenOpt = poll.options[chosenOptIdx];
                               const rawOptLabel = lang === 'HI' ? (chosenOpt?.text_hi || chosenOpt?.text_en) : chosenOpt?.text_en;
                               const optLabel = rawOptLabel ? rawOptLabel.split('(')[0].trim() : '';
@@ -2576,7 +2579,7 @@ export default function BhuMatApp() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                   <span>⚔️</span>
                                   <span>
-                                    {selectedSeat?.name || 'Home'}: <strong>{turfStandings.find((s: any) => s.is_home)?.total_votes || 1}</strong> vs {stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.constituency_name || 'Rival'}: <strong>{stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.total_votes || 1}</strong>
+                                    {selectedSeat?.name || 'Home'}: <strong>{turfStandings.find((s: any) => s.is_home)?.total_votes || 0}</strong> vs {stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.constituency_name || 'Rival'}: <strong>{stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.total_votes || 0}</strong>
                                   </span>
                                 </div>
                                 <span style={{
