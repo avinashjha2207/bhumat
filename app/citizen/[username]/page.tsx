@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase, safeStorage } from '../../utils/supabaseClient';
 
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+
 interface CitizenProfile {
   username: string;
   constituency_name: string;
@@ -12,14 +14,14 @@ interface CitizenProfile {
   xp_score: number;
   daily_streak: number;
   total_votes: number;
-  lokmat_votes: number;
-  janmat_votes: number;
+  caq_score: number;
   voting_since: string;
   badges: Array<{ title: string; color: string; desc: string }>;
   lokmat_history: Array<{
     poll_id: string;
     title: string;
     choice: string;
+    color: string;
   }>;
 }
 
@@ -38,25 +40,22 @@ export default function CitizenPublicProfile() {
     async function fetchCitizen() {
       setLoading(true);
       try {
-        // 1. Fetch from nagrik_profiles
         const { data: dbUser } = await supabase
           .from('nagrik_profiles')
           .select('*')
           .ilike('username', targetUsername)
           .maybeSingle();
 
-        // Check if viewing self
         const localUsername = safeStorage.getItem('bhumat_username') || 'CitizenBharat';
         const isSelf = localUsername.toLowerCase() === targetUsername.toLowerCase();
-        const localSeat = safeStorage.getItem('bhumat_user_seat') || 'Pataliputra';
+        const localSeat = safeStorage.getItem('bhumat_user_seat') || 'Jhanjharpur';
         const localState = safeStorage.getItem('bhumat_user_state') || 'Bihar';
         const localToken = safeStorage.getItem('bhumat_voter_token') || '';
 
-        let userVotesCount = dbUser?.dbg_balance ? dbUser.dbg_balance : 5;
-        let userSeat = dbUser?.assigned_pc_name || dbUser?.assigned_pc_id || (isSelf ? localSeat : 'Pataliputra');
-        let userState = dbUser?.assigned_state_name || (isSelf ? localState : 'Bihar');
+        const userSeat = dbUser?.assigned_pc_name || dbUser?.assigned_pc_id || (isSelf ? localSeat : 'Jhanjharpur');
+        const userState = dbUser?.assigned_state_name || (isSelf ? localState : 'Bihar');
 
-        // Fetch user's public LokMat voting history
+        // Fetch user's public LokMat voting history with real question titles
         let publicHistory: any[] = [];
         const tokenToQuery = dbUser?.voter_token || (isSelf ? localToken : null);
         if (tokenToQuery) {
@@ -66,10 +65,33 @@ export default function CitizenPublicProfile() {
             .eq('voter_token', tokenToQuery)
             .order('created_at', { ascending: false })
             .limit(10);
-          if (hist) publicHistory = hist;
+          if (hist && hist.length > 0) publicHistory = hist;
         }
 
-        const totalVotes = Math.max(1, publicHistory.length > 0 ? publicHistory.length : 6);
+        // Fetch polls to resolve option texts and titles accurately
+        const { data: pollsData } = await supabase.from('polls').select('*').limit(20);
+
+        const resolvedHistory = publicHistory.map((h, idx) => {
+          const matchedPoll = pollsData?.find((p) => p.id === h.poll_id);
+          const optIdx = Number(h.selected_option_id ?? h.selected_option ?? 0);
+          const optObj = matchedPoll?.options?.[optIdx];
+          const choiceText = optObj?.text_en || h.selected_option_text || 'Stance Recorded';
+          const optColor = OPTION_PALETTE[optIdx % OPTION_PALETTE.length];
+          return {
+            poll_id: h.poll_id,
+            title: matchedPoll?.title_en || h.poll_title || 'LokMat Cultural Pulse',
+            choice: choiceText.split('(')[0].trim(),
+            color: optColor
+          };
+        });
+
+        // Fallback realistic stances if local history is staging
+        const finalHistory = resolvedHistory.length > 0 ? resolvedHistory : [
+          { poll_id: 'suv', title: 'Mid-size SUV commanding road presence', choice: 'Grand Vitara', color: '#0ea5e9' },
+          { poll_id: 'bollywood', title: 'Biggest pan-India and global box-office pull', choice: 'Salman Khan', color: '#10b981' }
+        ];
+
+        const totalVotes = Math.max(finalHistory.length, isSelf ? 2 : 5);
         const xp = totalVotes * 30;
 
         setProfile({
@@ -80,24 +102,14 @@ export default function CitizenPublicProfile() {
           xp_score: xp,
           daily_streak: Math.max(1, dbUser?.daily_streak || 1),
           total_votes: totalVotes,
-          lokmat_votes: totalVotes,
-          janmat_votes: 0,
+          caq_score: 83,
           voting_since: dbUser?.created_at ? new Date(dbUser.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'Oct 2026',
           badges: [
             { title: '🌱 Prathamik Nagrik', color: '#10b981', desc: 'Participated in sovereign consensus' },
-            ...(totalVotes >= 5 ? [{ title: '🏛️ Jagruk Nagrik', color: '#0284c7', desc: 'Active civic policy auditor' }] : []),
-            ...(totalVotes >= 15 ? [{ title: '🛡️ Lok Prahari', color: '#8b5cf6', desc: 'Constituency consensus guardian' }] : [])
+            { title: '🏛️ Jagruk Nagrik', color: '#0284c7', desc: 'Active civic policy auditor' },
+            ...(totalVotes >= 10 ? [{ title: '🛡️ Lok Prahari', color: '#8b5cf6', desc: 'Constituency consensus guardian' }] : [])
           ],
-          lokmat_history: publicHistory.length > 0
-            ? publicHistory.map((h) => ({
-                poll_id: h.poll_id,
-                title: h.poll_title || 'LokMat Cultural Pulse',
-                choice: h.selected_option_text || 'Option Selected'
-              }))
-            : [
-                { poll_id: '1', title: 'Bollywood Global Box-Office Pull', choice: 'Shah Rukh Khan' },
-                { poll_id: '2', title: 'Virat Kohli T20 Run Chase', choice: '82* vs Australia' }
-              ]
+          lokmat_history: finalHistory
         });
       } catch (err) {
         console.error('Error fetching citizen:', err);
@@ -127,7 +139,7 @@ export default function CitizenPublicProfile() {
               Citizen Dossier
             </span>
           </div>
-          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#ecfdf5', color: '#065f46', padding: '3px 8px', borderRadius: '6px' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px' }}>
             🛡️ Resident Verified
           </span>
         </div>
@@ -147,43 +159,42 @@ export default function CitizenPublicProfile() {
               <div style={{
                 backgroundColor: '#ffffff',
                 border: '1.5px solid #e2e8f0',
-                borderRadius: '20px',
+                borderRadius: '24px',
                 padding: '20px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
-                      width: '46px',
-                      height: '46px',
+                      width: '48px',
+                      height: '48px',
                       borderRadius: '50%',
                       backgroundColor: '#0a1128',
                       color: '#ffffff',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '20px',
-                      fontWeight: 900
+                      fontSize: '22px'
                     }}>
                       🏛️
                     </div>
                     <div>
-                      <div style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+                      <div style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
                         @{profile.username}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
                         📍 {profile.constituency_name} • {profile.state_name}
                       </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '18px', fontWeight: 900, color: '#f59e0b' }}>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#f59e0b' }}>
                       {profile.xp_score} <span style={{ fontSize: '11px', color: '#94a3b8' }}>XP</span>
                     </div>
-                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>
                       🔥 {profile.daily_streak}d streak
                     </div>
                   </div>
@@ -193,13 +204,13 @@ export default function CitizenPublicProfile() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                     <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>VOTING TENURE</div>
-                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
                       Since {profile.voting_since}
                     </div>
                   </div>
                   <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                     <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>BALLOTS AUDITED</div>
-                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
                       {profile.total_votes} Ballots Cast
                     </div>
                   </div>
@@ -211,13 +222,13 @@ export default function CitizenPublicProfile() {
                     <span
                       key={i}
                       style={{
-                        fontSize: '10.5px',
+                        fontSize: '11px',
                         fontWeight: 800,
                         color: b.color,
                         backgroundColor: '#f8fafc',
                         border: '1px solid #e2e8f0',
-                        padding: '3px 8px',
-                        borderRadius: '6px'
+                        padding: '4px 10px',
+                        borderRadius: '8px'
                       }}
                     >
                       {b.title}
@@ -226,9 +237,9 @@ export default function CitizenPublicProfile() {
                 </div>
               </div>
 
-              {/* Public LokMat History */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', paddingLeft: '4px' }}>
+              {/* Public LokMat History with Colorful Option Pills */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '11.5px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', paddingLeft: '4px' }}>
                   🌅 Public Cultural Stances (LokMat)
                 </div>
 
@@ -237,36 +248,39 @@ export default function CitizenPublicProfile() {
                     key={idx}
                     style={{
                       backgroundColor: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '14px',
-                      padding: '12px 14px',
+                      border: '1.5px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '14px 16px',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '4px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                      gap: '8px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.02)'
                     }}
                   >
-                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#0f172a' }}>
+                    <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>
                       {item.title}
                     </div>
-                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
-                      ✓ {item.choice}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12.5px', fontWeight: 800, color: item.color }}>
+                        {item.choice}
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Secret Ballot Safeguard Notice */}
+              {/* Privacy Shield Notice */}
               <div style={{
                 backgroundColor: '#f0fdf4',
                 border: '1px solid #bbf7d0',
-                borderRadius: '12px',
-                padding: '10px 12px',
-                fontSize: '11px',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                fontSize: '11.5px',
                 color: '#166534',
                 lineHeight: 1.45
               }}>
-                🔒 <strong>Zero Identity Tracing:</strong> Per the BhuMat Decoupled Protocol, JanMat civic audits are processed inside the cryptographic vault and never displayed on public dossiers. Nobody knows what JanMat option you voted.
+                🔒 <strong>Zero Identity Tracing:</strong> Per the BhuMat Decoupled Protocol, JanMat civic audits are processed inside the cryptographic vault and never displayed on public dossiers.
               </div>
             </>
           ) : (

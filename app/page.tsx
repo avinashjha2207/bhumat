@@ -2331,8 +2331,8 @@ export default function BhuMatApp() {
                                   boxShadow: '0 2px 6px rgba(5,150,105,0.08)'
                                 }}
                               >
-                                <span>{lang === 'HI' ? 'पूर्ण दृष्टि (543 सीटें) देखें ↗' : 'Explore Full Drishti (543 Seats) ↗'}</span>
-                                <span>🔓</span>
+                                <span>{lang === 'HI' ? 'पूर्ण दृष्टि (543 सीटें) देखें ↗' : 'Explore Full Drishti (543 Seats)'}</span>
+                                <span>📊 ↗</span>
                               </button>
                             ) : (
                               <span style={{
@@ -2805,7 +2805,7 @@ export default function BhuMatApp() {
                             )}
 
                             {/* Full Drishti Button */}
-                            <div style={{ width: '100%', paddingTop: '2px', paddingBottom: '0px' }}>
+                            <div style={{ width: '100%', paddingTop: '4px', paddingBottom: '0px' }}>
                               <button
                                 type="button"
                                 onClick={() => openExpandedView(poll)}
@@ -2827,8 +2827,8 @@ export default function BhuMatApp() {
                                   boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
                                 }}
                               >
-                                <span>{lang === 'HI' ? 'संप्रभु दृष्टि देखें (543 सीटें) ↗' : 'Explore Full Drishti (543 Seats) ↗'}</span>
-                                <span>🔓</span>
+                                <span>{lang === 'HI' ? 'संप्रभु दृष्टि देखें (543 सीटें) ↗' : 'Explore Full Drishti (543 Seats)'}</span>
+                                <span>📊 ↗</span>
                               </button>
                             </div>
                           </div>
@@ -3186,7 +3186,6 @@ export default function BhuMatApp() {
               type="button"
               onClick={() => {
                 setActiveTab('profile');
-                syncWallet(deviceHash);
               }}
               style={{
                 flex: 1,

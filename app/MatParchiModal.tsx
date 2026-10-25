@@ -3,6 +3,8 @@
 import React, { useRef, useState } from 'react';
 import DrishtiMap from './DrishtiMap';
 
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+
 interface MatParchiModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,6 +38,33 @@ export default function MatParchiModal({
 }: MatParchiModalProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  const [optionPercentages, setOptionPercentages] = useState<number[]>([]);
+
+  React.useEffect(() => {
+    if (!pollId) return;
+    async function loadPercentages() {
+      try {
+        const { data } = await (await import('./utils/supabaseClient')).supabase
+          .from('constituency_tallies')
+          .select('*')
+          .eq('poll_id', pollId);
+
+        if (data && data.length > 0 && options.length > 0) {
+          const counts = options.map((_, idx) =>
+            data.reduce((sum: number, r: any) => sum + (Number(r[`opt_${idx}_votes`] ?? r[`opt_${idx}_count`] ?? 0)), 0)
+          );
+          const total = counts.reduce((a, b) => a + b, 0);
+          if (total > 0) {
+            setOptionPercentages(counts.map(c => Math.round((c / total) * 100)));
+          }
+        }
+      } catch (err) {
+        console.error('Error calculating Mat Parchi percentages:', err);
+      }
+    }
+    loadPercentages();
+  }, [pollId, options.length]);
 
   if (!isOpen) return null;
 
@@ -237,43 +266,8 @@ export default function MatParchiModal({
             border: '1.5px solid #cbd5e1',
             backgroundColor: '#f8fafc',
             overflow: 'hidden',
-            padding: '8px'
+            padding: '10px'
           }}>
-            <div style={{
-              position: 'absolute',
-              top: '12px',
-              left: '12px',
-              right: '12px',
-              zIndex: 10,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              pointerEvents: 'none'
-            }}>
-              <span style={{
-                backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                color: '#ffffff',
-                padding: '3px 8px',
-                borderRadius: '6px',
-                fontSize: '10px',
-                fontWeight: 800,
-                letterSpacing: '0.02em'
-              }}>
-                🗺️ {stateName.toUpperCase()} CONSENSUS MAP
-              </span>
-              <span style={{
-                backgroundColor: '#ecfdf5',
-                color: '#065f46',
-                border: '1px solid #a7f3d0',
-                padding: '2px 7px',
-                borderRadius: '6px',
-                fontSize: '9.5px',
-                fontWeight: 800
-              }}>
-                {lang === 'HI' ? '● भूमत दृष्टि' : '● Drishti Map'}
-              </span>
-            </div>
-
             {/* Embedded Live State SVG with Beacon */}
             <DrishtiMap
               selectedConstituencyName={seatName}
@@ -282,26 +276,40 @@ export default function MatParchiModal({
               options={options}
             />
 
-            {/* Option Color Legend Strip */}
+            {/* Option Color Legend Strip with Structured Grid Alignment */}
             {options && options.length > 0 && (
               <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px 10px',
+                display: options.length === 2 ? 'flex' : 'grid',
+                gridTemplateColumns: options.length > 2 ? 'repeat(2, minmax(0, 1fr))' : undefined,
+                justifyContent: options.length === 2 ? 'center' : undefined,
+                gap: '6px 12px',
+                padding: '10px 8px 4px 8px',
+                borderTop: '1px dashed #e2e8f0',
                 marginTop: '6px',
-                paddingTop: '6px',
-                borderTop: '1px dashed #cbd5e1',
-                justifyContent: 'center'
+                boxSizing: 'border-box'
               }}>
-                {options.map((opt, idx) => {
-                  const palette = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
-                  const color = palette[idx % palette.length];
+                {options.map((opt: any, idx: number) => {
+                  const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
                   const rawLabel = lang === 'HI' ? (opt.text_hi || opt.text_en) : opt.text_en;
                   const label = rawLabel ? rawLabel.split('(')[0].trim() : '';
+                  const pct = optionPercentages[idx] !== undefined ? optionPercentages[idx] : null;
+
                   return (
-                    <div key={opt.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 800, color: '#334155' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                      <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+                    <div
+                      key={opt.id || idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: optColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {label} {pct !== null ? <strong style={{ color: optColor, fontWeight: 900, marginLeft: '2px' }}>({pct}%)</strong> : ''}
+                      </span>
                     </div>
                   );
                 })}

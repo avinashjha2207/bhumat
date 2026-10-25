@@ -48,18 +48,20 @@ interface DrishtiMapProps {
   optimisticLocalVote?: boolean;
   lang?: 'EN' | 'HI';
   verifiedOnly?: boolean;
+  hideHeader?: boolean;
 }
 
 export default function DrishtiMap({
   selectedConstituencyName,
   selectedState,
   pollId,
-  cycleHorizon = 'all_time',
-  cycleId,
   userVotedOptionIdx,
   options,
   optimisticLocalVote = false,
-  lang = 'EN'
+  lang = 'EN',
+  hideHeader = false,
+  cycleHorizon = 'current',
+  cycleId,
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -566,7 +568,7 @@ tooltipTimeoutRef.current = setTimeout(() => {
       `}</style>
 
       {/* State Badge & Pioneer State Civic Anchor */}
-      {selectedState && (() => {
+      {selectedState && !hideHeader && (() => {
         // Compute total ballots cast across the current state
         const cleanTargetState = clean(selectedState);
         let stateTotalBallots = 0;
@@ -606,9 +608,17 @@ tooltipTimeoutRef.current = setTimeout(() => {
               }}>
                 📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
               </span>
-              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b' }}>
-                {stateTotalBallots} {lang === 'HI' ? 'कुल मत' : 'State Votes'}
-              </span>
+              <span style={{
+            fontSize: '9.5px',
+            fontWeight: 800,
+            color: '#065f46',
+            backgroundColor: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            padding: '2px 7px',
+            borderRadius: '6px'
+          }}>
+            {lang === 'HI' ? '● भूमत दृष्टि' : '● Drishti Map'}
+          </span>
             </div>
 
             {isPioneer && (

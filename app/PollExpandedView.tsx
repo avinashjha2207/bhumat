@@ -491,9 +491,15 @@ useEffect(() => {
       if (seatTotal >= 50) trendLabel = lang === 'HI' ? 'सत्यापित' : 'Fortified Quorum';
       else if (seatTotal >= 25) trendLabel = lang === 'HI' ? 'प्रगतिशील' : 'Trending Up';
 
+      const rawSeat = (row.constituency_name || row.pc_name || row.name || '').trim();
+      const rawState = (row.state_name || row.state_ut || 'Bharat').trim();
+      
+      // Strictly skip blank or ghost rows
+      if (!rawSeat || rawSeat.toLowerCase() === 'awaiting') return;
+
       const entry = {
-        seatName: row.constituency_name,
-        stateName: row.state_name,
+        seatName: rawSeat,
+        stateName: rawState,
         totalVotes: seatTotal,
         leadingOptionIdx: isTie ? null : winningOptIdx,
         leadingOptionText: leadingText,
@@ -501,8 +507,7 @@ useEffect(() => {
         isTie,
         trend: trendLabel
       };
-
-      const key = `${clean(row.constituency_name)}___${clean(row.state_name)}`;
+      const key = `${clean(rawSeat)}___${clean(rawState)}`;
       map.set(key, entry);
       grid.push(entry);
 
@@ -1169,10 +1174,10 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
               </div>
             </div>
           )}
-          <h2 style={{ fontSize: '17.5px', fontWeight: 850, margin: '0 0 8px 0', lineHeight: 1.4, color: '#0f172a' }}>
+          <h2 style={{ fontSize: '15.5px', fontWeight: 800, margin: '0 0 5px 0', lineHeight: 1.38, color: '#0f172a', letterSpacing: '-0.015em' }}>
             {lang === 'EN' ? poll.title_en : poll.title_hi}
           </h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '0', lineHeight: 1.5, fontWeight: 500 }}>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '0', lineHeight: 1.42, fontWeight: 500 }}>
             {lang === 'EN' ? poll.title_hi : poll.title_en}
           </p>
 
@@ -1246,22 +1251,22 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                         borderLeft: isUserChoice ? `3px solid ${optColor}` : 'none'
                       }}
                     >
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                          <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: optColor, marginTop: '4px', flexShrink: 0 }} />
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: optColor, marginTop: '5px', flexShrink: 0 }} />
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', lineHeight: 1.35 }}>
+                            <span style={{ fontSize: '13.5px', fontWeight: 750, color: '#0f172a', lineHeight: 1.35 }}>
                               {primaryText}
                             </span>
                             {secondaryText && secondaryText !== primaryText && (
-                              <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b', lineHeight: 1.35 }}>
+                              <span style={{ fontSize: '11.5px', fontWeight: 500, color: '#64748b', lineHeight: 1.35 }}>
                                 {secondaryText}
                               </span>
                             )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontWeight: 900, color: optColor, minWidth: '38px', textAlign: 'right', fontSize: '14px', fontVariantNumeric: 'tabular-nums' }}>
+                          <span style={{ fontWeight: 850, color: optColor, minWidth: '40px', textAlign: 'right', fontSize: '13.5px', fontVariantNumeric: 'tabular-nums' }}>
                             {optPct}%
                           </span>
                         </div>
@@ -1395,17 +1400,21 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                         const targetPct = terminalPercentages[oIdx] ?? 33;
                         const startPct = 100 / poll.options.length;
 
+                        // Clamp floor to 1.5% so 0% options don't clip beneath the baseline axis
+                        const displayTargetPct = Math.max(1.5, targetPct);
+                        const finalY = 120 - (displayTargetPct / 100) * 100;
+
                         // Create organic trajectory waves modeling hourly sentiment shifts
                         const points = sampleNodes.map((t) => {
                           const px = 35 + t * (315 - 35);
-                          // Inflection delta: models velocity spikes without drifting out of 0-100% bounds
-                          const waveShift = Math.sin(t * Math.PI * 2.5 + oIdx * 1.8) * (8 * (1 - t * 0.4));
-                          const currentEstimatedPct = Math.max(5, Math.min(95, startPct + (targetPct - startPct) * Math.pow(t, 0.85) + waveShift));
+                          // Decay waveShift to strictly 0 at terminal node (t = 1.0) to eliminate dot misalignment
+                          const waveShift = Math.sin(t * Math.PI * 2.5 + oIdx * 1.8) * (8 * Math.pow(1 - t, 1.2));
+                          const currentEstimatedPct = t >= 0.98 
+                            ? displayTargetPct 
+                            : Math.max(1.5, Math.min(95, startPct + (displayTargetPct - startPct) * Math.pow(t, 0.85) + waveShift));
                           const py = 120 - (currentEstimatedPct / 100) * 100;
                           return `${px.toFixed(1)},${py.toFixed(1)}`;
                         }).join(' ');
-
-                        const finalY = 120 - (targetPct / 100) * 100;
 
                         return (
                           <g key={opt.id}>
@@ -1506,61 +1515,87 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
           </button>
         </div>
 
-        {/* Card 3: 3-Box Comparison Ledger (Dynamic Admin Color Binding) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '14px' }}>
-          
+        {/* Card 3: 3-Box Comparison Ledger (Derived Directly from Matrix Truth) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: '8px',
+          marginBottom: '14px',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}>
           {/* Box 1: BHARAT */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            padding: '10px 6px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '94px',
+            boxSizing: 'border-box'
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
-                  {lang === 'HI' ? 'भारत' : 'BHARAT'}
-                </span>
-                <span 
-                  onClick={(e) => {
+              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
+                {lang === 'HI' ? 'भारत' : 'BHARAT'}
+              </span>
+              <span
+                onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setActiveScorecardTooltip({
-                    text: lang === 'HI' ? 'अखिल भारतीय स्तर पर 543 सीटों में अग्रणी जनमत।' : 'National consensus: Leading public opinion across all 543 parliamentary seats.',
+                    text: lang === 'HI' ? 'अखिल भारतीय स्तर पर अग्रणी जनमत।' : 'National consensus: Leading public opinion across all 543 parliamentary seats.',
                     x: rect.left + rect.width / 2,
                     y: rect.bottom + 8
                   });
                   setTimeout(() => setActiveScorecardTooltip(null), 3500);
                 }}
-                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-                >
-                  ⓘ
-                </span>
-              </div>
+                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+              >
+                ⓘ
+              </span>
+            </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
-              color: (consensusSummary?.bharat?.total || 0) > 0 
-                ? (poll.options[consensusSummary.bharat.lead_id]?.color || OPTION_PALETTE[consensusSummary.bharat.lead_id % OPTION_PALETTE.length]) 
-                : '#94a3b8',
+              color: bharatStats.total > 0 ? bharatStats.color : '#94a3b8',
               margin: '4px 0',
               height: '32px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '0 4px',
+              padding: '0 2px',
               lineHeight: 1.25
             }}>
-              {(consensusSummary?.bharat?.total || 0) > 0
-                ? ((poll.options[consensusSummary.bharat.lead_id]?.text_en || 'Leading').split('(')[0].trim())
-                : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots')}
+              {bharatStats.total > 0
+                ? bharatStats.text.split('(')[0].trim()
+                : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
-              {consensusSummary?.bharat?.total || 0} Votes
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+              {bharatStats.total} {lang === 'HI' ? 'मत' : 'Ballots'}
             </div>
           </div>
 
           {/* Box 2: STATE */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            padding: '10px 6px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '94px',
+            boxSizing: 'border-box'
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
-                  {userState?.toUpperCase() || 'STATE'}
-                </span>
-                <span 
-                  onClick={(e) => {
+              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {userState?.toUpperCase() || 'STATE'}
+              </span>
+              <span
+                onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setActiveScorecardTooltip({
                     text: lang === 'HI' ? `सम्पूर्ण ${userState || 'राज्य'} में अग्रणी जनमत।` : `State consensus: Leading public opinion across ${userState || 'state'} constituencies.`,
@@ -1569,42 +1604,51 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   });
                   setTimeout(() => setActiveScorecardTooltip(null), 3500);
                 }}
-                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-                >
-                  ⓘ
-                </span>
-              </div>
+                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+              >
+                ⓘ
+              </span>
+            </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
-              color: (consensusSummary?.state?.total || 0) > 0 
-                ? (poll.options[consensusSummary.state.lead_id]?.color || OPTION_PALETTE[consensusSummary.state.lead_id % OPTION_PALETTE.length]) 
-                : '#94a3b8',
+              color: stateStats.total > 0 ? stateStats.color : '#94a3b8',
               margin: '4px 0',
               height: '32px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '0 4px',
+              padding: '0 2px',
               lineHeight: 1.25
             }}>
-              {(consensusSummary?.state?.total || 0) > 0
-                ? ((poll.options[consensusSummary.state.lead_id]?.text_en || 'Leading').split('(')[0].trim())
-                : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots')}
+              {stateStats.total > 0
+                ? stateStats.text.split('(')[0].trim()
+                : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
-              {consensusSummary?.state?.total || 0} Votes
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+              {stateStats.total} {lang === 'HI' ? 'मत' : 'Ballots'}
             </div>
           </div>
 
           {/* Box 3: CONSTITUENCY (SEAT) */}
-          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '10px 8px', borderRadius: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '94px', boxSizing: 'border-box' }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            padding: '10px 6px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '94px',
+            boxSizing: 'border-box'
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
-                  {userSeatName?.toUpperCase() || 'SEAT'}
-                </span>
-                <span 
-                  onClick={(e) => {
+              <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {userSeatName?.toUpperCase() || 'SEAT'}
+              </span>
+              <span
+                onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setActiveScorecardTooltip({
                     text: lang === 'HI' ? `${userSeatName || 'संसदीय सीट'} में अग्रणी जनमत।` : `Constituency consensus: Leading public opinion in ${userSeatName || 'your seat'}.`,
@@ -1613,33 +1657,37 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   });
                   setTimeout(() => setActiveScorecardTooltip(null), 3500);
                 }}
-                  style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-                >
-                  ⓘ
-                </span>
-              </div>
+                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
+              >
+                ⓘ
+              </span>
+            </div>
             <div style={{
               fontSize: '11px',
               fontWeight: 800,
-              color: (consensusSummary?.seat?.total || 0) > 0 
-                ? (consensusSummary.seat.is_tie 
+              color: userSeatStats && userSeatStats.totalVotes > 0 
+                ? (userSeatStats.isTie 
                     ? '#475569' 
-                    : (poll.options[consensusSummary.seat.lead_id]?.color || OPTION_PALETTE[consensusSummary.seat.lead_id % OPTION_PALETTE.length]))
+                    : (poll.options[userSeatStats.leadingOptionIdx]?.color || OPTION_PALETTE[(userSeatStats.leadingOptionIdx ?? 0) % OPTION_PALETTE.length]))
                 : '#94a3b8',
               margin: '4px 0',
               height: '32px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '0 4px',
+              padding: '0 2px',
               lineHeight: 1.25
             }}>
-              {(consensusSummary?.seat?.total || 0) > 0
-                ? (consensusSummary.seat.is_tie ? 'Split Mat' : (poll.options[consensusSummary.seat.lead_id]?.text_en || 'Leading').split('(')[0].trim())
+              {userSeatStats && userSeatStats.totalVotes > 0
+                ? (userSeatStats.isTie ? 'Split Mat' : userSeatStats.leadingOptionText.split('(')[0].trim())
                 : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
-            <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 600 }}>
-              {consensusSummary?.seat?.total || 0} Votes
+            <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+              {userSeatStats && userSeatStats.totalVotes >= 50
+                ? `${userSeatStats.totalVotes} Ballots`
+                : userSeatStats && userSeatStats.totalVotes > 0
+                ? `${Math.min(100, Math.max(2, Math.round((userSeatStats.totalVotes / 50) * 100)))}% Quorum`
+                : (lang === 'HI' ? 'प्रारंभिक चरण' : 'Early Stage')}
             </div>
           </div>
         </div>
