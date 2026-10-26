@@ -40,7 +40,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         : 'Zero GPS • Completely Decoupled Audits',
       body: lang === 'HI'
         ? 'जनमत नागरिक ऑडिट में आपका फोन या पहचान कभी भी आपके वोट से नहीं जुड़ती। सिस्टम केवल यह सत्यापित करता है कि आपने मत दिया, किंतु आपका विकल्प पूरी तरह गोपनीय रहता है।'
-        : 'JanMat decouples your identity from your ballot. The ledger verifies that you voted to block duplicates, but zero individuals—even admins—can trace your choice.',
+        : 'JanMat decouples your identity from your ballot. The ledger verifies that you voted to block duplicates, but zero individuals - even admins - can trace your choice.',
       actionLabel: lang === 'HI' ? 'सुरक्षा प्रोटोकॉल ❯' : 'Security Protocol ❯',
       actionTab: 'search' as const
     },

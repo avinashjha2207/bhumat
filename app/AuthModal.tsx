@@ -253,49 +253,73 @@ export default function AuthModal({
               </p>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: '6px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('EMAIL');
-                  setErrorMsg('');
-                }}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '11.5px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  backgroundColor: authMethod === 'EMAIL' ? '#ffffff' : 'transparent',
-                  color: authMethod === 'EMAIL' ? '#0f172a' : '#64748b',
-                  boxShadow: authMethod === 'EMAIL' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                ✉️ {lang === 'HI' ? 'ईमेल OTP' : 'Email OTP'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('PHONE');
-                  setErrorMsg('');
-                }}
-                style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '11.5px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  backgroundColor: authMethod === 'PHONE' ? '#ffffff' : 'transparent',
-                  color: authMethod === 'PHONE' ? '#0f172a' : '#64748b',
-                  boxShadow: authMethod === 'PHONE' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                📱 {lang === 'HI' ? 'मोबाइल OTP' : 'Mobile OTP'}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('EMAIL');
+                    setErrorMsg('');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    backgroundColor: authMethod === 'EMAIL' ? '#ffffff' : 'transparent',
+                    color: authMethod === 'EMAIL' ? '#0f172a' : '#64748b',
+                    boxShadow: authMethod === 'EMAIL' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  }}
+                >
+                  ✉️ {lang === 'HI' ? 'ईमेल OTP' : 'Email OTP'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('PHONE');
+                    setErrorMsg('');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    backgroundColor: authMethod === 'PHONE' ? '#ffffff' : 'transparent',
+                    color: authMethod === 'PHONE' ? '#0f172a' : '#64748b',
+                    boxShadow: authMethod === 'PHONE' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  }}
+                >
+                  📱 {lang === 'HI' ? 'मोबाइल OTP' : 'Mobile OTP'}
+                </button>
+              </div>
+
+              {/* Contextual Scope Explainer Badge */}
+              <div style={{
+                backgroundColor: authMethod === 'PHONE' ? '#ecfdf5' : '#eff6ff',
+                border: `1px solid ${authMethod === 'PHONE' ? '#a7f3d0' : '#bfdbfe'}`,
+                borderRadius: '8px',
+                padding: '6px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{ fontSize: '12px' }}>{authMethod === 'PHONE' ? '📱' : '✉️'}</span>
+                <span style={{ fontSize: '10.5px', fontWeight: 700, color: authMethod === 'PHONE' ? '#065f46' : '#1e40af', lineHeight: 1.35 }}>
+                  {authMethod === 'PHONE'
+                    ? (lang === 'HI' 
+                        ? 'मोबाइल सत्यापन: लोकमत और गोपनीय जनमत ऑडिट दोनों में मतदान का अधिकार देता है।' 
+                        : 'Mobile Verification: Unlocks voting in both LokMat and JanMat.')
+                    : (lang === 'HI'
+                        ? 'ईमेल सत्यापन: केवल लोकमत (सांस्कृतिक एवं जीवनशैली) में मतदान का अधिकार देता है।'
+                        : 'Email Verification: Gives you access to vote in LokMat (Culture & Discourse).')}
+                </span>
+              </div>
             </div>
           )
         )}

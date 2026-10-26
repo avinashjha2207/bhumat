@@ -163,6 +163,12 @@ function getOrCreateVoterToken(): string {
 export default function BhuMatApp() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  // 1-Second Global Ticker for Accurate Expiry Timers
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const isSubmittingVoteRef = useRef(false);
   const [activePlayingPollId, setActivePlayingPollId] = useState<string | null>(null);
   const [matParchiState, setMatParchiState] = useState<{
@@ -381,13 +387,17 @@ export default function BhuMatApp() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
+          // Flip smoothly 2 seconds after the user scrolls down to a previously voted card
           setTimeout(() => {
-            setAutoFlippedCards((prev) => ({ ...prev, [pollId]: true }));
-          }, 5000);
+            setAutoFlippedCards((prev) => {
+              if (prev[pollId] || flippedOverrides[pollId] !== undefined) return prev;
+              return { ...prev, [pollId]: true };
+            });
+          }, 2000);
           observer.disconnect();
         }
       },
-      { threshold: 0.35 }
+      { threshold: 0.25 }
     );
     observer.observe(node);
   };
@@ -610,6 +620,14 @@ export default function BhuMatApp() {
   }
 
   useEffect(() => {
+    // Read URL tab navigation parameter (e.g. ?tab=profile, ?tab=schedule, ?tab=search)
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestedTab = urlParams.get('tab');
+      if (requestedTab === 'profile' || requestedTab === 'schedule' || requestedTab === 'search' || requestedTab === 'vote') {
+        setActiveTab(requestedTab);
+      }
+    }
     setMounted(true);
     const token = getOrCreateVoterToken();
     setDeviceHash(token);
@@ -1234,6 +1252,21 @@ export default function BhuMatApp() {
     return { livePollsList: live, scheduledQueueList: upcoming };
   }, [polls]);
 
+  // Stable snapshot of poll IDs that were already voted when the session loaded
+  const initialVotedPollIdsRef = useRef<Set<string> | null>(null);
+
+  // Initialize initial voted snapshot once on first load
+  useEffect(() => {
+    if (initialVotedPollIdsRef.current === null && votedCycleKeys.length > 0) {
+      const set = new Set<string>();
+      votedCycleKeys.forEach((key) => {
+        const [pollId] = key.split('___');
+        if (pollId) set.add(pollId);
+      });
+      initialVotedPollIdsRef.current = set;
+    }
+  }, [votedCycleKeys]);
+
   const liveAccessiblePolls = useMemo(() => {
     const filtered = livePollsList.filter((p) => {
       if (activeCategoryFilter === 'JanMat' && p.category !== 'JanMat') return false;
@@ -1246,34 +1279,24 @@ export default function BhuMatApp() {
       return true;
     });
 
-    // Deterministic Priority: Unvoted polls first -> Newest drop date first
+    // Session-Frozen Ordering:
+    // Sort ONLY based on initial load status so casting a vote during this session NEVER jumps the card
+    const initialVotedSet = initialVotedPollIdsRef.current;
+
     return [...filtered].sort((a, b) => {
-      const dynamicCycleA = (a.participation_mode === 'recurring' && a.recurrence !== 'expiry')
-        ? getCurrentCycleId(a.recurrence, a.starts_at)
-        : (a.current_cycle || 'lifetime');
-      const dynamicCycleB = (b.participation_mode === 'recurring' && b.recurrence !== 'expiry')
-        ? getCurrentCycleId(b.recurrence, b.starts_at)
-        : (b.current_cycle || 'lifetime');
+      const aWasVoted = initialVotedSet ? initialVotedSet.has(a.id) : false;
+      const bWasVoted = initialVotedSet ? initialVotedSet.has(b.id) : false;
 
-      const votedA = Boolean(
-        votedCycleKeys.includes(`${a.id}___${dynamicCycleA}`) ||
-        (a.participation_mode === 'one_time' && votedCycleKeys.some(k => k.startsWith(`${a.id}___`))) ||
-        flippedOverrides[a.id]
-      );
-      const votedB = Boolean(
-        votedCycleKeys.includes(`${b.id}___${dynamicCycleB}`) ||
-        (b.participation_mode === 'one_time' && votedCycleKeys.some(k => k.startsWith(`${b.id}___`))) ||
-        flippedOverrides[b.id]
-      );
+      // Put initial unvoted polls before initial voted polls
+      if (!aWasVoted && bWasVoted) return -1;
+      if (aWasVoted && !bWasVoted) return 1;
 
-      if (!votedA && votedB) return -1;
-      if (votedA && !votedB) return 1;
-
+      // Within each bucket, newest drops first
       const timeA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
       const timeB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
       return timeB - timeA;
     });
-  }, [livePollsList, activeCategoryFilter, selectedSeat, votedCycleKeys, flippedOverrides]);
+  }, [livePollsList, activeCategoryFilter, selectedSeat]);
 
   const allFlattenedSeats = useMemo(() => {
     const list: Array<{ name: string; state: string }> = [];
@@ -2195,7 +2218,24 @@ export default function BhuMatApp() {
                                 >
                                   {(() => {
                                     if (poll.participation_mode === 'expiry' || poll.recurrence === 'expiry') {
-                                      const d = poll.next_starts_at ? new Date(poll.next_starts_at) : new Date();
+                                      const expTarget = poll.next_starts_at 
+                                        ? new Date(poll.next_starts_at).getTime() 
+                                        : (poll.starts_at ? new Date(poll.starts_at).getTime() + 86400000 : nowTimestamp + 86400000);
+                                      const diffMs = expTarget - nowTimestamp;
+
+                                      if (diffMs > 0 && diffMs <= 86400000) {
+                                        const hrs = Math.floor(diffMs / 3600000);
+                                        const mins = Math.floor((diffMs % 3600000) / 60000);
+                                        const secs = Math.floor((diffMs % 60000) / 1000);
+                                        const countdownStr = `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+                                        return (
+                                          <span style={{ color: '#dc2626', backgroundColor: '#fef2f2', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                                            ⏳ {lang === 'HI' ? `समाप्त: ${countdownStr}` : `Ends in ${countdownStr}`}
+                                          </span>
+                                        );
+                                      }
+
+                                      const d = new Date(expTarget);
                                       const dateStr = d.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' });
                                       return (
                                         <span style={{ color: '#dc2626', backgroundColor: '#fef2f2', padding: '1px 5px', borderRadius: '4px' }}>
@@ -2591,7 +2631,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
                               const optKeyVotes = `opt_${chosenOptIdx}_votes`;
                               const homeChosenVotes = Number(homeTally?.[optKeyCount] ?? homeTally?.[optKeyVotes] ?? 0);
                               
-                              const homePct = homeTotal > 0 ? Math.round((homeChosenVotes / homeTotal) * 100) : 0;
+                              const homePct = homeTotal > 0 ? Math.min(100, Math.max(0, Math.round((homeChosenVotes / Math.max(homeTotal, homeChosenVotes)) * 100))) : 0;
                               const isPioneer = homeTotal <= 1;
 
                               // State calculations
@@ -2601,7 +2641,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
                                 stateTotal += Number(t.total_votes || t.total_ballots || 0);
                                 stateChosenVotes += Number(t[optKeyCount] ?? t[optKeyVotes] ?? 0);
                               });
-                              const statePct = stateTotal > 0 ? Math.round((stateChosenVotes / stateTotal) * 100) : homePct;
+                              const statePct = stateTotal > 0 ? Math.min(100, Math.max(0, Math.round((stateChosenVotes / Math.max(stateTotal, stateChosenVotes)) * 100))) : homePct;
                               const delta = homePct - statePct;
 
                              
@@ -2665,37 +2705,59 @@ if (!hasHomeInStandings && selectedSeat?.name) {
                             })()}
                             
                             {/* Live Neighbor Rivalry Alert */}
-                            {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 1 && (
-                              <div style={{
-                                backgroundColor: '#fffbeb',
-                                border: '1px solid #fde68a',
-                                borderRadius: '10px',
-                                padding: '6px 10px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                fontSize: '10.5px',
-                                fontWeight: 700,
-                                color: '#92400e'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  <span>⚔️</span>
-                                  <span>
-                                  {selectedSeat?.name || 'Home'}: <strong>{turfStandings.find((s: any) => s.is_home)?.total_votes || 0}</strong> vs {stateBastionsByPoll[poll.id]?.find((b: any) => (b.constituency_name || b.pc_name || '').toLowerCase().trim() !== (selectedSeat?.name || '').toLowerCase().trim())?.constituency_name || 'Rival'}: <strong>{stateBastionsByPoll[poll.id]?.find((b: any) => (b.constituency_name || b.pc_name || '').toLowerCase().trim() !== (selectedSeat?.name || '').toLowerCase().trim())?.total_votes || 0}</strong>
+                            {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 1 && (() => {
+                              const homeNorm = (selectedSeat?.name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                              const pollTallies = cachedTalliesByPoll[poll.id] || [];
+
+                              // Find home seat directly from cachedTallies or stateBastions
+                              const homeRow = (pollTallies || []).find((t: any) =>
+                                (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') === homeNorm
+                              ) || stateBastionsByPoll[poll.id].find((b: any) =>
+                                (b.constituency_name || b.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') === homeNorm
+                              );
+                              const trueHomeVotes = Number(homeRow?.total_votes ?? homeRow?.total_ballots ?? 0);
+
+                              // Identify top rival seat in the state
+                              const rival = stateBastionsByPoll[poll.id].find((b: any) => 
+                                (b.constituency_name || b.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') !== homeNorm
+                              );
+                              const rivalName = rival?.constituency_name || rival?.pc_name || 'State Rival';
+                              const rivalVotes = Number(rival?.total_votes ?? rival?.total_ballots ?? 0);
+
+                              const isLeading = trueHomeVotes >= rivalVotes && trueHomeVotes > 0;
+
+                              return (
+                                <div style={{
+                                  backgroundColor: '#fffbeb',
+                                  border: '1px solid #fde68a',
+                                  borderRadius: '10px',
+                                  padding: '6px 10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  fontSize: '10.5px',
+                                  fontWeight: 700,
+                                  color: '#92400e'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>⚔️</span>
+                                    <span>
+                                      {selectedSeat?.name || 'Home'}: <strong>{trueHomeVotes}</strong> vs {rivalName}: <strong>{rivalVotes}</strong>
+                                    </span>
+                                  </div>
+                                  <span style={{
+                                    fontSize: '9.5px',
+                                    fontWeight: 800,
+                                    color: isLeading ? '#065f46' : '#b45309',
+                                    backgroundColor: isLeading ? '#d1fae5' : '#fef3c7',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px'
+                                  }}>
+                                    {isLeading ? '🏆 Leading' : '⚡ Contested'}
                                   </span>
                                 </div>
-                                <span style={{
-                                  fontSize: '9.5px',
-                                  fontWeight: 800,
-                                  color: '#b45309',
-                                  backgroundColor: '#fef3c7',
-                                  padding: '1px 6px',
-                                  borderRadius: '4px'
-                                }}>
-                                  {(turfStandings.find((s: any) => s.is_home)?.total_votes || 1) >= (stateBastionsByPoll[poll.id].find((b: any) => b.constituency_name.toLowerCase() !== (selectedSeat?.name || '').toLowerCase())?.total_votes || 1) ? '🏆 Leading' : '⚡ Contested'}
-                                </span>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* Regional Pulse: Top Engaged Constituencies */}
                             <div style={{ marginTop: '0px', marginBottom: '4px', width: '100%', boxSizing: 'border-box' }}>

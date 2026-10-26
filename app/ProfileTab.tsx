@@ -268,36 +268,35 @@ export default function ProfileTab({
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    @{username}
-                  </h2>
-                  {isVerified && (
-                    <span style={{ color: '#10b981', fontSize: '14px' }} title="Verified Citizen">🛡️</span>
-                  )}
-                  <button
-                    onClick={() => {
-                      setUsernameInput(username);
-                      setIsEditingUsername(true);
-                    }}
-                    title={lang === 'HI' ? 'नाम बदलें' : 'Edit Username'}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    padding: '2px 6px',
-                    lineHeight: 1,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#e2e8f0'
-                  }}
-                >
-                  ✏️
-                </button>
-              </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 900, margin: 0, color: '#ffffff', lineHeight: 1 }}>
+                @{username}
+              </h2>
+              <span style={{ fontSize: '14px', lineHeight: 1 }}>🛡️</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setUsernameInput(username);
+                  setIsEditingUsername(true);
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  padding: '3px 6px',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1
+                }}
+                title={lang === 'HI' ? 'नाम बदलें' : 'Edit Username'}
+              >
+                ✏️
+              </button>
+            </div>
               )}
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
@@ -448,22 +447,31 @@ export default function ProfileTab({
               border: '1.5px solid #e2e8f0',
               boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '13px' }}>{isUnder5 ? '🔒' : '👑'}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
                       {lang === 'HI' ? 'लोकमत सांस्कृतिक समानता' : 'LokMat Cultural Alignment'}
-                    </span>
-                    <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#64748b', padding: '1px 5px', borderRadius: '4px' }}>
-                      {lang === 'HI' ? 'गोपनीय जनमत बाहर' : 'JanMat Excluded'}
-                    </span>
-                  </div>
+                </span>
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  backgroundColor: '#f1f5f9',
+                  color: '#64748b',
+                  border: '1px solid #e2e8f0',
+                  padding: '2px 6px',
+                  borderRadius: '5px',
+                  lineHeight: 1
+                }}>
+                  {lang === 'HI' ? 'जनमत पृथक' : 'JanMat Excluded'}
+                </span>
+              </div>
                   <span
                     onClick={(e) => showPointerToast(
                       lang === 'HI'
-                        ? 'CAQ मापता है कि आपकी सांस्कृतिक राय आपके संसदीय क्षेत्र और राज्य के बहुसंख्यक नागरिकों से कितनी मेल खाती है।'
-                        : 'CAQ measures how often your cultural stances match the majority consensus in your constituency and state.',
+                        ? 'LCA मापता है कि आपकी सांस्कृतिक राय आपके संसदीय क्षेत्र और राज्य के बहुसंख्यक नागरिकों से कितनी मेल खाती है।'
+                        : 'LokMat Alignment measures how often your cultural stances match the majority consensus in your constituency and state.',
                       e
                     )}
                     style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer' }}
