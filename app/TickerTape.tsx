@@ -147,6 +147,11 @@ export default function TickerTape({
           0% { transform: translate3d(0, 0, 0); }
           100% { transform: translate3d(-50%, 0, 0); }
         }
+        @keyframes tickerDotGlow {
+          0% { transform: scale(0.9); opacity: 0.85; }
+          50% { transform: scale(1.18); opacity: 1; }
+          100% { transform: scale(0.9); opacity: 0.85; }
+        }
         .bhumat-constant-track {
           display: inline-flex;
           align-items: center;
@@ -181,7 +186,8 @@ export default function TickerTape({
             height: '6px',
             borderRadius: '50%',
             backgroundColor: isJanMat ? '#10b981' : '#f59e0b',
-            boxShadow: `0 0 6px ${isJanMat ? '#10b981' : '#f59e0b'}`
+            boxShadow: `0 0 6px ${isJanMat ? '#10b981' : '#f59e0b'}`,
+            animation: 'tickerDotGlow 1.8s infinite ease-in-out'
           }}
         />
         <span

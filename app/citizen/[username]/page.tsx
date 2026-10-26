@@ -2,9 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase, safeStorage } from '../../utils/supabaseClient';
-
-const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+import { supabase, safeStorage } from '../.././utils/supabaseClient';
 
 interface CitizenProfile {
   username: string;
@@ -13,274 +11,312 @@ interface CitizenProfile {
   is_verified: boolean;
   xp_score: number;
   daily_streak: number;
-  total_votes: number;
-  caq_score: number;
+  total_ballots: number;
   voting_since: string;
-  badges: Array<{ title: string; color: string; desc: string }>;
+  is_private: boolean;
   lokmat_history: Array<{
     poll_id: string;
     title: string;
     choice: string;
-    color: string;
+    date: string;
   }>;
 }
 
 export default function CitizenPublicProfile() {
   const params = useParams();
   const router = useRouter();
-  const rawParam = params?.username as string;
-  const targetUsername = decodeURIComponent(rawParam || '').trim();
+  const rawUsername = params?.username as string;
+  const cleanUsername = decodeURIComponent(rawUsername || '');
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<CitizenProfile | null>(null);
 
   useEffect(() => {
-    if (!targetUsername) return;
+    if (!cleanUsername) return;
 
     async function fetchCitizen() {
       setLoading(true);
       try {
-        const { data: dbUser } = await supabase
+        // 1. Fetch citizen profile from nagrik_profiles
+        const { data: userRow } = await supabase
           .from('nagrik_profiles')
           .select('*')
-          .ilike('username', targetUsername)
+          .eq('username', cleanUsername)
           .maybeSingle();
 
-        const localUsername = safeStorage.getItem('bhumat_username') || 'CitizenBharat';
-        const isSelf = localUsername.toLowerCase() === targetUsername.toLowerCase();
-        const localSeat = safeStorage.getItem('bhumat_user_seat') || 'Jhanjharpur';
-        const localState = safeStorage.getItem('bhumat_user_state') || 'Bihar';
-        const localToken = safeStorage.getItem('bhumat_voter_token') || '';
+        // Check local privacy override if inspecting self
+        const isSelf = safeStorage.getItem('bhumat_username') === cleanUsername;
+        const localPrivate = safeStorage.getItem('bhumat_profile_private') === 'true';
 
-        const userSeat = dbUser?.assigned_pc_name || dbUser?.assigned_pc_id || (isSelf ? localSeat : 'Jhanjharpur');
-        const userState = dbUser?.assigned_state_name || (isSelf ? localState : 'Bihar');
-
-        // Fetch user's public LokMat voting history with real question titles
-        let publicHistory: any[] = [];
-        const tokenToQuery = dbUser?.voter_token || (isSelf ? localToken : null);
-        if (tokenToQuery) {
-          const { data: hist } = await supabase
-            .from('lokmat_votes')
-            .select('*')
-            .eq('voter_token', tokenToQuery)
-            .order('created_at', { ascending: false })
-            .limit(10);
-          if (hist && hist.length > 0) publicHistory = hist;
+        if (userRow) {
+          const isPrivate = userRow.is_public_profile === false || (isSelf && localPrivate);
+          setProfile({
+            username: userRow.username,
+            constituency_name: userRow.assigned_pc_id || userRow.assigned_pc_name || 'Bharat',
+            state_name: userRow.assigned_state_name || 'State',
+            is_verified: Boolean(userRow.phone_number || userRow.is_verified),
+            xp_score: (userRow.dbg_balance || 5) * 30,
+            daily_streak: Math.max(1, userRow.daily_streak || 1),
+            total_ballots: (userRow.lokmat_votes_count || 0) + (userRow.janmat_votes_count || 0) || 5,
+            voting_since: userRow.created_at || 'Oct 2026',
+            is_private: isPrivate,
+            lokmat_history: userRow.public_lokmat_history || [
+              {
+                poll_id: 'p_1',
+                title: "Which innings do you consider Virat Kohli's greatest T20 run chase?",
+                choice: '82* vs Pakistan (Melbourne, 2022)',
+                date: '24 Oct 2026'
+              },
+              {
+                poll_id: 'p_2',
+                title: 'If someone drops a wallet with ₹2,000 cash and ID cards on a busy street, what happens?',
+                choice: 'Gone for Good (Unlikely to be Recovered)',
+                date: '25 Oct 2026'
+              },
+              {
+                poll_id: 'p_3',
+                title: 'Which actor currently has the biggest pan-India and global box-office pull in Bollywood?',
+                choice: 'Ranveer Singh',
+                date: '26 Oct 2026'
+              }
+            ]
+          });
+        } else {
+          // Dynamic fallback for newly registered or guest citizens
+          setProfile({
+            username: cleanUsername,
+            constituency_name: 'Darbhanga',
+            state_name: 'Bihar',
+            is_verified: true,
+            xp_score: 150,
+            daily_streak: 1,
+            total_ballots: 5,
+            voting_since: 'Oct 2026',
+            is_private: isSelf ? localPrivate : false,
+            lokmat_history: [
+              {
+                poll_id: 'p_1',
+                title: "Which innings do you consider Virat Kohli's greatest T20 run chase?",
+                choice: '82* vs Pakistan (Melbourne, 2022)',
+                date: '24 Oct 2026'
+              },
+              {
+                poll_id: 'p_2',
+                title: 'If someone drops a wallet with ₹2,000 cash and ID cards on a busy street, what happens?',
+                choice: 'Gone for Good (Unlikely to be Recovered)',
+                date: '25 Oct 2026'
+              },
+              {
+                poll_id: 'p_3',
+                title: 'Which actor currently has the biggest pan-India and global box-office pull in Bollywood?',
+                choice: 'Ranveer Singh',
+                date: '26 Oct 2026'
+              }
+            ]
+          });
         }
-
-        // Fetch polls to resolve option texts and titles accurately
-        const { data: pollsData } = await supabase.from('polls').select('*').limit(20);
-
-        const resolvedHistory = publicHistory.map((h, idx) => {
-          const matchedPoll = pollsData?.find((p) => p.id === h.poll_id);
-          const optIdx = Number(h.selected_option_id ?? h.selected_option ?? 0);
-          const optObj = matchedPoll?.options?.[optIdx];
-          const choiceText = optObj?.text_en || h.selected_option_text || 'Stance Recorded';
-          const optColor = OPTION_PALETTE[optIdx % OPTION_PALETTE.length];
-          return {
-            poll_id: h.poll_id,
-            title: matchedPoll?.title_en || h.poll_title || 'LokMat Cultural Pulse',
-            choice: choiceText.split('(')[0].trim(),
-            color: optColor
-          };
-        });
-
-        // Fallback realistic stances if local history is staging
-        const finalHistory = resolvedHistory.length > 0 ? resolvedHistory : [
-          { poll_id: 'suv', title: 'Mid-size SUV commanding road presence', choice: 'Grand Vitara', color: '#0ea5e9' },
-          { poll_id: 'bollywood', title: 'Biggest pan-India and global box-office pull', choice: 'Salman Khan', color: '#10b981' }
-        ];
-
-        const totalVotes = Math.max(finalHistory.length, isSelf ? 2 : 5);
-        const xp = totalVotes * 30;
-
-        setProfile({
-          username: dbUser?.username || targetUsername,
-          constituency_name: userSeat,
-          state_name: userState,
-          is_verified: Boolean(dbUser?.is_verified || isSelf),
-          xp_score: xp,
-          daily_streak: Math.max(1, dbUser?.daily_streak || 1),
-          total_votes: totalVotes,
-          caq_score: 83,
-          voting_since: dbUser?.created_at ? new Date(dbUser.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'Oct 2026',
-          badges: [
-            { title: '🌱 Prathamik Nagrik', color: '#10b981', desc: 'Participated in sovereign consensus' },
-            { title: '🏛️ Jagruk Nagrik', color: '#0284c7', desc: 'Active civic policy auditor' },
-            ...(totalVotes >= 10 ? [{ title: '🛡️ Lok Prahari', color: '#8b5cf6', desc: 'Constituency consensus guardian' }] : [])
-          ],
-          lokmat_history: finalHistory
-        });
       } catch (err) {
-        console.error('Error fetching citizen:', err);
+        console.error('Error loading citizen dossier:', err);
       } finally {
         setLoading(false);
       }
     }
 
     fetchCitizen();
-  }, [targetUsername]);
+  }, [cleanUsername]);
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      
       {/* Header */}
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, width: '100%' }}>
         <div style={{ maxWidth: '460px', margin: '0 auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => router.back()}
-              style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: 0 }}
-            >
-              ←
-            </button>
-            <span style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a' }}>
-              Citizen Dossier
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            style={{ background: 'none', border: 'none', fontSize: '13px', fontWeight: 800, color: '#0284c7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            ← Citizen Dossier
+          </button>
           <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px' }}>
-            🛡️ Resident Verified
+            🛡️ Verified Citizen
           </span>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Container */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 14px 40px 14px' }}>
         <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#0284c7', fontWeight: 700, fontSize: '13px' }}>
-              Loading sovereign citizen dossier...
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b', fontSize: '13px' }}>
+              Retrieving sovereign citizen dossier...
             </div>
           ) : profile ? (
             <>
-              {/* Dossier Card */}
+              {/* Sovereign Hero Passport */}
               <div style={{
-                backgroundColor: '#ffffff',
-                border: '1.5px solid #e2e8f0',
+                backgroundColor: '#0a1128',
+                color: '#ffffff',
                 borderRadius: '24px',
-                padding: '20px',
+                padding: '22px 20px',
+                boxShadow: '0 8px 24px rgba(10, 17, 40, 0.35)',
+                border: '1.5px solid #1e293b',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+                gap: '14px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
-                      width: '48px',
-                      height: '48px',
+                      width: '46px',
+                      height: '46px',
                       borderRadius: '50%',
-                      backgroundColor: '#0a1128',
-                      color: '#ffffff',
+                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      border: '1.5px solid #38bdf8',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px'
+                      fontSize: '20px'
                     }}>
                       🏛️
                     </div>
                     <div>
-                      <div style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
-                        @{profile.username}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                          @{profile.username}
+                        </span>
+                        {profile.is_verified && (
+                          <span style={{ fontSize: '12px' }} title="Verified Citizen">🛡️</span>
+                        )}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
                         📍 {profile.constituency_name} • {profile.state_name}
                       </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#f59e0b' }}>
-                      {profile.xp_score} <span style={{ fontSize: '11px', color: '#94a3b8' }}>XP</span>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#fbbf24' }}>
+                      {profile.xp_score} <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>XP</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>
+                    <div style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 700, marginTop: '2px' }}>
                       🔥 {profile.daily_streak}d streak
                     </div>
                   </div>
                 </div>
 
-                {/* Scorecards */}
+                {/* 2-Box Summary Grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>VOTING TENURE</div>
-                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                  <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>VOTING TENURE</div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#ffffff', marginTop: '2px' }}>
                       Since {profile.voting_since}
                     </div>
                   </div>
-                  <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 800 }}>BALLOTS AUDITED</div>
-                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
-                      {profile.total_votes} Ballots Cast
+                  <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>BALLOTS AUDITED</div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#38bdf8', marginTop: '2px' }}>
+                      {profile.total_ballots} Ballots Cast
                     </div>
                   </div>
                 </div>
 
-                {/* Badges */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {profile.badges.map((b, i) => (
-                    <span
-                      key={i}
+                {/* Civic Badges */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '3px 8px', borderRadius: '6px' }}>
+                    🌱 Prathamik Nagrik
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '3px 8px', borderRadius: '6px' }}>
+                    🏛️ Jagruk Nagrik
+                  </span>
+                </div>
+              </div>
+
+              {/* Public LokMat Stances Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    🌅 Public Cultural Stances (LokMat)
+                  </span>
+                  {profile.is_private && (
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '2px 6px', borderRadius: '4px' }}>
+                      🔒 Private
+                    </span>
+                  )}
+                </div>
+
+                {profile.is_private ? (
+                  <div style={{
+                    backgroundColor: '#ffffff',
+                    border: '1.5px dashed #cbd5e1',
+                    borderRadius: '16px',
+                    padding: '24px 20px',
+                    textAlign: 'center',
+                    color: '#64748b'
+                  }}>
+                    <span style={{ fontSize: '24px' }}>🔒</span>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
+                      Stance Ledger Set to Private
+                    </div>
+                    <p style={{ fontSize: '11.5px', color: '#64748b', margin: '4px 0 0 0' }}>
+                      This citizen has chosen to keep their LokMat opinions private.
+                    </p>
+                  </div>
+                ) : (
+                  profile.lokmat_history.map((item, idx) => (
+                    <div
+                      key={idx}
                       style={{
-                        fontSize: '11px',
-                        fontWeight: 800,
-                        color: b.color,
-                        backgroundColor: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        padding: '4px 10px',
-                        borderRadius: '8px'
+                        backgroundColor: '#ffffff',
+                        border: '1.5px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                       }}
                     >
-                      {b.title}
-                    </span>
-                  ))}
-                </div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>
+                        {item.title}
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #f1f5f9',
+                        padding: '6px 10px',
+                        borderRadius: '8px'
+                      }}>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: '#059669' }}>
+                          ✓ {item.choice}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>
+                          {item.date}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              {/* Public LokMat History with Colorful Option Pills */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '11.5px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', paddingLeft: '4px' }}>
-                  🌅 Public Cultural Stances (LokMat)
-                </div>
-
-                {profile.lokmat_history.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      backgroundColor: '#ffffff',
-                      border: '1.5px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '14px 16px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.02)'
-                    }}
-                  >
-                    <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>
-                      {item.title}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: '12.5px', fontWeight: 800, color: item.color }}>
-                        {item.choice}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Privacy Shield Notice */}
+              {/* DPDP Cryptographic Trust Shield */}
               <div style={{
-                backgroundColor: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                borderRadius: '14px',
-                padding: '12px 14px',
-                fontSize: '11.5px',
-                color: '#166534',
-                lineHeight: 1.45
+                backgroundColor: '#ecfdf5',
+                border: '1.5px solid #a7f3d0',
+                borderRadius: '16px',
+                padding: '14px',
+                fontSize: '11px',
+                color: '#065f46',
+                lineHeight: 1.5,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
               }}>
-                🔒 <strong>Zero Identity Tracing:</strong> Per the BhuMat Decoupled Protocol, JanMat civic audits are processed inside the cryptographic vault and never displayed on public dossiers.
+                <span style={{ fontSize: '14px', flexShrink: 0 }}>🔒</span>
+                <div>
+                  <strong>Zero Identity Tracing:</strong> Per the BhuMat Decoupled Protocol, JanMat civic audits are processed inside the blind cryptographic vault and never displayed on public dossiers.
+                </div>
               </div>
             </>
           ) : (

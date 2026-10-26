@@ -4,7 +4,7 @@ import * as d3 from 'd3';
 import { supabase } from './utils/supabaseClient';
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
-const UNPOLLED_SEAT_COLOR = '#e2e8f0';
+const UNPOLLED_SEAT_COLOR = '#f1f5f9';
 const TIE_COLOR = '#f59e0b'; // Radiant Gold for Split Mat / Contested Seats
 const RADAR_GREEN = '#10b981';
 
@@ -558,6 +558,11 @@ tooltipTimeoutRef.current = setTimeout(() => {
         .state-calm-radar {
           animation: stateRadarWave 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
         }
+        @keyframes radarPing {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+          70% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
         @keyframes stateShockwavePulseRing {
           0% { r: 6px; opacity: 1; stroke-width: 3.5px; }
           100% { r: 32px; opacity: 0; stroke-width: 0.4px; }
@@ -608,17 +613,29 @@ tooltipTimeoutRef.current = setTimeout(() => {
               }}>
                 📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
               </span>
-              <span style={{
-            fontSize: '9.5px',
-            fontWeight: 800,
-            color: '#065f46',
-            backgroundColor: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            padding: '2px 7px',
-            borderRadius: '6px'
-          }}>
-            {lang === 'HI' ? '● भूमत दृष्टि' : '● Drishti Map'}
-          </span>
+              <div style={{
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  backgroundColor: '#ecfdf5',
+  border: '1px solid #a7f3d0',
+  padding: '2px 8px',
+  borderRadius: '999px',
+  fontSize: '10px',
+  fontWeight: 800,
+  color: '#065f46'
+}}>
+  <span style={{
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    backgroundColor: '#10b981',
+    display: 'inline-block',
+    boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.7)',
+    animation: 'radarPing 2s infinite cubic-bezier(0, 0, 0.2, 1)'
+  }} />
+  <span>{lang === 'HI' ? 'लाइव दृष्टि ग्रिड' : 'Live Drishti Grid'}</span>
+</div>
             </div>
 
             {isPioneer && (

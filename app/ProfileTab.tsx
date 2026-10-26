@@ -268,8 +268,8 @@ export default function ProfileTab({
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <h2 style={{ fontSize: '22px', fontWeight: 900, margin: 0, color: '#f8fafc', letterSpacing: '-0.01em' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     @{username}
                   </h2>
                   {isVerified && (
@@ -280,12 +280,24 @@ export default function ProfileTab({
                       setUsernameInput(username);
                       setIsEditingUsername(true);
                     }}
-                    title="Edit Username"
-                    style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', padding: '0 2px' }}
-                  >
-                    ✏️
-                  </button>
-                </div>
+                    title={lang === 'HI' ? 'नाम बदलें' : 'Edit Username'}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    padding: '2px 6px',
+                    lineHeight: 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#e2e8f0'
+                  }}
+                >
+                  ✏️
+                </button>
+              </div>
               )}
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
@@ -439,9 +451,14 @@ export default function ProfileTab({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '13px' }}>{isUnder5 ? '🔒' : '👑'}</span>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
-                    {lang === 'HI' ? 'जनमत समानता स्कोर (CAQ)' : 'Consensus Alignment (CAQ)'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                      {lang === 'HI' ? 'लोकमत सांस्कृतिक समानता' : 'LokMat Cultural Alignment'}
+                    </span>
+                    <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#f1f5f9', color: '#64748b', padding: '1px 5px', borderRadius: '4px' }}>
+                      {lang === 'HI' ? 'गोपनीय जनमत बाहर' : 'JanMat Excluded'}
+                    </span>
+                  </div>
                   <span
                     onClick={(e) => showPointerToast(
                       lang === 'HI'
@@ -527,28 +544,8 @@ export default function ProfileTab({
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              📊 {lang === 'HI' ? 'भागीदारी एवं राय इतिहास' : 'Participation & Stance History'}
+              📊 {lang === 'HI' ? 'सहभागिता इतिहास' : 'PARTICIPATION HISTORY'}
             </span>
-            {/* LOKMAT PUBLIC VISIBILITY TOGGLE BUTTON (SAFFRON THEMED) */}
-            <button
-              type="button"
-              onClick={handleToggleLokMatStances}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '4px 9px',
-                borderRadius: '8px',
-                border: `1.5px solid ${showLokMatStances ? '#fde68a' : '#cbd5e1'}`,
-                backgroundColor: showLokMatStances ? '#fffbeb' : '#f8fafc',
-                color: showLokMatStances ? '#b45309' : '#64748b',
-                fontSize: '10.5px',
-                fontWeight: 800,
-                cursor: 'pointer'
-              }}
-            >
-              <span>{showLokMatStances ? '🌅 LokMat Stances: ON' : '🔒 LokMat Stances: OFF'}</span>
-            </button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
@@ -587,6 +584,54 @@ export default function ProfileTab({
         <span style={{ fontSize: '11px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0 4px' }}>
           ⚙️ {lang === 'HI' ? 'खाता एवं निजी सेटिंग्स' : 'Account & Private Settings'}
         </span>
+
+        {/* Stance Privacy Toggle */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '14px',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '10px'
+            }}>
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                  🔒 {lang === 'HI' ? 'सांस्कृतिक विचार सार्वजनिक रखें' : 'Public LokMat Stances'}
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
+                  {lang === 'HI' 
+                    ? 'सार्वजनिक प्रोफ़ाइल पर अपने लोकमत विचार दूसरों को दिखाएं।' 
+                    : 'Show your cultural opinions on your public citizen dossier.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const current = safeStorage.getItem('bhumat_profile_private') === 'true';
+                  safeStorage.setItem('bhumat_profile_private', (!current).toString());
+                  showPointerToast(
+                    !current 
+                      ? (lang === 'HI' ? '🔒 प्रोफ़ाइल निजी की गई (विचार छिपे हैं)' : '🔒 Stance ledger set to Private') 
+                      : (lang === 'HI' ? '🌐 प्रोफ़ाइल सार्वजनिक की गई' : '🌐 Stance ledger set to Public')
+                  );
+                  syncWallet(deviceHash);
+                }}
+                style={{
+                  backgroundColor: safeStorage.getItem('bhumat_profile_private') === 'true' ? '#f1f5f9' : '#ecfdf5',
+                  border: `1.5px solid ${safeStorage.getItem('bhumat_profile_private') === 'true' ? '#cbd5e1' : '#a7f3d0'}`,
+                  color: safeStorage.getItem('bhumat_profile_private') === 'true' ? '#64748b' : '#059669',
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                {safeStorage.getItem('bhumat_profile_private') === 'true' ? 'OFF (Private)' : 'ON (Public)'}
+              </button>
+            </div>
 
         {/* CITIZEN DBG REWARDS */}
         <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>

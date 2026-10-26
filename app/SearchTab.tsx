@@ -282,6 +282,26 @@ export default function SearchTab({
                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>
                       {lang === 'EN' ? 'View Drishti ❯' : 'दृष्टि देखें ❯'}
                     </span>
+                  ) : isScheduledFuture ? (
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 750,
+                      color: '#64748b',
+                      backgroundColor: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <span>⏳</span>
+                      <span>
+                        {poll.starts_at 
+                          ? `${lang === 'HI' ? 'खुलने की तिथि: ' : 'Drops '}${new Date(poll.starts_at).toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}`
+                          : (lang === 'HI' ? 'शीघ्र खुलेगा' : 'Coming Soon')}
+                      </span>
+                    </span>
                   ) : (
                     <span style={{
                       fontSize: '10.5px',
@@ -295,7 +315,7 @@ export default function SearchTab({
                       alignItems: 'center',
                       gap: '4px'
                     }}>
-                      <span>🔒</span>
+                      <span>🗳️</span>
                       <span>{lang === 'EN' ? 'Vote to Unlock' : 'मतदान आवश्यक'}</span>
                     </span>
                   )}
