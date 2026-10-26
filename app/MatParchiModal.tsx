@@ -449,7 +449,7 @@ export default function MatParchiModal({
             }}
           >
             <span>📸</span>
-            <span>{isExporting ? (lang === 'HI' ? 'पर्ची तैयार हो रही है...' : 'Generating Image...') : (lang === 'HI' ? 'व्हाट्सएप स्टेटस इमेज शेयर करें' : 'Share Image to WhatsApp Status')}</span>
+            <span>{isExporting ? (lang === 'HI' ? 'पर्ची तैयार हो रही है...' : 'Generating Image...') : (lang === 'HI' ? 'व्हाट्सएप पे इमेज शेयर करें' : 'Share Image to WhatsApp')}</span>
           </button>
 
           {/* Action 2: Text Forward Fallback */}

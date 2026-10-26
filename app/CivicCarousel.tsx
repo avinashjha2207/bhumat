@@ -13,6 +13,22 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
 
   const slides = [
     {
+      id: 'proof_of_ballot',
+      icon: '🗳️',
+      tag: lang === 'HI' ? 'मतदान ही अधिकार' : 'Proof of Ballot',
+      tagColor: '#059669',
+      tagBg: '#ecfdf5',
+      tagBorder: '#a7f3d0',
+      title: lang === 'HI' 
+        ? 'मत दें, परिणाम देखें • ऐतिहासिक टाइमलाइन' 
+        : 'Vote to Reveal Data • Unbroken Timeline',
+      body: lang === 'HI'
+        ? 'भूमत पर निष्पक्षता सर्वोपरि है: मत देने के बाद ही आपके क्षेत्र के लाइव प्रतिशत और नक्शे दिखते हैं। हर चक्र में भाग लेकर अपनी ऐतिहासिक टाइमलाइन खुली रखें!'
+        : 'Zero bias: Live percentages and constituency heatmaps unlock strictly after you cast your ballot. Participate every cycle to build your permanent public opinion history!',
+      actionLabel: null,
+      actionTab: null
+    },
+    {
       id: 'cadence_schedule',
       icon: '📅',
       tag: lang === 'HI' ? 'मासिक चक्र नियम' : 'Monthly Cycle Rule',
@@ -40,7 +56,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         : 'Zero GPS • Completely Decoupled Audits',
       body: lang === 'HI'
         ? 'जनमत नागरिक ऑडिट में आपका फोन या पहचान कभी भी आपके वोट से नहीं जुड़ती। सिस्टम केवल यह सत्यापित करता है कि आपने मत दिया, किंतु आपका विकल्प पूरी तरह गोपनीय रहता है।'
-        : 'JanMat decouples your identity from your ballot. The ledger verifies that you voted to block duplicates, but zero individuals - even admins - can trace your choice.',
+        : 'JanMat decouples your identity from your ballot. The ledger verifies that you voted to block duplicates, but no individuals, not even the BhuMat admin - can trace your choice.',
       actionLabel: lang === 'HI' ? 'सुरक्षा प्रोटोकॉल ❯' : 'Security Protocol ❯',
       actionTab: 'search' as const
     },

@@ -535,7 +535,7 @@ useEffect(() => {
         }
       });
 
-      const pct = Math.round((highest / total) * 100);
+      const pct = total > 0 ? (highest > 0 ? Math.max(1, Math.round((highest / total) * 100)) : 0) : 0;
       const text = tie
         ? (lang === 'HI' ? 'खंडित मत (टाई)' : 'Split Mat (Tie)')
         : winningIdx !== null && highest > 0
@@ -1232,18 +1232,28 @@ return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.
                   );
                   const activeTotalVotes = activeCounts.reduce((a, b) => a + b, 0);
 
-                  // Largest Remainder Method: Guarantees strict 100% sum across all options
-                  const optPct = (() => {
-                    if (activeTotalVotes === 0) return Math.round(100 / poll.options.length);
-                    const exacts = activeCounts.map(c => (c / activeTotalVotes) * 100);
-                    const floors = exacts.map(e => Math.floor(e));
-                    let deficit = 100 - floors.reduce((a, b) => a + b, 0);
-                    const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
-                    for (let r = 0; r < deficit; r++) {
-                      floors[diffs[r % diffs.length].i] += 1;
-                    }
-                    return floors[idx] ?? 0;
-                  })();
+                  // Strict Proportional Engine: Non-zero votes never round down to 0%
+          const optPct = (() => {
+            if (activeTotalVotes === 0) return Math.round(100 / poll.options.length);
+            const thisCount = activeCounts[idx] || 0;
+            if (thisCount === 0) return 0;
+
+            const exacts = activeCounts.map(c => (c / activeTotalVotes) * 100);
+            const floors = exacts.map((e, i) => (activeCounts[i] > 0 ? Math.max(1, Math.floor(e)) : 0));
+            let sumFloors = floors.reduce((a, b) => a + b, 0);
+
+            if (sumFloors > 100) {
+              const maxIdx = floors.indexOf(Math.max(...floors));
+              floors[maxIdx] -= (sumFloors - 100);
+            } else if (sumFloors < 100) {
+              let deficit = 100 - sumFloors;
+              const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+              for (let r = 0; r < deficit; r++) {
+                floors[diffs[r % diffs.length].i] += 1;
+              }
+            }
+            return floors[idx] ?? 1;
+          })();
                   const isUserChoice = poll.category !== 'JanMat' && userVotedOptionIdx === idx;
                   const primaryText = lang === 'EN' ? opt.text_en : opt.text_hi;
                   const secondaryText = lang === 'EN' ? opt.text_hi : opt.text_en;

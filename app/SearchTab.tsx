@@ -10,6 +10,7 @@ interface Poll {
   target_seats?: string[];
   blackout_seats?: string[];
   starts_at?: string;
+  closes_at?: string;
   participation_mode?: string;
   current_cycle?: string;
   recurrence?: string;
@@ -208,9 +209,18 @@ export default function SearchTab({
               (flippedOverrides && flippedOverrides[poll.id])
             );
 
-            const isScheduledFuture = poll.starts_at && new Date(poll.starts_at) > new Date();
+            const isScheduledFuture = Boolean(poll.starts_at && new Date(poll.starts_at) > new Date());
+            const isConcluded = Boolean(
+              (poll.participation_mode === 'expiry' || poll.recurrence === 'expiry') &&
+              poll.closes_at &&
+              new Date(poll.closes_at) <= new Date()
+            );
 
             const handleCardClick = () => {
+              if (isConcluded) {
+                openExpandedView(poll);
+                return;
+              }
               if (isScheduledFuture) {
                 const dateStr = new Date(poll.starts_at!).toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
                   day: 'numeric',
@@ -226,7 +236,6 @@ export default function SearchTab({
                 setTimeout(() => setScheduledNotice(null), 3500);
                 return;
               }
-
               if (hasVotedThisCycle) {
                 openExpandedView(poll);
               } else {
@@ -248,7 +257,9 @@ export default function SearchTab({
                 onClick={handleCardClick}
                 style={{
                   backgroundColor: '#ffffff',
-                  border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                  border: isConcluded 
+                    ? '1.5px solid #cbd5e1' 
+                    : `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
                   borderRadius: '16px',
                   padding: '16px',
                   cursor: 'pointer',
@@ -265,20 +276,36 @@ export default function SearchTab({
                       style={{
                         fontSize: '10px',
                         fontWeight: 800,
-                        color: isJanMat ? '#059669' : '#d97706',
-                        backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
-                        border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                        color: isConcluded ? '#64748b' : (isJanMat ? '#059669' : '#d97706'),
+                        backgroundColor: isConcluded ? '#f1f5f9' : (isJanMat ? '#ecfdf5' : '#fffbeb'),
+                        border: isConcluded ? '1px solid #cbd5e1' : `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
                         padding: '2px 8px',
                         borderRadius: '999px'
                       }}
                     >
-                      ● {poll.category}
+                      ● {poll.category} {isConcluded ? (lang === 'HI' ? '(पुराना/सील)' : '(Archived)') : ''}
                     </span>
                     <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
                       {poll.recurrence ? `${poll.recurrence.toUpperCase()}` : 'MONTHLY'}
                     </span>
                   </div>
-                  {hasVotedThisCycle ? (
+                  {isConcluded ? (
+                    <span style={{
+                      fontSize: '10.5px',
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      backgroundColor: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <span>📊</span>
+                      <span>{lang === 'EN' ? 'View Results ↗' : 'परिणाम देखें ↗'}</span>
+                    </span>
+                  ) : hasVotedThisCycle ? (
                     <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7' }}>
                       {lang === 'EN' ? 'View Drishti ❯' : 'दृष्टि देखें ❯'}
                     </span>

@@ -57,6 +57,7 @@ interface Poll {
   target_seats?: string[];
   blackout_seats?: string[];
   starts_at?: string;
+  closes_at?: string;
   participation_mode?: string;
   current_cycle?: string;
   recurrence?: string;
@@ -473,23 +474,47 @@ export default function BhuMatApp() {
     }, 3500);
   };
 
+  const brandResetTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleBrandReset = () => {
+    // 1. Immediately kill any playing audio or speech synthesis
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setActivePlayingPollId(null);
+
     setExpandedPoll(null);
     setActiveTab('vote');
     setActiveCategoryFilter('ALL');
     setPollSearchQuery('');
+
+    // 2. Un-flip cards back to the Front Ballot view for a clear re-inspection
     setAutoFlippedCards({});
     setFlippedOverrides({});
+
+    // 3. Smoothly scroll to the top of the feed
     window.scrollTo({ top: 0, behavior: 'smooth' });
     loadPolls();
-    setTimeout(() => {
+
+    // 4. Clear any previous rotation timer
+    if (brandResetTimerRef.current) {
+      clearTimeout(brandResetTimerRef.current);
+    }
+
+    // 5. 6-Second Delight Delay: Give the user 6 seconds on the front view,
+    // then smoothly rotate back to Drishti Map view for all voted cards
+    brandResetTimerRef.current = setTimeout(() => {
       const flippedMap: Record<string, boolean> = {};
       votedCycleKeys.forEach((key) => {
         const pId = key.split('___')[0];
-        flippedMap[pId] = true;
+        if (pId) flippedMap[pId] = true;
       });
       setAutoFlippedCards(flippedMap);
-    }, 5000);
+    }, 6000);
   };
 
   useEffect(() => {
@@ -511,13 +536,11 @@ export default function BhuMatApp() {
   }, []);
 
   const openExpandedView = async (poll: Poll) => {
-    const dynamicCycle = (poll.participation_mode === 'recurring' && poll.recurrence !== 'expiry')
-      ? getCurrentCycleId(poll.recurrence, poll.starts_at) 
-      : 'lifetime';
-    const cycleVoteKey = `${poll.id}___${dynamicCycle}`;
-    
-    const hasVoted = votedCycleKeys.includes(cycleVoteKey) || 
-      (poll.participation_mode === 'one_time' && votedCycleKeys.some(k => k.startsWith(`${poll.id}___`)));
+    // Fail-safe participation check: verifies votedCycleKeys, session choices, or prefix match
+    const hasVoted = 
+      votedCycleKeys.some((k) => k.startsWith(`${poll.id}___`)) ||
+      Object.keys(sessionBallotChoices).some((k) => k.startsWith(`${poll.id}___`));
+
     if (!hasVoted) {
       showPointerToast(
         lang === 'HI'
@@ -528,6 +551,7 @@ export default function BhuMatApp() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+
     try {
       const { data } = await supabase
         .from('constituency_tallies')
@@ -538,7 +562,6 @@ export default function BhuMatApp() {
       }
     } catch (e) {}
 
-    // Push history state so Android/iOS back swipe dismisses the modal gracefully
     if (typeof window !== 'undefined') {
       window.history.pushState({ modal: 'expanded' }, '');
     }
@@ -600,20 +623,17 @@ export default function BhuMatApp() {
     .from('lokmat_votes')
     .select('*', { count: 'exact', head: true })
     .eq('voter_token', activeToken);
-
-  // Fetch accurate count of JanMat secret audit participation (Table A)
-  const { count: actualJanMatCount } = await supabase
-    .from('janmat_blind_participation_receipts')
-    .select('*', { count: 'exact', head: true })
-    .eq('voter_token', activeToken);
+  
+  // Read stored JanMat count from safeStorage (since blind receipts have no voter_token for privacy)
+  const storedJanmat = Number(safeStorage.getItem('bhumat_janmat_votes_count') || localJanMat || 0);
 
   const verifiedLokMat = typeof actualLokMatCount === 'number' ? actualLokMatCount : localLokMat;
-      const verifiedJanMat = typeof actualJanMatCount === 'number' ? actualJanMatCount : localJanMat;
-      const verifiedTotal = verifiedLokMat + verifiedJanMat;
-      setLokmatPollsCount(verifiedLokMat);
-      setJanmatAuditsCount(verifiedJanMat);
-      setTotalVotesCount(verifiedTotal);
-      setMonthlyVotesCount(verifiedTotal);
+  const verifiedJanMat = storedJanmat;
+  const verifiedTotal = verifiedLokMat + verifiedJanMat;
+  setLokmatPollsCount(verifiedLokMat);
+  setJanmatAuditsCount(verifiedJanMat);
+  setTotalVotesCount(verifiedTotal);
+  setMonthlyVotesCount(verifiedTotal);
     } catch (e) {
       console.warn('Wallet fetch error:', e);
     }
@@ -752,6 +772,7 @@ export default function BhuMatApp() {
             : (d.current_cycle || 'lifetime'),
           recurrence: d.recurrence || 'monthly',
           is_active: d.is_active !== false,
+          closes_at: d.closes_at || undefined,
           next_starts_at: d.next_starts_at || undefined,
           options: d.options || [
             { id: 0, text_en: 'Option 1', text_hi: 'विकल्प 1' },
@@ -966,6 +987,15 @@ export default function BhuMatApp() {
   
   if (votedCycleKeys.includes(cycleVoteKey) || storedCycles.includes(cycleVoteKey)) {
     const isOneTime = poll.participation_mode === 'one_time';
+    // Structural Guard: Strictly block expired polls from accepting ballots
+    const isExpiryMode = poll.participation_mode === 'expiry' || poll.recurrence === 'expiry';
+    if (isExpiryMode && poll.closes_at && new Date(poll.closes_at) <= new Date()) {
+      showPointerToast(
+        lang === 'HI' ? '⏳ यह प्रश्न समाप्त हो चुका है। अब मत स्वीकार नहीं किए जा सकते।' : '⏳ This poll has expired and is no longer accepting ballots.',
+        e
+      );
+      return;
+    }
     showPointerToast(getFrequencyRevoteMessage(poll.recurrence, isOneTime), e);
     return;
   }
@@ -997,13 +1027,33 @@ export default function BhuMatApp() {
     setTotalVotesCount((prev) => prev + 1);
     setMonthlyVotesCount((prev) => prev + 1);
     
-    if (poll.category === 'JanMat') {
-      setJanmatAuditsCount((prev) => prev + 1);
+    const isJanMatBallot = (poll.category || '').toLowerCase() === 'janmat';
+
+    if (isJanMatBallot) {
+      setJanmatAuditsCount((prev) => {
+        const next = prev + 1;
+        safeStorage.setItem('bhumat_janmat_votes_count', String(next));
+        return next;
+      });
     } else {
-      setLokmatPollsCount((prev) => prev + 1);
+      setLokmatPollsCount((prev) => {
+        const next = prev + 1;
+        safeStorage.setItem('bhumat_lokmat_votes_count', String(next));
+        return next;
+      });
+      // Stances only attributed to profile on LokMat
+      try {
+        const currentStancesRaw = safeStorage.getItem('bhumat_lokmat_stances');
+        const stances = currentStancesRaw ? JSON.parse(currentStancesRaw) : {};
+        stances[poll.id] = optionIdx;
+        safeStorage.setItem('bhumat_lokmat_stances', JSON.stringify(stances));
+      } catch (err) {}
     }
     
-    setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
+    // 6-Second Delight Delay: Hold on front card to see choice, then flip to Drishti Map
+    setTimeout(() => {
+      setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
+    }, 6000);
     
     // Check verification status, respecting forceVerified on immediate elevation
     const isUserVerified = forceVerified || Boolean(
@@ -1238,18 +1288,27 @@ export default function BhuMatApp() {
     executeCastBallot(poll, optionIdx, e);
   };
 
-  const { livePollsList, scheduledQueueList } = useMemo(() => {
+  const { livePollsList, scheduledQueueList, archivedPollsList } = useMemo(() => {
     const live: Poll[] = [];
     const upcoming: Poll[] = [];
+    const archived: Poll[] = [];
+
     polls.forEach((p) => {
       const schedule = evaluatePollSchedule(p);
-      if (schedule.isCurrentlyLive) {
+      if (schedule.statusLabel === 'ACTIVE') {
         live.push(p);
-      } else {
+      } else if (schedule.statusLabel === 'UPCOMING') {
         upcoming.push(p);
+      } else if (schedule.statusLabel === 'ARCHIVED') {
+        archived.push(p);
       }
     });
-    return { livePollsList: live, scheduledQueueList: upcoming };
+
+    return { 
+      livePollsList: live, 
+      scheduledQueueList: upcoming, 
+      archivedPollsList: archived 
+    };
   }, [polls]);
 
   // Stable snapshot of poll IDs that were already voted when the session loaded
@@ -2218,9 +2277,9 @@ export default function BhuMatApp() {
                                 >
                                   {(() => {
                                     if (poll.participation_mode === 'expiry' || poll.recurrence === 'expiry') {
-                                      const expTarget = poll.next_starts_at 
-                                        ? new Date(poll.next_starts_at).getTime() 
-                                        : (poll.starts_at ? new Date(poll.starts_at).getTime() + 86400000 : nowTimestamp + 86400000);
+                                      const expTarget = poll.closes_at 
+                                        ? new Date(poll.closes_at).getTime() 
+                                        : (poll.next_starts_at ? new Date(poll.next_starts_at).getTime() : (poll.starts_at ? new Date(poll.starts_at).getTime() + 86400000 : nowTimestamp + 86400000));
                                       const diffMs = expTarget - nowTimestamp;
 
                                       if (diffMs > 0 && diffMs <= 86400000) {
@@ -2334,17 +2393,28 @@ export default function BhuMatApp() {
                                   );
                                   const activeTotalVotes = activeCounts.reduce((a, b) => a + b, 0);
                                   
-                                  // Largest Remainder Method: Guarantees strict 100% sum
+                                  // Strict Proportional Engine: Non-zero votes never round down to 0%
                                   const optPct = (() => {
                                     if (activeTotalVotes === 0) return Math.round(100 / poll.options.length);
+                                    const thisCount = activeCounts[idx] || 0;
+                                    if (thisCount === 0) return 0;
+
                                     const exacts = activeCounts.map(c => (c / activeTotalVotes) * 100);
-                                    const floors = exacts.map(e => Math.floor(e));
-                                    let rem = 100 - floors.reduce((a, b) => a + b, 0);
-                                    const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
-                                    for (let r = 0; r < rem; r++) {
-                                      floors[diffs[r % diffs.length].i] += 1;
+                                    const floors = exacts.map((e, i) => (activeCounts[i] > 0 ? Math.max(1, Math.floor(e)) : 0));
+                                    let sumFloors = floors.reduce((a, b) => a + b, 0);
+
+                                    // If floor clamping pushed total over 100%, trim from the largest category
+                                    if (sumFloors > 100) {
+                                      const maxIdx = floors.indexOf(Math.max(...floors));
+                                      floors[maxIdx] -= (sumFloors - 100);
+                                    } else if (sumFloors < 100) {
+                                      let rem = 100 - sumFloors;
+                                      const diffs = exacts.map((e, i) => ({ i, d: e - floors[i] })).sort((a, b) => b.d - a.d);
+                                      for (let r = 0; r < rem; r++) {
+                                        floors[diffs[r % diffs.length].i] += 1;
+                                      }
                                     }
-                                    return floors[idx] ?? 0;
+                                    return floors[idx] ?? 1;
                                   })();
                                   return (
                                     <button
@@ -3033,6 +3103,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
           <ScheduleTab
             polls={polls}
             scheduledQueueList={scheduledQueueList}
+            archivedPollsList={archivedPollsList}
             lang={lang}
             votedCycleKeys={votedCycleKeys}
             openExpandedView={openExpandedView}
@@ -3062,6 +3133,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
             recognitionTier={recognitionTier}
             polls={polls}
             sessionBallotChoices={sessionBallotChoices}
+            voteTimestamps={voteTimestamps}
             cachedTalliesByPoll={cachedTalliesByPoll}
             setShowSponsorModal={setShowSponsorModal}
             showPointerToast={showPointerToast}

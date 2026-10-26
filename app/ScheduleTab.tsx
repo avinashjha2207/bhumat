@@ -21,25 +21,27 @@ interface Poll {
 }
 
 interface ScheduleTabProps {
-  polls: Poll[];
-  scheduledQueueList: Poll[];
+  polls: any[];
+  scheduledQueueList: any[];
+  archivedPollsList?: any[];
   lang: 'EN' | 'HI';
   votedCycleKeys: string[];
-  openExpandedView: (poll: Poll) => void;
-  setActiveCategoryFilter: (filter: 'ALL' | 'JanMat' | 'LokMat') => void;
-  setActiveTab: (tab: 'search' | 'vote' | 'schedule' | 'profile') => void;
+  openExpandedView: (poll: any) => void;
+  setActiveCategoryFilter: (filter: 'ALL' | 'LokMat' | 'JanMat') => void;
+  setActiveTab: (tab: 'vote' | 'schedule' | 'search' | 'profile') => void;
   triggerInfoPopup: (title: string, desc: string, e: React.MouseEvent) => void;
 }
 
 export default function ScheduleTab({
   polls,
   scheduledQueueList,
+  archivedPollsList = [],
   lang,
   votedCycleKeys,
   openExpandedView,
   setActiveCategoryFilter,
   setActiveTab,
-  triggerInfoPopup
+  triggerInfoPopup,
 }: ScheduleTabProps) {
   const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>('OVERVIEW');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(() => new Date().getDate());
@@ -469,6 +471,7 @@ export default function ScheduleTab({
           </span>
         </div>
       </div>
+      
       {/* Row 1: Clean Header with Calendar View aligned flush right */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', marginBottom: '8px' }}>
         <div style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -525,6 +528,118 @@ export default function ScheduleTab({
           );
         })}
       </div>
+
+        {/* SECTION 1: GENUINE UPCOMING SCHEDULED DROPS */}
+      <div style={{ marginTop: '16px', marginBottom: '8px' }}>
+        <h3 style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px 0' }}>
+          {lang === 'HI' 
+            ? `आगामी निर्धारित प्रश्न (${scheduledQueueList.length})` 
+            : `Upcoming Scheduled Drops (${scheduledQueueList.length})`}
+        </h3>
+
+        {scheduledQueueList.length === 0 ? (
+          <div style={{ backgroundColor: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '16px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+            {lang === 'HI' ? 'वर्तमान में कोई नया प्रश्न निर्धारित नहीं है।' : 'No upcoming drops currently in queue.'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {scheduledQueueList.map((poll) => {
+              // Existing card render code for upcoming polls
+              return (
+                <div key={poll.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: poll.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', padding: '2px 8px', borderRadius: '6px' }}>
+                      • {poll.category}
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+                      🔒 {poll.next_starts_at ? new Date(poll.next_starts_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Scheduled'}
+                    </span>
+                  </div>
+                  <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
+                    {lang === 'HI' ? poll.title_hi : poll.title_en}
+                  </h4>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: 0 }}>
+                    {lang === 'HI' ? poll.title_en : poll.title_hi}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: CONCLUDED AUDITS & HISTORICAL CONSENSUS ARCHIVE */}
+      {archivedPollsList.length > 0 && (
+        <div style={{ marginTop: '24px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '13px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+              {lang === 'HI' 
+                ? `सील किए गए जनमत परिणाम (${archivedPollsList.length})` 
+                : `Concluded Consensus Archive (${archivedPollsList.length})`}
+            </h3>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>
+              {lang === 'HI' ? 'अंतिम प्रमाणित आंकड़े' : 'Final Certified Results'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {archivedPollsList.map((poll) => {
+              const hasVoted = votedCycleKeys.some((k) => k.startsWith(`${poll.id}___`));
+              return (
+                <div
+                  key={poll.id}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '16px',
+                    padding: '14px 16px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#475569', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>
+                      • {poll.category} (Archived)
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', padding: '2px 8px', borderRadius: '6px' }}>
+                      🔒 Concluded
+                    </span>
+                  </div>
+
+                  <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
+                    {lang === 'HI' ? poll.title_hi : poll.title_en}
+                  </h4>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 10px 0' }}>
+                    {lang === 'HI' ? poll.title_en : poll.title_hi}
+                  </p>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
+                    <span style={{ fontSize: '10.5px', color: hasVoted ? '#059669' : '#64748b', fontWeight: 700 }}>
+                      {hasVoted ? (lang === 'HI' ? '✓ आपका मत दर्ज है' : '✓ Ballot Cast') : (lang === 'HI' ? 'सत्र समाप्त' : 'Window Closed')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openExpandedView(poll)}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {lang === 'HI' ? 'प्रमाणित परिणाम देखें ↗' : 'View Certified Results ↗'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Scheduled Drops List */}
       {scheduledQueueList.length === 0 ? (
         <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>

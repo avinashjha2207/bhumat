@@ -42,6 +42,7 @@ interface ProfileTabProps {
   recognitionTier: { title: string; color: string; level: number };
   polls: Poll[];
   sessionBallotChoices: Record<string, number>;
+  voteTimestamps?: Record<string, string>;
   cachedTalliesByPoll: Record<string, any[]>;
   setShowSponsorModal: (show: boolean) => void;
   showPointerToast: (msg: string, e?: React.MouseEvent | React.TouchEvent) => void;
@@ -94,6 +95,7 @@ export default function ProfileTab({
   recognitionTier,
   polls,
   sessionBallotChoices,
+  voteTimestamps = {},
   cachedTalliesByPoll,
   setShowSponsorModal,
   showPointerToast,
@@ -555,7 +557,6 @@ export default function ProfileTab({
               📊 {lang === 'HI' ? 'सहभागिता इतिहास' : 'PARTICIPATION HISTORY'}
             </span>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
             <div style={{ backgroundColor: '#f8fafc', padding: '10px 8px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -582,6 +583,171 @@ export default function ProfileTab({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ============================================================== */}
+        {/* PERSONAL ACTIVITY LOG: ALL MY VOTED POLLS (PAST & ACTIVE)      */}
+        {/* ============================================================== */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          border: '1.5px solid #e2e8f0',
+          padding: '16px 18px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              🗳️ {lang === 'HI' ? 'मेरे द्वारा दिए गए मत' : 'My Voted Polls & Audits'}
+            </span>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>
+              {lang === 'HI' ? 'निजी संदर्भ हेतु' : 'Private Activity Record'}
+            </span>
+          </div>
+
+          {(() => {
+            // Read all polls that the user has voted on (from session choices or timestamps)
+            const votedPollsList = polls.filter((p) => {
+              return Object.keys(sessionBallotChoices).some((k) => k.startsWith(`${p.id}___`)) ||
+                     Object.keys(voteTimestamps).some((k) => k.startsWith(`${p.id}___`));
+            });
+
+            if (votedPollsList.length === 0) {
+              return (
+                <div style={{
+                  padding: '18px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                  fontSize: '11.5px',
+                  lineHeight: 1.45
+                }}>
+                  {lang === 'HI'
+                    ? 'आपने अभी तक किसी प्रश्न पर मतदान नहीं किया है।'
+                    : 'No ballots cast yet. Vote in the feed to build your permanent civic record here.'}
+                </div>
+              );
+            }
+
+            return (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                maxHeight: '360px',
+                overflowY: 'auto',
+                paddingRight: '4px'
+              }}>
+                {votedPollsList.map((poll) => {
+                  const isJanMat = poll.category === 'JanMat';
+                  const choiceEntry = Object.entries(sessionBallotChoices).find(([k]) => k.startsWith(`${poll.id}___`));
+                  const choiceIdx = choiceEntry ? choiceEntry[1] : undefined;
+                  const chosenOpt = choiceIdx !== undefined ? poll.options[choiceIdx] : null;
+                  const chosenText = chosenOpt ? (lang === 'HI' ? chosenOpt.text_hi : chosenOpt.text_en) : '';
+
+                  // Retrieve recorded timestamp
+                  const timestampEntry = Object.entries(voteTimestamps).find(([k]) => k.startsWith(`${poll.id}___`));
+                  const rawIso = timestampEntry ? timestampEntry[1] : null;
+                  const formattedDate = rawIso 
+                    ? new Date(rawIso).toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                      })
+                    : new Date().toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                      });
+
+                  return (
+                    <div
+                      key={poll.id}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                        borderRadius: '14px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                      }}
+                    >
+                      {/* Top Header: Badge + Cadence Mode */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          color: isJanMat ? '#059669' : '#d97706',
+                          backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                          border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <span>{isJanMat ? '🌆' : '🌅'}</span>
+                          <span>{poll.category}</span>
+                        </span>
+
+                        <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                          {poll.participation_mode === 'one_time' ? 'ONE_TIME' : (poll.recurrence?.toUpperCase() || 'MONTHLY')}
+                        </span>
+                      </div>
+
+                      {/* Question Title */}
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', lineHeight: 1.35, marginTop: '2px' }}>
+                        {lang === 'HI' ? poll.title_hi : poll.title_en}
+                      </div>
+
+                      {/* Stance Row */}
+                      <div style={{
+                        marginTop: '2px',
+                        paddingTop: '6px',
+                        borderTop: '1px dashed #e2e8f0',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '4px'
+                      }}>
+                        {isJanMat ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '11px' }}>🔒</span>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>
+                              {lang === 'HI' ? 'संप्रभु गुप्त मत दर्ज ✓' : 'Sovereign Ballot Cast & Tally Sealed ✓'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                              {lang === 'HI' ? 'आपका मत:' : 'Your Stance:'}
+                            </span>
+                            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#d97706' }}>
+                              {chosenText || (lang === 'HI' ? 'दर्ज' : 'Recorded')}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Date & Anchored Seat */}
+                        <div style={{ fontSize: '10.5px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📅 {formattedDate}</span>
+                          <span>•</span>
+                          <span style={{ color: '#0284c7', fontWeight: 700 }}>📍 {selectedSeat?.name || 'Local Seat'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
