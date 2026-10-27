@@ -1,39 +1,31 @@
-
 import type { Metadata, Viewport } from 'next';
-
-import { Noto_Sans_Devanagari } from 'next/font/google';
-
-const notoDevanagari = Noto_Sans_Devanagari({
-  subsets: ['devanagari'],
-  weight: ['400', '600', '700', '800'],
-  display: 'swap',
-  variable: '--font-devanagari'
-});
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#0f172a',
-  interactiveWidget: 'overlays-content',
+  themeColor: '#0f172a'
 };
 
 export const metadata: Metadata = {
-  title: "BhuMat - Bharat's Sovereign Public Opinion Grid",
-  description: "Independent sovereign consensus grid across all 543 Lok Sabha parliamentary seats in Bharat. Cast your ballot on daily civic audits and cultural pulses.",
+  title: 'BhuMat - The Live Sentiment Scoreboard of Bharat',
+  description: 'Real-time, verified public opinion mapped across all 543 Lok Sabha constituencies with zero GPS tracking and 100% secret ballot privacy.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://vote.bhumat.com'),
+  alternates: {
+    canonical: 'https://vote.bhumat.com',
+  },
   openGraph: {
-    title: "BhuMat - Bharat's Sovereign Public Opinion Grid",
-    description: "Real-time democratic consensus across all 543 Lok Sabha seats.",
+    title: 'BhuMat - The Live Sentiment Scoreboard of Bharat',
+    description: 'Vote on daily 8:00 AM cultural pulses and 8:00 PM civic audits across all 543 Lok Sabha seats.',
     url: 'https://vote.bhumat.com',
     siteName: 'BhuMat',
     images: [
       {
-        url: '/api/og',
+        url: '/api/og?seat=Bharat&state=National&verdict=Live%20Consensus&pct=64',
         width: 1200,
         height: 630,
-        alt: "BhuMat Sovereign Grid Preview"
+        alt: 'BhuMat 543 Consensus Grid'
       }
     ],
     locale: 'en_IN',
@@ -41,9 +33,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: "BhuMat — Bharat's Sovereign Public Opinion Grid",
-    description: "Real-time democratic consensus across all 543 Lok Sabha seats.",
-    images: ['/api/og']
+    title: 'BhuMat - The Live Sentiment Scoreboard of Bharat',
+    description: 'Zero GPS Tracking • 100% Secret Ballot • All 543 Lok Sabha Constituencies',
+    images: ['/api/og?seat=Bharat&state=National&verdict=Live%20Consensus&pct=64']
   },
   icons: {
     icon: '/favicon.ico',
@@ -58,12 +50,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=overlays-content"
-        />
-      </head>
       <body style={{ margin: 0, padding: 0, backgroundColor: '#f8fafc' }}>
         {children}
       </body>

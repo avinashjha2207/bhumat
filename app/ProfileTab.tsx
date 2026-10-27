@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, safeStorage } from './utils/supabaseClient';
+import SuggestPollModal from './SuggestPollModal';
 import { getCurrentCycleId } from './utils/cycleManager';
 
 const SEAT_CHANGE_COST_DBG = 1;
@@ -60,6 +61,7 @@ interface ProfileTabProps {
   setSeatSearchInput: (input: string) => void;
   setIsChangeSeatModalOpen: (open: boolean) => void;
   syncWallet: (token: string) => Promise<void>;
+  triggerInfoPopup?: (title: string, desc: string, e: React.MouseEvent) => void;
 }
 
 function maskPhoneNumber(phone?: string | null): string {
@@ -112,14 +114,48 @@ export default function ProfileTab({
   setTentativeSeat,
   setSeatSearchInput,
   setIsChangeSeatModalOpen,
-  syncWallet
+  syncWallet,
+  triggerInfoPopup
 }: ProfileTabProps) {
   const router = useRouter();
+  const handleInfo = (title: string, desc: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (triggerInfoPopup) {
+      triggerInfoPopup(title, desc, e);
+    } else {
+      showPointerToast(`${title}: ${desc}`);
+    }
+  };
   const now = new Date();
   const activeMonthLabel = now.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
   const seasonNumber = now.getMonth() + 1;
   const storedStreak = safeStorage.getItem('bhumat_daily_streak') || '1';
   const streakDays = Math.max(1, parseInt(storedStreak, 10));
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [localLedger, setLocalLedger] = useState<any[]>([]);
+
+const loadLedgerDirectly = async () => {
+  try {
+    const activeToken = safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash;
+    if (!activeToken) return;
+
+    const { data, error } = await supabase
+      .from('dbg_point_ledger')
+      .select('*')
+      .eq('voter_token', activeToken)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setLocalLedger(data);
+    }
+  } catch (e) {
+    console.warn('Direct ledger fetch notice:', e);
+  }
+};
+
+React.useEffect(() => {
+  loadLedgerDirectly();
+}, [deviceHash]);
 
   // Distinct LokMat Stance Visibility Toggle
   const [showLokMatStances, setShowLokMatStances] = useState<boolean>(() => {
@@ -146,8 +182,25 @@ export default function ProfileTab({
   };
 
   const isVerified = Boolean(linkedPhone || linkedEmail);
-  const effectiveTotal = Math.max(totalVotesCount, Object.keys(sessionBallotChoices).length);
-  const effectiveLokMat = Math.max(lokmatPollsCount, Object.keys(sessionBallotChoices).length);
+
+  // Derive counts from actual voted poll records to eliminate arithmetic drift
+  const votedPollIds = new Set(
+    Object.keys(sessionBallotChoices)
+      .map((k) => k.split('___')[0])
+      .concat(Object.keys(voteTimestamps).map((k) => k.split('___')[0]))
+  );
+
+  const realLokMatVotes = polls.filter(
+    (p) => (p.category || '').toLowerCase() === 'lokmat' && votedPollIds.has(p.id)
+  ).length;
+
+  const realJanMatVotes = polls.filter(
+    (p) => (p.category || '').toLowerCase() === 'janmat' && votedPollIds.has(p.id)
+  ).length;
+
+  const effectiveLokMat = Math.max(lokmatPollsCount, realLokMatVotes);
+  const effectiveJanMat = Math.max(janmatAuditsCount, realJanMatVotes);
+  const effectiveTotal = effectiveLokMat + effectiveJanMat;
 
   return (
     <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px', boxSizing: 'border-box' }}>
@@ -194,10 +247,11 @@ export default function ProfileTab({
           {/* Season Pill & Streak with Informative Tooltip */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span
-              onClick={(e) => showPointerToast(
+              onClick={(e) => handleInfo(
+                lang === 'HI' ? `मासिक सत्र ${seasonNumber}` : `Monthly Season ${seasonNumber}`,
                 lang === 'HI'
-                  ? `सत्र ${seasonNumber}: भूमत साल में 12 मासिक सत्रों में संचालित होता है। माह के अंत में अंतिम परिणाम दर्ज होते हैं।`
-                  : `Season ${seasonNumber}: BhuMat operates in 12 monthly civic seasons per year. Rankings finalize at month-end.`,
+                  ? 'भूमत साल में 12 मासिक चक्रों में चलता है। हर महीने के अंत में सभी संसदीय क्षेत्रों के परिणाम सील होते हैं और नए चक्र की शुरुआत होती है।'
+                  : 'BhuMat operates in 12 monthly civic seasons per year. Rankings lock at month-end, and a fresh cycle begins on the 1st.',
                 e
               )}
               style={{
@@ -215,11 +269,31 @@ export default function ProfileTab({
             >
               {lang === 'HI' ? `${activeMonthLabel.toUpperCase()} सत्र • ${now.getFullYear()}` : `${activeMonthLabel.toUpperCase()} SEASON • ${now.getFullYear()}`} ⓘ
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(251, 191, 36, 0.4)', padding: '3px 9px', borderRadius: '999px' }}>
+            {/* Clean Streak Badge with Plain-Language Explainer */}
+            <div
+              onClick={(e) => handleInfo(
+                lang === 'HI' ? 'दैनिक स्ट्रीक एवं रिवॉर्ड' : 'Daily Streak & DBG Rewards',
+                lang === 'HI'
+                  ? '🔥 स्ट्रीक नियम:\n• रोज़ सुबह (8 AM) लोकमत या शाम (8 PM) जनमत में कम से कम एक मत दें।\n• लगातार 7 दिन मतदान करने पर +1 DBG क्रेडिट और +30 XP बोनस प्राप्त होता है।\n• प्रतिदिन भागीदारी से आपके संसदीय क्षेत्र का कोरम सुदृढ़ होता है।'
+                  : '🔥 Streak Rules:\n• Vote daily in 08:00 AM LokMat or 08:00 PM JanMat.\n• Complete a 7-day streak to earn +1 DBG credit and +30 XP bonus.\n• Consistent daily votes strengthen your district’s consensus quorum.',
+                e
+              )}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(251, 191, 36, 0.4)',
+                padding: '3px 10px',
+                borderRadius: '999px',
+                cursor: 'pointer'
+              }}
+            >
               <span style={{ fontSize: '12px' }}>🔥</span>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#fbbf24' }}>
                 {streakDays}-Day Streak
               </span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>ⓘ</span>
             </div>
           </div>
 
@@ -227,47 +301,101 @@ export default function ProfileTab({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               {isEditingUsername ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0' }}>
-                  <input
-                    type="text"
-                    value={usernameInput}
-                    maxLength={20}
-                    placeholder="Unique username..."
-                    onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-                    style={{
-                      padding: '4px 8px', borderRadius: '6px', border: '1px solid #38bdf8',
-                      fontSize: '14px', fontWeight: 800, backgroundColor: '#1e293b', color: '#ffffff', outline: 'none'
-                    }}
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!usernameInput.trim()) return;
-                      const cleanName = usernameInput.trim();
-                      const { data: existing } = await supabase
-                        .from('nagrik_profiles')
-                        .select('voter_token')
-                        .eq('username', cleanName)
-                        .neq('voter_token', deviceHash)
-                        .maybeSingle();
-                      if (existing) {
-                        alert(lang === 'HI' ? 'यह यूजरनेम पहले से किसी अन्य नागरिक का है।' : 'This username is already taken. Please choose another.');
-                        return;
-                      }
-                      await supabase.from('nagrik_profiles').update({ username: cleanName }).or(`voter_token.eq.${deviceHash},device_hash.eq.${deviceHash}`);
-                      setUsername(cleanName);
-                      safeStorage.setItem('bhumat_username', cleanName);
-                      setIsEditingUsername(false);
-                    }}
-                    style={{ padding: '4px 8px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    ✓
-                  </button>
-                  <button
-                    onClick={() => setIsEditingUsername(false)}
-                    style={{ padding: '4px 8px', backgroundColor: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    ✕
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      maxLength={20}
+                      placeholder="Unique username..."
+                      onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      style={{
+                        padding: '4px 8px', borderRadius: '6px', border: '1px solid #38bdf8',
+                        fontSize: '14px', fontWeight: 800, backgroundColor: '#1e293b', color: '#ffffff', outline: 'none'
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!usernameInput.trim()) return;
+                        const cleanName = usernameInput.trim();
+                        if (cleanName === username) {
+                          setIsEditingUsername(false);
+                          return;
+                        }
+
+                        // 1 DBG economic fee check
+                        if (dbgPoints < 1) {
+                          showPointerToast(
+                            lang === 'HI'
+                              ? 'नाम बदलने के लिए 1 DBG आवश्यक है। आपका शेष: 0 DBG'
+                              : '1 DBG required to change username. Insufficient balance.'
+                          );
+                          return;
+                        }
+
+                        // Check uniqueness
+                        const { data: existing } = await supabase
+                          .from('nagrik_profiles')
+                          .select('voter_token')
+                          .eq('username', cleanName)
+                          .neq('voter_token', deviceHash)
+                          .maybeSingle();
+
+                        if (existing) {
+                          alert(lang === 'HI' ? 'यह यूजरनेम पहले से किसी अन्य नागरिक का है।' : 'This username is already taken. Please choose another.');
+                          return;
+                        }
+
+                        // Atomic deduction and ledger record via PostgreSQL RPC
+                        const canonicalToken = safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash;
+
+                        const { data: burnRes, error: burnErr } = await supabase.rpc('burn_dbg_credit', {
+                          p_voter_token: canonicalToken,
+                          p_cost: 1,
+                          p_tx_type: 'USERNAME_CHANGE_FEE',
+                          p_description: `Username changed to @${cleanName}`
+                        });
+
+                        if (burnErr || (burnRes && !burnRes.success)) {
+                          showPointerToast(lang === 'HI' ? 'अंक कटौती विफल रही।' : 'Failed to deduct DBG balance.');
+                          return;
+                        }
+
+                        const nextDbg = burnRes.new_balance;
+                        await supabase
+                          .from('nagrik_profiles')
+                          .update({ username: cleanName, updated_at: new Date().toISOString() })
+                          .or(`voter_token.eq.${canonicalToken},device_hash.eq.${canonicalToken}`);
+
+                        setUsername(cleanName);
+                        setDbgPoints(nextDbg);
+                        safeStorage.setItem('bhumat_username', cleanName);
+                        safeStorage.setItem('bhumat_dbg_balance', String(nextDbg));
+                        setIsEditingUsername(false);
+                        showPointerToast(
+                          lang === 'HI' 
+                            ? `✓ नाम बदलकर @${cleanName} कर दिया गया (-1 DBG)` 
+                            : `✓ Username updated to @${cleanName} (-1 DBG)`
+                        );
+                        loadLedgerDirectly();
+                        if (typeof fetchLedger === 'function') {
+                          fetchLedger(canonicalToken);
+                        }
+                      }}
+                      style={{ padding: '4px 8px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={() => setIsEditingUsername(false)}
+                      style={{ padding: '4px 8px', backgroundColor: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#fde68a', fontWeight: 700 }}>
+                    ⚡ {lang === 'HI' ? 'नाम बदलने का शुल्क: 1 DBG' : 'Fee: 1 DBG to save new handle'}
+                  </span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -294,34 +422,46 @@ export default function ProfileTab({
                   justifyContent: 'center',
                   lineHeight: 1
                 }}
-                title={lang === 'HI' ? 'नाम बदलें' : 'Edit Username'}
+                title={lang === 'HI' ? 'नाम बदलें (1 DBG)' : 'Edit Username (1 DBG)'}
               >
                 ✏️
               </button>
             </div>
               )}
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
               </div>
-            </div>
 
-            {/* XP Score Badge with Explanatory Toaster */}
+            {/* XP Score Badge (Right Aligned) */}
             <div
-              onClick={(e) => showPointerToast(
+              onClick={(e) => handleInfo(
+                lang === 'HI' ? 'नागरिक XP प्रणाली' : 'Civic XP System',
                 lang === 'HI'
-                  ? 'XP गणना: लोकमत पर +10 XP, जनमत ऑडिट पर +20 XP, और 7-दिन की स्ट्रीक पर +30 XP। 100 XP पर जागरूक नागरिक पद प्राप्त होता है।'
-                  : 'XP System: +10 XP per LokMat pulse, +20 XP per JanMat audit, and +30 XP per 7-day streak. Reach 100 XP to attain Jagruk Nagrik.',
+                  ? 'XP गणना:\n• लोकमत मत: +10 XP\n• जनमत ऑडिट: +20 XP\n• 7-दिन की निरंतर स्ट्रीक: +30 XP\nXP बढ़ने से आपका नागरिक पद और क्षेत्र में प्रतिष्ठा बढ़ती है।'
+                  : 'XP Rewards:\n• LokMat cultural pulse: +10 XP\n• JanMat governance audit: +20 XP\n• 7-day voting streak: +30 XP\nEarn XP to elevate your civic rank and constituency standing.',
                 e
               )}
               style={{ textAlign: 'right', cursor: 'pointer' }}
             >
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fbbf24' }}>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fbbf24', lineHeight: 1 }}>
                 {displayMonthlyVotes * 30} <span style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>XP ⓘ</span>
               </div>
-              <span style={{ fontSize: '10.5px', fontWeight: 800, color: recognitionTier.color }}>
-                {recognitionTier.title}
-              </span>
             </div>
+          </div>
+
+          {/* Sub-Row: Location on Left, Civic Rank Badge on Right (Clean Breathing Room) */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '10px',
+            paddingTop: '8px',
+            borderTop: '1px dashed rgba(255, 255, 255, 0.12)'
+          }}>
+            <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
+            </div>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: recognitionTier.color }}>
+              {recognitionTier.title}
+            </span>
           </div>
 
           {/* Civic Rank Progress Bar & Level Milestones */}
@@ -345,25 +485,46 @@ export default function ProfileTab({
                 transition: 'width 0.4s ease'
               }} />
             </div>
-            {/* Level Milestone Tags Restored */}
+            {/* Transparent Gamification Ladder (XP Ranks vs DBG Bonus) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>
               <span
-                onClick={(e) => showPointerToast(lang === 'HI' ? '10 मत: जागरूक नागरिक पद व प्रश्न प्रस्ताव अधिकार।' : '10 Ballots: Jagruk Nagrik rank unlocks question proposals.', e)}
-                style={{ cursor: 'pointer' }}
+                onClick={(e) => handleInfo(
+                  lang === 'HI' ? 'जागरूक नागरिक (10 मत)' : 'Jagruk Nagrik (Level 2)',
+                  lang === 'HI' 
+                    ? '🌱 पदोन्नति (10 मत):\nआप जागरूक नागरिक बनते हैं और नए प्रश्न प्रस्तावित (Suggest Poll) करने का नागरिक अधिकार पाते हैं।' 
+                    : '🌱 Level 2 (10 Votes):\nUnlock Jagruk Nagrik standing and the right to suggest questions to the national review queue.',
+                  e
+                )}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
               >
-                🌱 10: Jagruk ⓘ
+                <span>🌱 10: Jagruk</span>
+                <span style={{ fontSize: '8.5px', color: '#38bdf8' }}>ⓘ</span>
               </span>
               <span
-                onClick={(e) => showPointerToast(lang === 'HI' ? '25 मत: लोक प्रहरी पद व विशेष कोरम बैज।' : '25 Ballots: Lok Prahari rank unlocks quorum mobilization.', e)}
-                style={{ cursor: 'pointer' }}
+                onClick={(e) => handleInfo(
+                  lang === 'HI' ? 'लोक प्रहरी (25 मत)' : 'Lok Prahari (Level 3)',
+                  lang === 'HI' 
+                    ? '🛡️ पदोन्नति (25 मत):\nआप लोक प्रहरी बनते हैं और ऑल-इंडिया लीडरबोर्ड पर आपका सत्यापित बैज (✓) चमकता है।' 
+                    : '🛡️ Level 3 (25 Votes):\nAttain Lok Prahari status and display the verified citizen badge (✓) on the national leaderboard.',
+                  e
+                )}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
               >
-                🛡️ 25: Prahari ⓘ
+                <span>🛡️ 25: Prahari</span>
+                <span style={{ fontSize: '8.5px', color: '#38bdf8' }}>ⓘ</span>
               </span>
               <span
-                onClick={(e) => showPointerToast(lang === 'HI' ? '45 मत: राष्ट्रीय निर्धारक पद व +1 DBG बोनस।' : '45 Ballots: Rashtriya Nirdharak rank awards +1 DBG bonus.', e)}
-                style={{ cursor: 'pointer' }}
+                onClick={(e) => handleInfo(
+                  lang === 'HI' ? 'राष्ट्रीय निर्धारक (45 मत)' : 'Rashtriya Nirdharak (Level 4)',
+                  lang === 'HI' 
+                    ? '👑 सर्वोच्च पद (45 मत):\nइस मासिक सत्र में 45 मत पूरे करने पर आपको +1 DBG बोनस और विशेष नागरिक सम्मान मिलता है।' 
+                    : '👑 Capstone Rank (45 Ballots):\nReach 45 votes in a monthly season to earn an instant +1 DBG bonus and highest civic standing.',
+                  e
+                )}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', color: '#fbbf24' }}
               >
-                👑 45: +1 DBG ⓘ
+                <span>👑 45: +1 DBG</span>
+                <span style={{ fontSize: '8.5px', color: '#38bdf8' }}>ⓘ</span>
               </span>
             </div>
           </div>
@@ -383,11 +544,10 @@ export default function ProfileTab({
           const userSeatNorm = selectedSeat?.name?.toLowerCase().trim() || '';
           const userStateNorm = selectedSeat?.state?.toLowerCase().trim() || '';
 
-          polls.filter((p) => p.category === 'LokMat').forEach((lokmatPoll) => {
-            const dynamicCycle = (lokmatPoll.participation_mode === 'recurring' && lokmatPoll.recurrence !== 'expiry')
-              ? getCurrentCycleId(lokmatPoll.recurrence, lokmatPoll.starts_at)
-              : (lokmatPoll.current_cycle || 'lifetime');
-            const userChoice = sessionBallotChoices[`${lokmatPoll.id}___${dynamicCycle}`];
+          polls.filter((p) => (p.category || '').toLowerCase() === 'lokmat').forEach((lokmatPoll) => {
+            // Check if voted in any cycle
+            const choiceEntry = Object.entries(sessionBallotChoices).find(([k]) => k.startsWith(`${lokmatPoll.id}___`));
+            const userChoice = choiceEntry ? choiceEntry[1] : undefined;
 
             if (typeof userChoice === 'number') {
               lokmatVotesCastCount++;
@@ -470,10 +630,11 @@ export default function ProfileTab({
                 </span>
               </div>
                   <span
-                    onClick={(e) => showPointerToast(
+                    onClick={(e) => handleInfo(
+                      lang === 'HI' ? 'लोकमत सांस्कृतिक समानता (LCA)' : 'LokMat Cultural Alignment (LCA)',
                       lang === 'HI'
-                        ? 'LCA मापता है कि आपकी सांस्कृतिक राय आपके संसदीय क्षेत्र और राज्य के बहुसंख्यक नागरिकों से कितनी मेल खाती है।'
-                        : 'LokMat Alignment measures how often your cultural stances match the majority consensus in your constituency and state.',
+                        ? 'यह मापता है कि आपकी सांस्कृतिक राय आपके संसदीय क्षेत्र और राज्य के बहुसंख्यक नागरिकों से कितनी मेल खाती है।\n(नोट: गोपनीय जनमत ऑडिट इसमें शामिल नहीं होते)।'
+                        : 'Measures how often your cultural opinions match the majority consensus in your Lok Sabha seat and state.\n(Note: Secret JanMat audits are strictly excluded).',
                       e
                     )}
                     style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer' }}
@@ -558,28 +719,33 @@ export default function ProfileTab({
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
-            <div style={{ backgroundColor: '#f8fafc', padding: '10px 8px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                {lang === 'HI' ? 'कुल मत' : 'Total Ballots'}
+            {/* Box 1: LokMat */}
+            <div style={{ backgroundColor: '#fffbeb', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #fde68a' }}>
+              <div style={{ fontSize: '9.5px', color: '#92400e', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {lang === 'HI' ? '🌅 लोकमत' : '🌅 LokMat'}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
-                {effectiveTotal}
-              </div>
-            </div>
-            <div style={{ backgroundColor: '#fffbeb', padding: '10px 8px', borderRadius: '12px', border: '1px solid #fde68a' }}>
-              <div style={{ fontSize: '9.5px', color: '#92400e', fontWeight: 700, textTransform: 'uppercase' }}>
-                {lang === 'HI' ? 'लोकमत' : 'LokMat'}
-              </div>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#d97706', marginTop: '2px' }}>
+              <div style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', marginTop: '2px' }}>
                 {effectiveLokMat}
               </div>
             </div>
-            <div style={{ backgroundColor: '#ecfdf5', padding: '10px 8px', borderRadius: '12px', border: '1px solid #a7f3d0' }}>
-              <div style={{ fontSize: '9.5px', color: '#065f46', fontWeight: 700, textTransform: 'uppercase' }}>
-                {lang === 'HI' ? 'जनमत ऑडिट' : 'JanMat'}
+
+            {/* Box 2: JanMat */}
+            <div style={{ backgroundColor: '#ecfdf5', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #a7f3d0' }}>
+              <div style={{ fontSize: '9.5px', color: '#065f46', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {lang === 'HI' ? '🌆 जनमत' : '🌆 JanMat'}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
-                {janmatAuditsCount}
+              <div style={{ fontSize: '18px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
+                {effectiveJanMat}
+              </div>
+            </div>
+
+            {/* Box 3: Total Ballots */}
+            <div style={{ backgroundColor: '#f8fafc', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+              <div style={{ fontSize: '9.5px', color: '#334155', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {lang === 'HI' ? '📊 कुल मत' : '📊 Total'}
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                {effectiveTotal}
               </div>
             </div>
           </div>
@@ -811,9 +977,19 @@ export default function ProfileTab({
         <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {lang === 'HI' ? 'नागरिक रिवॉर्ड अंक' : 'CITIZEN DBG REWARDS'}
-              </div>
+              <div
+                      onClick={(e) => handleInfo(
+                        lang === 'HI' ? 'नागरिक क्रेडिट (DBG) क्या है?' : 'What is DBG Credit?',
+                        lang === 'HI'
+                          ? '⚡ DBG भूमत का उपयोगी नागरिक क्रेडिट है:\n• कैसे कमाएं: 7-दिन की स्ट्रीक (+1 DBG), 45 मत (+1 DBG), या मित्रों को आमंत्रित करके (+2 DBG)।\n• कहां खर्च करें: सीट बदलना (1 DBG), नाम बदलना (1 DBG), या प्रश्न सुझाना (5 DBG)।'
+                          : '⚡ DBG is BhuMat’s civic utility credit:\n• How to earn: 7-day streak (+1 DBG), 45 seasonal votes (+1 DBG), or verified referrals (+2 DBG).\n• Where to spend: Shift constituency seat (1 DBG), edit handle (1 DBG), or suggest topics (5 DBG).',
+                        e
+                      )}
+                      style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                    >
+                      <span>{lang === 'HI' ? 'नागरिक क्रेडिट शेष' : 'CIVIC DBG CREDITS'}</span>
+                      <span style={{ fontSize: '10px' }}>ⓘ</span>
+                    </div>
               <div style={{ fontSize: '24px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
                 ⚡ {dbgPoints} DBG
               </div>
@@ -840,38 +1016,8 @@ export default function ProfileTab({
                 <span>{lang === 'HI' ? 'लोकल पोल होस्ट करें (50 DBG)' : 'Sponsor Poll (50 DBG)'}</span>
               </button>
               <button
-                onClick={async () => {
-                  if (dbgPoints < 10) {
-                    showPointerToast(
-                      lang === 'HI'
-                      ? `नागरिक प्रश्न प्रस्तावित करने हेतु 10 DBG आवश्यक हैं। आपका शेष: ${dbgPoints} DBG` 
-                      : `Proposing a public question to the governance editorial requires 10 DBG. Your balance: ${dbgPoints} DBG`);
-                    return;
-                  }
-                  const topic = prompt(lang === 'HI' 
-                    ? 'भूमत संपादकीय मंडल हेतु अपना प्रश्न दर्ज करें (शुल्क: 10 DBG):' 
-                    : 'Submit your poll question to BhuMat (Fee: 10 DBG):');
-                  if (topic && topic.trim()) {
-                    const { data, error } = await supabase.rpc('propose_citizen_poll', {
-                      p_voter_token: deviceHash,
-                      p_category: 'JanMat',
-                      p_title_en: topic.trim(),
-                      p_title_hi: topic.trim(),
-                      p_options: JSON.stringify([
-                        { id: 0, text_en: 'Option 1', text_hi: 'विकल्प 1' },
-                        { id: 1, text_en: 'Option 2', text_hi: 'विकल्प 2' }
-                      ])
-                    });
-                    if (!error && data?.success) {
-                      setDbgPoints(data.new_balance);
-                      safeStorage.setItem('bhumat_dbg_balance', String(data.new_balance));
-                      alert(lang === 'HI' ? '✓ आपका प्रस्ताव संपादकीय समीक्षा हेतु दर्ज कर लिया गया है।' : '✓ Proposal submitted to the sovereign editorial queue!');
-                      fetchLedger(deviceHash);
-                    } else {
-                      alert(`Error: ${error?.message || data?.error}`);
-                    }
-                  }
-                }}
+                type="button"
+                onClick={() => setShowSuggestModal(true)}
                 style={{
                   padding: '6px 10px',
                   backgroundColor: '#f8fafc',
@@ -887,20 +1033,24 @@ export default function ProfileTab({
                 }}
               >
                 <span>💡</span>
-                <span>{lang === 'HI' ? 'संपादकीय सुझाव (10 DBG)' : 'Suggest Poll (10 DBG)'}</span>
+                <span>{lang === 'HI' ? 'संपादकीय सुझाव (5 DBG)' : 'Suggest Poll (5 DBG)'}</span>
               </button>
             </div>
           </div>
 
           <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '14px', paddingTop: '10px' }}>
             <div 
-              onClick={() => {
-                const nextState = !isLedgerOpen;
-                setIsLedgerOpen(nextState);
-                if (nextState) fetchLedger(deviceHash);
-              }}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-            >
+           onClick={() => {
+             const nextState = !isLedgerOpen;
+             setIsLedgerOpen(nextState);
+             if (nextState) {
+               loadLedgerDirectly();
+               const activeToken = safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash;
+               if (typeof fetchLedger === 'function') fetchLedger(activeToken);
+             }
+           }}
+           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+         >
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '12px' }}>📜</span>
                 <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>
@@ -913,12 +1063,12 @@ export default function ProfileTab({
             </div>
             {isLedgerOpen && (
               <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                {ledgerEntries.length === 0 ? (
+                {(localLedger.length > 0 ? localLedger : ledgerEntries).length === 0 ? (
                   <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>
                     {lang === 'EN' ? 'No points activity recorded yet.' : 'अभी तक कोई अंक लेन-देन दर्ज नहीं है।'}
                   </div>
                 ) : (
-                  ledgerEntries.map((tx) => (
+                  (localLedger.length > 0 ? localLedger : ledgerEntries).map((tx) => (
                     <div
                       key={tx.id || tx.created_at}
                       style={{
@@ -989,7 +1139,7 @@ export default function ProfileTab({
           <span style={{ fontSize: '14px', color: '#0284c7', fontWeight: 900 }}>↗</span>
         </div>
 
-        {/* INVITE CITIZENS */}
+        {/* INVITE CITIZENS (Gated for Verified Citizens Only) */}
         <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>
@@ -999,37 +1149,73 @@ export default function ProfileTab({
               +2 DBG / {lang === 'EN' ? 'Verified Invite' : 'सत्यापित आमंत्रण'}
             </span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
-            <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', letterSpacing: '0.08em' }}>{referralCode}</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(referralCode);
-                  alert(lang === 'EN' ? 'Referral code copied to clipboard!' : 'रेफरल कोड कॉपी हो गया!');
-                }}
-                style={{ padding: '7px 14px', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
-              >
-                {lang === 'EN' ? 'Copy' : 'कॉपी'}
-              </button>
-              <button
-                onClick={() => {
-                  const msg = lang === 'EN'
-                    ? `🇮🇳 Join me on BhuMat - Bharat's Spatial Public Opinion Grid! Use my code *${referralCode}* to claim 1 DBG credit:\nhttps://vote.bhumat.com?ref=${referralCode}`
-                    : `🇮🇳 भूमत से जुड़ें - भारत का संप्रभु जनमत ग्रिड! 1 DBG क्रेडिट पाने हेतु मेरा कोड *${referralCode}* उपयोग करें:\nhttps://vote.bhumat.com?ref=${referralCode}`;
-                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
-                }}
-                style={{ padding: '7px 14px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
-              >
-                {lang === 'EN' ? 'Share' : 'शेयर'}
-              </button>
+
+          {isVerified ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+              <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', letterSpacing: '0.08em' }}>{referralCode || 'BM78491'}</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(referralCode || 'BM78491');
+                    alert(lang === 'EN' ? 'Referral code copied to clipboard!' : 'रेफरल कोड कॉपी हो गया!');
+                  }}
+                  style={{ padding: '7px 14px', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  {lang === 'EN' ? 'Copy' : 'कॉपी'}
+                </button>
+                <button
+                  onClick={() => {
+                    const code = referralCode || 'BM78491';
+                    const msg = lang === 'EN'
+                      ? `🇮🇳 Join me on BhuMat - Bharat's Spatial Public Opinion Grid! Use my code *${code}* to claim 1 DBG credit:\nhttps://vote.bhumat.com?ref=${code}`
+                      : `🇮🇳 भूमत से जुड़ें - भारत का संप्रभु जनमत ग्रिड! 1 DBG क्रेडिट पाने हेतु मेरा कोड *${code}* उपयोग करें:\nhttps://vote.bhumat.com?ref=${code}`;
+                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+                  }}
+                  style={{ padding: '7px 14px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  {lang === 'EN' ? 'Share' : 'शेयर'}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{
+              marginTop: '10px',
+              padding: '10px 12px',
+              backgroundColor: '#f8fafc',
+              border: '1px dashed #cbd5e1',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px'
+            }}>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                {lang === 'HI'
+                  ? '🔒 रेफरल कोड प्राप्त करने और +2 DBG कमाने हेतु मोबाइल सत्यापन पूर्ण करें।'
+                  : '🔒 Verify your mobile to claim your unique referral code & earn +2 DBG per peer.'}
+              </span>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', whiteSpace: 'nowrap' }}>
+                {lang === 'HI' ? 'अतिथि मोड' : 'Guest Mode'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* SECURITY & CITIZEN PASSPORT SETTINGS */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', border: '1.5px solid #e2e8f0', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-            <span style={{ color: '#64748b' }}>{lang === 'EN' ? 'Active Constituency:' : 'सक्रिय संसदीय क्षेत्र:'}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            <span
+              onClick={(e) => handleInfo(
+                lang === 'HI' ? 'सक्रिय संसदीय क्षेत्र' : 'Active Constituency',
+                lang === 'HI' 
+                  ? 'आपकी लोकसभा सीट। आपके द्वारा दिए गए सभी मत इसी क्षेत्र के स्कोरबोर्ड और नक्शे में गिने जाते हैं।' 
+                  : 'Your Lok Sabha constituency. All your votes are tallied into this regional scoreboard.',
+                e
+              )}
+              style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+            >
+              <span>{lang === 'EN' ? 'Active Constituency:' : 'सक्रिय संसदीय क्षेत्र:'}</span>
+              <span style={{ fontSize: '10px', color: '#0284c7' }}>ⓘ</span>
+            </span>
             <span style={{ fontWeight: 800, color: '#0f172a' }}>{selectedSeat?.name || (lang === 'EN' ? 'Unclaimed' : 'अचयनित')}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
@@ -1043,8 +1229,20 @@ export default function ProfileTab({
 
           {/* Masked Credentials Strip */}
           <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-              <span style={{ color: '#64748b' }}>📱 {lang === 'HI' ? 'सत्यापित मोबाइल:' : 'Linked Mobile:'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+              <span
+                onClick={(e) => handleInfo(
+                  lang === 'HI' ? 'गोपनीयता व मोबाइल सत्यापन' : 'Privacy Shield & Mobile',
+                  lang === 'HI' 
+                    ? 'एकमुश्त सत्यापन केवल फर्जी बॉट्स रोकने हेतु है। आपका मोबाइल नंबर कभी भी आपके जनमत गुप्त मतों से नहीं जोड़ा जाता।' 
+                    : 'One-time verification eliminates automated bots. Your mobile number is never linked to your confidential JanMat votes.',
+                  e
+                )}
+                style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+              >
+                <span>📱 {lang === 'HI' ? 'सत्यापित अकाउंट:' : 'Linked Account:'}</span>
+                <span style={{ fontSize: '10px', color: '#0284c7' }}>ⓘ</span>
+              </span>
               <span style={{ fontWeight: 800, color: linkedPhone ? '#0284c7' : '#94a3b8' }}>
                 {linkedPhone ? maskPhoneNumber(linkedPhone) : (lang === 'HI' ? 'अतिथि (असत्यापित)' : 'Guest (Unverified)')}
               </span>
@@ -1079,49 +1277,81 @@ export default function ProfileTab({
             🔄 {lang === 'EN' ? `Shift Seat (${SEAT_CHANGE_COST_DBG} DBG)` : `संसदीय सीट बदलें (${SEAT_CHANGE_COST_DBG} DBG)`}
           </button>
 
-          <button
-            onClick={() => {
-              if (confirm(lang === 'HI' ? 'क्या आप इस डिवाइस का डेटा रीसेट और लॉग आउट करना चाहते हैं?' : 'Reset local ballot cache and log out of this citizen passport?')) {
-                safeStorage.removeItem('bhumat_user_phone');
-                safeStorage.removeItem('bhumat_user_email');
-                safeStorage.removeItem('bhumat_voter_token');
-                safeStorage.removeItem('bhumat_username');
-                safeStorage.removeItem('bhumat_voted_cycles');
-                safeStorage.removeItem('bhumat_voted_polls');
-                safeStorage.removeItem('bhumat_vote_timestamps');
-                safeStorage.removeItem('bhumat_guest_vote_count');
-                safeStorage.removeItem('bhumat_dbg_balance');
-                safeStorage.removeItem('bhumat_user_seat');
-                safeStorage.removeItem('bhumat_user_state');
-                safeStorage.removeItem('bhumat_seen_onboarding_guide');
-                safeStorage.removeItem('bhumat_show_lokmat_stances');
-                if (typeof document !== 'undefined') {
-                  document.cookie = 'bhumat_voter_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                const confirmMsg = lang === 'HI' 
+                  ? 'क्या आप इस फोन से अपना खाता हटाना चाहते हैं? दोबारा जुड़ने के लिए मोबाइल या ईमेल से प्रवेश करना होगा।'
+                  : 'Remove your account from this phone? You can easily log back in anytime using your phone or email.';
+                if (confirm(confirmMsg)) {
+                  safeStorage.removeItem('bhumat_user_phone');
+                  safeStorage.removeItem('bhumat_user_email');
+                  safeStorage.removeItem('bhumat_voter_token');
+                  safeStorage.removeItem('bhumat_username');
+                  safeStorage.removeItem('bhumat_voted_cycles');
+                  safeStorage.removeItem('bhumat_voted_polls');
+                  safeStorage.removeItem('bhumat_vote_timestamps');
+                  safeStorage.removeItem('bhumat_guest_vote_count');
+                  safeStorage.removeItem('bhumat_dbg_balance');
+                  safeStorage.removeItem('bhumat_user_seat');
+                  safeStorage.removeItem('bhumat_user_state');
+                  safeStorage.removeItem('bhumat_seen_onboarding_guide');
+                  safeStorage.removeItem('bhumat_show_lokmat_stances');
+                  if (typeof document !== 'undefined') {
+                    document.cookie = 'bhumat_voter_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                  }
+                  window.location.href = '/';
                 }
-                window.location.href = '/';
-              }
-            }}
-            style={{
-              alignSelf: 'center',
-              marginTop: '4px',
-              padding: '6px 14px',
-              backgroundColor: 'transparent',
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              color: '#dc2626',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <span>⏻</span>
-            <span>{lang === 'HI' ? 'डेटा रीसेट एवं लॉग आउट' : 'Reset Session & Log Out'}</span>
-          </button>
-        </div>
+              }}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #fecaca',
+                borderRadius: '10px',
+                color: '#dc2626',
+                fontSize: '11.5px',
+                fontWeight: 750,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 3px rgba(220, 38, 38, 0.05)'
+              }}
+            >
+              <span>⏻</span>
+              <span>{lang === 'HI' ? 'इस फोन से खाता हटाएं (Log Out)' : 'Log Out from this Device'}</span>
+            </button>
+            <span style={{ fontSize: '10px', color: '#94a3b8', textAlign: 'center' }}>
+              {lang === 'HI' 
+                ? 'यदि यह साझा या किसी अन्य का फोन है, तो यहां से सुरक्षित बाहर निकलें।'
+                : 'Safely clear data on shared or public phones.'}
+            </span>
+          </div>
       </div>
+      {/* Render the Suggest Poll Modal */}
+      {showSuggestModal && (
+        <SuggestPollModal
+          voterToken={safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash}
+          username={username}
+          userState={selectedSeat?.state || 'Bihar'}
+          userSeat={selectedSeat?.name || 'Constituency'}
+          userDbgBalance={dbgPoints}
+          lang={lang}
+          onClose={() => setShowSuggestModal(false)}
+          onSuccess={(newBalance) => {
+            setDbgPoints(newBalance);
+            safeStorage.setItem('bhumat_dbg_balance', String(newBalance));
+            setShowSuggestModal(false);
+            showPointerToast(
+              lang === 'HI'
+                ? '✓ आपका प्रश्न संपादकीय समीक्षा हेतु भेज दिया गया है (-5 DBG)'
+                : '✓ Topic submitted to editorial review desk (-5 DBG)'
+            );
+            fetchLedger(deviceHash);
+          }}
+        />
+      )}
     </div>
   );
 }

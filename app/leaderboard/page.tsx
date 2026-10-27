@@ -31,6 +31,35 @@ export default function LeaderboardPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'SEATS' | 'STATES' | 'CITIZENS'>('SEATS');
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<'EN' | 'HI'>('EN');
+  const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
+  const infoPopupTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const triggerInfoPopup = (title: string, desc: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (infoPopupTimeoutRef.current) clearTimeout(infoPopupTimeoutRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
+    
+    // Viewport-safe width bounded to mobile screen
+    const popupTargetWidth = Math.min(290, screenW - 28);
+    
+    // Smart horizontal anchoring
+    let computedX: number;
+    if (rect.left > screenW / 2) {
+      computedX = rect.right - popupTargetWidth;
+    } else {
+      computedX = rect.left - 12;
+    }
+    
+    const safeX = Math.max(14, Math.min(computedX, screenW - popupTargetWidth - 14));
+    const safeY = Math.max(60, rect.bottom + 8);
+
+    setActiveTooltip({ title, desc, x: safeX, y: safeY });
+    infoPopupTimeoutRef.current = setTimeout(() => {
+      setActiveTooltip(null);
+    }, 4500);
+  };
   const [seatsData, setSeatsData] = useState<SeatStanding[]>([]);
   const [statesData, setStatesData] = useState<StateStanding[]>([]);
   const [citizenList, setCitizenList] = useState<CitizenStanding[]>([]);
@@ -129,13 +158,29 @@ export default function LeaderboardPage() {
               🏆 Bharat Civic League
             </span>
           </div>
-          <button
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              onClick={() => setLang(lang === 'EN' ? 'HI' : 'EN')}
+              style={{
+                border: 'none',
+                backgroundColor: '#f1f5f9',
+                fontWeight: 800,
+                fontSize: '10.5px',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              {lang === 'EN' ? 'हिन्दी' : 'EN'}
+            </button>
+            <button
             type="button"
             onClick={() => fetchLeaderboard(true)}
-            style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '5px 10px', fontSize: '11px', fontWeight: 800, color: '#0f172a', cursor: 'pointer' }}
-          >
-            ↻ Refresh
-          </button>
+              style={{ background: '#f1f5f9', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+            >
+              ↻ {lang === 'HI' ? 'रिफ्रेश' : 'Refresh'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -207,10 +252,29 @@ export default function LeaderboardPage() {
             </div>
           </div>
 
-          {/* Instant Zero-Latency Tab Selector */}
+          {/* Tab Explainer Sub-bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px', marginBottom: '-8px' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              {lang === 'HI' ? 'रैंकिंग श्रेणियां' : 'League Competitions'}
+            </span>
+            <span
+              onClick={(e) => triggerInfoPopup(
+                lang === 'HI' ? 'लीग प्रतियोगिताएं' : 'League Competitions',
+                lang === 'HI'
+                  ? '⚔️ संसदीय मुकाबला: देखें कौन सी लोकसभा सीट सबसे आगे है।\n🇮🇳 राज्य कप: 36 राज्यों व केंद्र शासित प्रदेशों की भागीदारी।\n👑 हॉल ऑफ फेम: सबसे सक्रिय नागरिक और उनके स्ट्रीक।'
+                  : '⚔️ Seats Turf War: Which constituency is leading national turnout.\n🇮🇳 State Cup: Overall civic turnout across all 36 States & UTs.\n👑 Hall of Fame: Top individual citizens ranked by XP and streaks.',
+                e
+              )}
+              style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+            >
+              <span>{lang === 'HI' ? 'नियम समझें' : 'Rules'}</span>
+              <span style={{ fontSize: '10px' }}>ⓘ</span>
+            </span>
+          </div>
+
+          {/* Tab Selector */}
           <div style={{ display: 'flex', gap: '6px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', padding: '4px', borderRadius: '12px' }}>
             <button
-              type="button"
               onClick={() => setActiveTab('SEATS')}
               style={{
                 flex: 1,
@@ -222,13 +286,11 @@ export default function LeaderboardPage() {
                 fontSize: '11px',
                 fontWeight: 800,
                 cursor: 'pointer',
-                transition: 'background-color 0.12s ease'
               }}
             >
-              ⚔️ Seats Turf War
+              ⚔️ {lang === 'HI' ? 'क्षेत्रीय मुकाबला' : 'Seats Turf War'}
             </button>
             <button
-              type="button"
               onClick={() => setActiveTab('STATES')}
               style={{
                 flex: 1,
@@ -240,13 +302,11 @@ export default function LeaderboardPage() {
                 fontSize: '11px',
                 fontWeight: 800,
                 cursor: 'pointer',
-                transition: 'background-color 0.12s ease'
               }}
             >
-              🇮🇳 State Cup
+              🇮🇳 {lang === 'HI' ? 'राज्य कप' : 'State Cup'}
             </button>
             <button
-              type="button"
               onClick={() => setActiveTab('CITIZENS')}
               style={{
                 flex: 1,
@@ -258,10 +318,9 @@ export default function LeaderboardPage() {
                 fontSize: '11px',
                 fontWeight: 800,
                 cursor: 'pointer',
-                transition: 'background-color 0.12s ease'
               }}
             >
-              👑 Hall of Fame
+              👑 {lang === 'HI' ? 'शीर्ष नागरिक' : 'Hall of Fame'}
             </button>
           </div>
 
@@ -356,15 +415,41 @@ export default function LeaderboardPage() {
                         <div style={{ width: '100%', height: '5px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
                           <div style={{ width: `${Math.max(quorumPct, 2)}%`, height: '100%', backgroundColor: isUserHome ? '#10b981' : '#0284c7', transition: 'width 0.4s ease' }} />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b' }}>
-                          <span>Quorum: {quorumPct}%</span>
-                          <span
-                            onClick={() => router.push(`/citizen/${encodeURIComponent(seat.captain_name)}`)}
-                            style={{ color: '#0284c7', fontWeight: 700, cursor: 'pointer' }}
-                          >
-                            👑 @{seat.captain_name} ↗
-                          </span>
-                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: '#64748b' }}>
+                            <span
+                              onClick={(e) => triggerInfoPopup(
+                                lang === 'HI' ? '50-मत कोरम (Quorum)' : '50-Vote Quorum',
+                                lang === 'HI'
+                                  ? 'सत्यापन सीमा: जब इस लोकसभा क्षेत्र के 50 नागरिक मतदान कर लेते हैं, तो इस क्षेत्र का जनमत आधिकारिक रूप से सुदृढ़ माना जाता है और नक्शे पर चमक जाता है।'
+                                  : 'Certification Threshold: Once 50 verified local voters cast their ballot, this constituency unlocks official public opinion status on the national map.',
+                                e
+                              )}
+                              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px', color: quorumPct >= 100 ? '#059669' : '#0284c7', fontWeight: 750 }}
+                            >
+                              <span>{lang === 'HI' ? 'कोरम:' : 'Quorum:'} {quorumPct}%</span>
+                              <span style={{ fontSize: '9px', opacity: 0.8 }}>ⓘ</span>
+                            </span>
+
+                            <span
+                              onClick={(e) => {
+                                if (seat.captain_name && seat.captain_name !== 'Unclaimed') {
+                                  router.push(`/citizen/${encodeURIComponent(seat.captain_name)}`);
+                                } else {
+                                  triggerInfoPopup(
+                                    lang === 'HI' ? 'संसदीय लीडर (Seat Captain)' : 'Seat Captain',
+                                    lang === 'HI'
+                                      ? 'इस क्षेत्र से सबसे अधिक सक्रिय नागरिक, जिन्होंने सबसे पहले और सबसे अधिक जनमत प्रश्नों पर भागीदारी की है।'
+                                      : 'The leading active citizen from this constituency with the highest local voting participation.',
+                                    e
+                                  );
+                                }
+                              }}
+                              style={{ color: '#0284c7', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                            >
+                              <span>👑 @{seat.captain_name || (lang === 'HI' ? 'प्रतीक्षित' : 'Awaiting')}</span>
+                              <span style={{ fontSize: '9px', opacity: 0.7 }}>↗</span>
+                            </span>
+                          </div>
                       </div>
                     );
                   })}
@@ -541,6 +626,42 @@ export default function LeaderboardPage() {
           )}
         </div>
       </main>
+
+      {/* Safe Screen-Centered Responsive Info Popup */}
+      {activeTooltip && (
+        <div
+          onClick={() => setActiveTooltip(null)}
+          style={{
+            position: 'fixed',
+            left: '50%',
+            top: `${Math.min(Math.max(70, activeTooltip.y), typeof window !== 'undefined' ? window.innerHeight - 220 : 400)}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            backgroundColor: '#0f172a',
+            color: '#ffffff',
+            padding: '14px 16px',
+            borderRadius: '16px',
+            width: 'calc(100vw - 32px)',
+            maxWidth: '380px',
+            boxSizing: 'border-box',
+            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45)',
+            border: '1.5px solid #334155',
+            cursor: 'pointer',
+            animation: 'gentleSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            whiteSpace: 'pre-line'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 900, color: '#38bdf8', letterSpacing: '-0.01em' }}>
+              {activeTooltip.title}
+            </span>
+            <span style={{ fontSize: '11px', color: '#94a3b8', opacity: 0.7, padding: '2px 4px' }}>✕</span>
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#e2e8f0', lineHeight: 1.5, wordBreak: 'break-word' }}>
+            {activeTooltip.desc}
+          </div>
+        </div>
+      )}
 
       {/* 5-Tab Navigation Dock */}
       <nav

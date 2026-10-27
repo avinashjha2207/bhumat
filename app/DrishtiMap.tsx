@@ -625,16 +625,20 @@ tooltipTimeoutRef.current = setTimeout(() => {
   fontWeight: 800,
   color: '#065f46'
 }}>
-  <span style={{
-    width: '6px',
-    height: '6px',
-    borderRadius: '50%',
-    backgroundColor: '#10b981',
-    display: 'inline-block',
-    boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.7)',
-    animation: 'radarPing 2s infinite cubic-bezier(0, 0, 0.2, 1)'
-  }} />
-  <span>{lang === 'HI' ? 'लाइव दृष्टि ग्रिड' : 'Live Drishti Grid'}</span>
+  <div style={{ position: 'relative', width: '12px', height: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                border: '1.5px solid #10b981',
+                animation: 'radarPing 2.2s infinite cubic-bezier(0.2, 0.8, 0.4, 1)'
+              }} />
+              <span style={{ fontSize: '10px', lineHeight: 1, zIndex: 2 }}>📡</span>
+            </div>
+            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065f46' }}>
+              {lang === 'HI' ? 'लाइव दृष्टि मैप' : 'Live Drishti Map'}
+            </span>
 </div>
             </div>
 

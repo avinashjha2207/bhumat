@@ -43,7 +43,21 @@ export default function ScheduleTab({
   setActiveTab,
   triggerInfoPopup,
 }: ScheduleTabProps) {
-  const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>('OVERVIEW');
+  const [scheduleViewMode, setScheduleViewMode] = useState<'OVERVIEW' | 'CALENDAR'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('bhumat_schedule_view_mode');
+      if (saved === 'CALENDAR' || saved === 'OVERVIEW') return saved;
+    }
+    return 'OVERVIEW';
+  });
+
+  const handleSetScheduleViewMode = (mode: 'OVERVIEW' | 'CALENDAR') => {
+    setScheduleViewMode(mode);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('bhumat_schedule_view_mode', mode);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  };
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number>(() => new Date().getDate());
   const [scheduleCategoryFilter, setScheduleCategoryFilter] = useState<'ALL' | 'LokMat' | 'JanMat'>('ALL');
   const [scheduleMonthOffset, setScheduleMonthOffset] = useState<number>(0);
@@ -69,16 +83,16 @@ export default function ScheduleTab({
   const today = new Date();
   const isViewingCurrentMonth = currentMonth === today.getMonth() && currentYear === today.getFullYear();
   const pollsForSelectedDay = polls
-  .filter((p) => {
-    if (!p.starts_at) return false;
-    const pd = new Date(p.starts_at);
-    const isExactDay = pd.getDate() === safeSelectedDay && pd.getMonth() === currentMonth && pd.getFullYear() === currentYear;
-    if (isExactDay) return true;
-    if (isViewingCurrentMonth && safeSelectedDay === today.getDate() && p.is_active) {
-      return pd <= today;
-    }
-    return false;
-  })
+    .filter((p) => {
+      const dropDateStr = p.starts_at || p.next_starts_at;
+      if (!dropDateStr) return false;
+      const pd = new Date(dropDateStr);
+      return (
+        pd.getDate() === safeSelectedDay &&
+        pd.getMonth() === currentMonth &&
+        pd.getFullYear() === currentYear
+      );
+    })
   .sort((a, b) => {
     const hourA = new Date(a.starts_at || 0).getHours();
     const hourB = new Date(b.starts_at || 0).getHours();
@@ -96,7 +110,7 @@ export default function ScheduleTab({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
           <button
             type="button"
-            onClick={() => setScheduleViewMode('OVERVIEW')}
+            onClick={() => handleSetScheduleViewMode('OVERVIEW')}
             style={{
               background: '#ffffff',
               border: '1.5px solid #cbd5e1',
@@ -176,8 +190,18 @@ export default function ScheduleTab({
             </button>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {lang === 'HI' ? 'दैनिक ड्रॉप चक्र' : 'Daily Cadence Matrix'}
+            <span
+              onClick={(e) => triggerInfoPopup(
+                lang === 'HI' ? 'दैनिक प्रश्न समय-सारणी' : 'Daily Question Schedule',
+                lang === 'HI'
+                  ? 'यह कैलेंडर दिखाता है कि किस तारीख को कौन सा प्रश्न खुलेगा। 🟠 नारंगी बिंदी सुबह 8 बजे का लोकमत है, 🟢 हरी बिंदी शाम 8 बजे का जनमत ऑडिट है। वोट देने पर बिंदी सही के निशान (✓) में बदल जाती है।'
+                  : 'Shows which questions unlock on each date. 🟠 Orange dots mark 08:00 AM LokMat drops, 🟢 Green dots mark 08:00 PM JanMat audits. Once you cast a vote, the dot turns into a checkmark (✓).',
+                e
+              )}
+              style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <span>{lang === 'HI' ? 'दैनिक कैलेंडर' : 'Daily Schedule Matrix'}</span>
+              <span style={{ fontSize: '10px' }}>ⓘ</span>
             </span>
             <div style={{ display: 'flex', gap: '10px', fontSize: '11px', fontWeight: 800 }}>
               <span style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -211,19 +235,34 @@ export default function ScheduleTab({
               const isSelected = selectedCalendarDay === dayNum;
               const isWeekend = (startOffset + idx) % 7 >= 5;
               const dayPolls = polls.filter((p) => {
-                if (!p.starts_at) return false;
-                const pd = new Date(p.starts_at);
-                const isExactStartDay = pd.getDate() === dayNum && pd.getMonth() === currentMonth;
-                if (isExactStartDay) return true;
-                const todayInner = new Date();
-                const isViewingToday = dayNum === todayInner.getDate() && currentMonth === todayInner.getMonth();
-                if (isViewingToday && p.is_active) {
-                  return pd <= todayInner;
+                const dropDateStr = p.starts_at || p.next_starts_at;
+                if (!dropDateStr) return false;
+                const pd = new Date(dropDateStr);
+                return pd.getDate() === dayNum && pd.getMonth() === currentMonth && pd.getFullYear() === currentYear;
+              });
+
+              const lokmatPollsForDay = dayPolls.filter((p) => (p.category || '').toLowerCase() === 'lokmat');
+              const janmatPollsForDay = dayPolls.filter((p) => (p.category || '').toLowerCase() === 'janmat');
+              const hasActualLokMat = lokmatPollsForDay.length > 0;
+              const hasActualJanMat = janmatPollsForDay.length > 0;
+
+              // Robust Vote Check: Evaluates votedCycleKeys, localStorage, and session state
+              const isPollVoted = (pId: string) => {
+                if (votedCycleKeys.some((k) => k.startsWith(`${pId}___`))) return true;
+                if (typeof window !== 'undefined') {
+                  const stored = localStorage.getItem('bhumat_voted_cycles') || '';
+                  if (stored.includes(pId)) return true;
+                  const storedChoices = localStorage.getItem('bhumat_voted_polls') || '';
+                  if (storedChoices.includes(pId)) return true;
                 }
                 return false;
-              });
-              const hasActualLokMat = dayPolls.some((p) => p.category === 'LokMat');
-              const hasActualJanMat = dayPolls.some((p) => p.category === 'JanMat');
+              };
+
+              const hasVotedLokMatOnDay = lokmatPollsForDay.some((p) => isPollVoted(p.id));
+              const hasVotedJanMatOnDay = janmatPollsForDay.some((p) => isPollVoted(p.id));
+
+              
+
               return (
                 <div
                   key={dayNum}
@@ -248,12 +287,46 @@ export default function ScheduleTab({
                   }}>
                     {dayNum}
                   </span>
-                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '6px' }}>
+                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center', minHeight: '8px' }}>
                     {hasActualLokMat && (
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                      <span
+                        title={hasVotedLokMatOnDay ? 'LokMat Voted ✓' : 'LokMat Drop'}
+                        style={{
+                          width: hasVotedLokMatOnDay ? '11px' : '6px',
+                          height: hasVotedLokMatOnDay ? '11px' : '6px',
+                          borderRadius: hasVotedLokMatOnDay ? '3px' : '50%',
+                          backgroundColor: '#f59e0b',
+                          color: '#ffffff',
+                          fontSize: '8px',
+                          fontWeight: 900,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1
+                        }}
+                      >
+                        {hasVotedLokMatOnDay ? '✓' : ''}
+                      </span>
                     )}
                     {hasActualJanMat && (
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                      <span
+                        title={hasVotedJanMatOnDay ? 'JanMat Voted ✓' : 'JanMat Drop'}
+                        style={{
+                          width: hasVotedJanMatOnDay ? '11px' : '6px',
+                          height: hasVotedJanMatOnDay ? '11px' : '6px',
+                          borderRadius: hasVotedJanMatOnDay ? '3px' : '50%',
+                          backgroundColor: '#10b981',
+                          color: '#ffffff',
+                          fontSize: '8px',
+                          fontWeight: 900,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1
+                        }}
+                      >
+                        {hasVotedJanMatOnDay ? '✓' : ''}
+                      </span>
                     )}
                     {!hasActualLokMat && !hasActualJanMat && (
                       <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#e2e8f0' }} />
@@ -299,76 +372,126 @@ export default function ScheduleTab({
           </div>
         ) : (
           pollsForSelectedDay.map((p) => {
-            const isJanMat = p.category === 'JanMat';
-            const dropTimeText = isJanMat ? '08:00 PM' : '08:00 AM';
+            const isJanMat = (p.category || '').toLowerCase() === 'janmat';
+            const dropTime = isJanMat ? '08:00 PM' : '08:00 AM';
+            
+            const hasVotedThis = votedCycleKeys.some((k) => k.startsWith(`${p.id}___`)) ||
+              (typeof window !== 'undefined' && (
+                (localStorage.getItem('bhumat_voted_cycles') || '').includes(p.id) ||
+                (localStorage.getItem('bhumat_voted_polls') || '').includes(p.id)
+              ));
+              
+            const choicesCount = Array.isArray(p.options) ? p.options.length : 3;
+
+            const handleDayCardClick = () => {
+              // If already voted or archived, open the 543 Drishti map
+              if (hasVotedThis || (p.closes_at && new Date(p.closes_at) <= new Date())) {
+                openExpandedView(p);
+              } else {
+                // If active and unvoted, navigate to Vote tab and scroll to card
+                setActiveTab('vote');
+                setTimeout(() => {
+                  const targetCard = document.getElementById(`poll-card-${p.id}`);
+                  if (targetCard) {
+                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  } else {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }, 150);
+              }
+            };
+
             return (
               <div
                 key={p.id}
+                onClick={handleDayCardClick}
                 style={{
                   backgroundColor: '#ffffff',
-                  border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#383423'}`,
-                  borderRadius: '20px',
-                  padding: '18px 18px 14px 18px',
+                  border: `1.5px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                  borderRadius: '16px',
+                  padding: '16px 18px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  gap: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s ease'
                 }}
               >
+                {/* Header: Pillar Badge + Options Pill + Unified Time Badge */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      color: isJanMat ? '#059669' : '#d97706',
+                      backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                      padding: '2.5px 8px',
+                      borderRadius: '999px',
+                      border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <span>{isJanMat ? '🌆' : '🌅'}</span>
+                      <span>{p.category}</span>
+                    </span>
+
+                    <span style={{
+                      fontSize: '9.5px',
+                      fontWeight: 700,
+                      color: '#64748b',
+                      backgroundColor: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      padding: '2px 7px',
+                      borderRadius: '6px'
+                    }}>
+                      {choicesCount} {lang === 'HI' ? 'विकल्प' : 'Choices'}
+                    </span>
+                  </div>
+
+                  {/* Single Unified Time Badge */}
                   <span style={{
                     fontSize: '10.5px',
                     fontWeight: 800,
-                    color: isJanMat ? '#059669' : '#d97706',
-                    backgroundColor: isJanMat ? '#ecfdf5' : '#fffbeb',
+                    color: '#0284c7',
+                    backgroundColor: '#f0f9ff',
+                    border: '1px solid #bae6fd',
                     padding: '3px 9px',
-                    borderRadius: '999px',
-                    border: `1px solid ${isJanMat ? '#a7f3d0' : '#fde68a'}`
+                    borderRadius: '6px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}>
-                    ● {p.category.toUpperCase()}
-                  </span>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '3px 8px', borderRadius: '6px' }}>
-                    ⏰ {dropTimeText}
+                    <span>{hasVotedThis ? '✓' : '🔒'}</span>
+                    <span>{dropTime}</span>
                   </span>
                 </div>
-                <div>
-                  <div style={{ fontSize: '14.5px', fontWeight: 800, color: '#0f172a', lineHeight: 1.35, marginBottom: '4px' }}>
-                    {lang === 'EN' ? p.title_en : p.title_hi}
-                  </div>
-                  <div style={{ fontSize: '12px', fontWeight: 500, color: '#64748b', lineHeight: 1.4 }}>
-                    {lang === 'EN' ? p.title_hi : p.title_en}
-                  </div>
-                </div>
+
+                {/* Primary English Question */}
                 <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginTop: '12px',
-                      paddingTop: '8px',
-                      borderTop: '1px dashed #e2e8f0',
-                      fontSize: '11px'
-                    }}>
-                      <span style={{ color: isJanMat ? '#059669' : '#d97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span>{isJanMat ? '🔒' : '🌅'}</span>
-                        <span>
-                          {isJanMat 
-                            ? (lang === 'HI' ? 'गोपनीय जनमत ऑडिट' : 'Secret Ballot Audit') 
-                            : (lang === 'HI' ? 'सार्वजनिक सांस्कृतिक मत' : 'Public Cultural Pulse')}
-                        </span>
-                      </span>
-                      <span style={{
-                        color: '#64748b',
-                        fontWeight: 700,
-                        backgroundColor: '#f1f5f9',
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        fontSize: '10.5px'
-                      }}>
-                        {lang === 'HI' 
-                          ? `निर्धारित समय: ${isJanMat ? 'रात 08:00 बजे' : 'सुबह 08:00 बजे'}` 
-                          : `Scheduled Drop: ${isJanMat ? '08:00 PM' : '08:00 AM'}`}
-                      </span>
-                    </div>
+                  fontSize: '14.5px',
+                  fontWeight: 750,
+                  color: '#0f172a',
+                  lineHeight: 1.42,
+                  marginTop: '2px',
+                  letterSpacing: '-0.01em'
+                }}>
+                  {lang === 'EN' ? p.title_en : p.title_hi}
+                </div>
+
+                {/* Secondary Localized Translation with Soft Divider & Breathing Room */}
+                <div style={{
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: '#64748b',
+                  lineHeight: 1.45,
+                  paddingTop: '8px',
+                  marginTop: '2px',
+                  borderTop: '1px dashed #f1f5f9'
+                }}>
+                  {lang === 'EN' ? p.title_hi : p.title_en}
+                </div>
               </div>
             );
           })
@@ -417,8 +540,23 @@ export default function ScheduleTab({
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '2px 4px' }}>
-          {lang === 'EN' ? 'Daily Drop Rhythm' : 'दैनिक मतदान समय'}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {lang === 'EN' ? 'Daily Drop Rhythm' : 'दैनिक मतदान समय'}
+          </span>
+          <span
+            onClick={(e) => triggerInfoPopup(
+              lang === 'HI' ? 'दैनिक मतदान की दिनचर्या' : 'The Daily Drop Rhythm',
+              lang === 'HI'
+                ? 'भूमत पर रोज़ दो बार मतदान होता है:\n• सुबह 08:00 बजे: लोकमत (मनोरंजन, खेल, खान-पान - खुला मत)\n• शाम 08:00 बजे: जनमत (सड़क, बिजली, सुरक्षा - 100% गोपनीय मत)'
+                : 'BhuMat drops two ballots daily:\n• 08:00 AM: LokMat (Culture, lifestyle & sports - open profile stance)\n• 08:00 PM: JanMat (Civic infrastructure - 100% anonymous secret ballot)',
+              e
+            )}
+            style={{ fontSize: '10.5px', fontWeight: 700, color: '#0284c7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+          >
+            <span>{lang === 'HI' ? 'समय नियम' : 'Rhythm Rules'}</span>
+            <span style={{ fontSize: '10px' }}>ⓘ</span>
+          </span>
         </div>
         <div
           onClick={() => {
@@ -473,217 +611,204 @@ export default function ScheduleTab({
       </div>
       
       {/* Row 1: Clean Header with Calendar View aligned flush right */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', marginBottom: '8px' }}>
-        <div style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {lang === 'HI' ? 'आगामी निर्धारित ड्रॉप्स' : 'Upcoming Scheduled Drops'} ({scheduledQueueList.length})
-        </div>
-        <button
-          type="button"
-          onClick={() => setScheduleViewMode('CALENDAR')}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#ffffff',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '10px',
-            fontSize: '11px',
-            fontWeight: 800,
-            color: '#0f172a',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-          }}
-        >
-          <span>📅</span>
-          <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
-        </button>
-      </div>
-      {/* Row 2: Clean LokMat / JanMat Filter Strip */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-        {(['ALL', 'LokMat', 'JanMat'] as const).map((cat) => {
-          const isCatActive = scheduleCategoryFilter === cat;
-          const label = cat === 'ALL'
-            ? (lang === 'HI' ? 'सभी ड्रॉप्स' : 'All Drops')
-            : (cat === 'LokMat' ? '🌅 LokMat' : '🌆 JanMat');
-          return (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setScheduleCategoryFilter(cat)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: '10px',
-                border: isCatActive ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
-                backgroundColor: isCatActive ? '#0f172a' : '#ffffff',
-                color: isCatActive ? '#ffffff' : '#475569',
-                fontSize: '11.5px',
-                fontWeight: 800,
-                cursor: 'pointer'
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      {(() => {
+        const filteredList = scheduledQueueList
+          .filter((item) => {
+            if (scheduleCategoryFilter === 'ALL') return true;
+            return (item.category || '').toLowerCase() === scheduleCategoryFilter.toLowerCase();
+          })
+          .sort((a, b) => new Date(a.starts_at || 0).getTime() - new Date(b.starts_at || 0).getTime());
 
-        {/* SECTION 1: GENUINE UPCOMING SCHEDULED DROPS */}
-      <div style={{ marginTop: '16px', marginBottom: '8px' }}>
-        <h3 style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px 0' }}>
-          {lang === 'HI' 
-            ? `आगामी निर्धारित प्रश्न (${scheduledQueueList.length})` 
-            : `Upcoming Scheduled Drops (${scheduledQueueList.length})`}
-        </h3>
+        return (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', marginBottom: '8px' }}>
+              <div
+                onClick={(e) => triggerInfoPopup(
+                  lang === 'HI' ? 'आगामी निर्धारित प्रश्न' : 'Upcoming Scheduled Drops',
+                  lang === 'HI'
+                    ? 'ये वे प्रश्न हैं जो आने वाले दिनों में निर्धारित समय पर अनलॉक होंगे। ड्रॉप समय आने से पहले विकल्प सीलबंद रहते हैं ताकि कोई पक्षपात न हो।'
+                    : 'These are questions scheduled to unlock in the coming days. Options remain strictly sealed until the drop time to ensure complete fairness.',
+                  e
+                )}
+                style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <span>{lang === 'HI' ? 'आगामी प्रश्न' : 'Upcoming Scheduled Drops'} ({filteredList.length})</span>
+                <span style={{ fontSize: '10.5px', color: '#0284c7' }}>ⓘ</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSetScheduleViewMode('CALENDAR')}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  color: '#0f172a',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                }}
+              >
+                <span>📅</span>
+                <span>{lang === 'HI' ? 'कैलेंडर देखें' : 'Calendar View'}</span>
+              </button>
+            </div>
 
-        {scheduledQueueList.length === 0 ? (
-          <div style={{ backgroundColor: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '16px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-            {lang === 'HI' ? 'वर्तमान में कोई नया प्रश्न निर्धारित नहीं है।' : 'No upcoming drops currently in queue.'}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {scheduledQueueList.map((poll) => {
-              // Existing card render code for upcoming polls
-              return (
-                <div key={poll.id} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: poll.category === 'JanMat' ? '#059669' : '#d97706', backgroundColor: poll.category === 'JanMat' ? '#ecfdf5' : '#fffbeb', padding: '2px 8px', borderRadius: '6px' }}>
-                      • {poll.category}
-                    </span>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#0284c7', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
-                      🔒 {poll.next_starts_at ? new Date(poll.next_starts_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Scheduled'}
-                    </span>
-                  </div>
-                  <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
-                    {lang === 'HI' ? poll.title_hi : poll.title_en}
-                  </h4>
-                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: 0 }}>
-                    {lang === 'HI' ? poll.title_en : poll.title_hi}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+            {/* Row 2: Clean LokMat / JanMat Filter Strip */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              {(['ALL', 'LokMat', 'JanMat'] as const).map((cat) => {
+                const isCatActive = scheduleCategoryFilter === cat;
+                const label = cat === 'ALL'
+                  ? (lang === 'HI' ? 'सभी ड्रॉप्स' : 'All Drops')
+                  : (cat === 'LokMat' ? '🌅 LokMat' : '🌆 JanMat');
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setScheduleCategoryFilter(cat)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '10px',
+                      border: isCatActive ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                      backgroundColor: isCatActive ? '#0f172a' : '#ffffff',
+                      color: isCatActive ? '#ffffff' : '#475569',
+                      fontSize: '11.5px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
-      {/* SECTION 2: CONCLUDED AUDITS & HISTORICAL CONSENSUS ARCHIVE */}
-      {archivedPollsList.length > 0 && (
-        <div style={{ marginTop: '24px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-              {lang === 'HI' 
-                ? `सील किए गए जनमत परिणाम (${archivedPollsList.length})` 
-                : `Concluded Consensus Archive (${archivedPollsList.length})`}
-            </h3>
-            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>
-              {lang === 'HI' ? 'अंतिम प्रमाणित आंकड़े' : 'Final Certified Results'}
-            </span>
-          </div>
+            {/* Scheduled Drops List */}
+            {filteredList.length === 0 ? (
+              <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '24px 20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
+                {lang === 'EN'
+                  ? '✓ No scheduled drops found for this category filter.'
+                  : '✓ इस श्रेणी फ़िल्टर के लिए कोई निर्धारित प्रश्न नहीं मिला।'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {filteredList.map((item) => {
+                  const isItemJanMat = (item.category || '').toLowerCase() === 'janmat';
+                  
+                  // Compute Human-Readable Drop Time (e.g. "28 Oct • 08:00 AM")
+                  const rawDropDate = item.starts_at ? new Date(item.starts_at) : (item.next_starts_at ? new Date(item.next_starts_at) : null);
+                  const formattedDropTime = rawDropDate ? rawDropDate.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                  }) : (isItemJanMat ? '08:00 PM Drop' : '08:00 AM Drop');
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {archivedPollsList.map((poll) => {
-              const hasVoted = votedCycleKeys.some((k) => k.startsWith(`${poll.id}___`));
-              return (
-                <div
-                  key={poll.id}
-                  style={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '16px',
-                    padding: '14px 16px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#475569', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>
-                      • {poll.category} (Archived)
-                    </span>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', padding: '2px 8px', borderRadius: '6px' }}>
-                      🔒 Concluded
-                    </span>
-                  </div>
+                  const choicesCount = Array.isArray(item.options) ? item.options.length : 3;
 
-                  <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
-                    {lang === 'HI' ? poll.title_hi : poll.title_en}
-                  </h4>
-                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 10px 0' }}>
-                    {lang === 'HI' ? poll.title_en : poll.title_hi}
-                  </p>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
-                    <span style={{ fontSize: '10.5px', color: hasVoted ? '#059669' : '#64748b', fontWeight: 700 }}>
-                      {hasVoted ? (lang === 'HI' ? '✓ आपका मत दर्ज है' : '✓ Ballot Cast') : (lang === 'HI' ? 'सत्र समाप्त' : 'Window Closed')}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => openExpandedView(poll)}
+                  return (
+                    <div
+                      key={item.id}
                       style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        fontWeight: 800,
-                        color: '#0f172a',
-                        cursor: 'pointer'
+                        backgroundColor: '#ffffff',
+                        border: '1.5px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '16px 18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
                       }}
                     >
-                      {lang === 'HI' ? 'प्रमाणित परिणाम देखें ↗' : 'View Certified Results ↗'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                      {/* Top Header Badge Row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            color: isItemJanMat ? '#059669' : '#d97706',
+                            backgroundColor: isItemJanMat ? '#ecfdf5' : '#fffbeb',
+                            padding: '2.5px 8px',
+                            borderRadius: '999px',
+                            border: `1px solid ${isItemJanMat ? '#a7f3d0' : '#fde68a'}`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <span>{isItemJanMat ? '🌆' : '🌅'}</span>
+                            <span>{item.category}</span>
+                          </span>
 
-      {/* Scheduled Drops List */}
-      {scheduledQueueList.length === 0 ? (
-        <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12.5px' }}>
-          {lang === 'EN'
-            ? '✓ All scheduled drops for this cycle are live in your Vote feed.'
-            : '✓ इस चक्र के सभी निर्धारित प्रश्न आपके वोट फीड में सक्रिय हैं।'}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {scheduledQueueList
-            .filter((item) => scheduleCategoryFilter === 'ALL' || item.category === scheduleCategoryFilter)
-            .sort((a, b) => new Date(a.starts_at || 0).getTime() - new Date(b.starts_at || 0).getTime())
-            .map((item) => {
-              const sched = evaluatePollSchedule(item);
-              const isItemJanMat = item.category === 'JanMat';
-              return (
-                <div key={item.id} style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{
-                      fontSize: '10.5px',
-                      fontWeight: 800,
-                      color: isItemJanMat ? '#059669' : '#d97706',
-                      backgroundColor: isItemJanMat ? '#ecfdf5' : '#fffbeb',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      border: `1px solid ${isItemJanMat ? '#a7f3d0' : '#fde68a'}`
-                    }}>
-                      ● {item.category}
-                    </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', padding: '2px 8px', borderRadius: '6px' }}>
-                      🔒 {sched.nextUnlockLabel ? sched.nextUnlockLabel.replace(/\s20\d{2},?/, '') : (lang === 'HI' ? 'निर्धारित' : 'Scheduled')}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#334155', lineHeight: 1.35 }}>
-                    {lang === 'EN' ? item.title_en : item.title_hi}
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 500 }}>
-                    {lang === 'EN' ? item.title_hi : item.title_en}
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      )}
+                          <span style={{
+                            fontSize: '9.5px',
+                            fontWeight: 700,
+                            color: '#64748b',
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            padding: '2px 7px',
+                            borderRadius: '6px'
+                          }}>
+                            {choicesCount} {lang === 'HI' ? 'विकल्प' : 'Choices'}
+                          </span>
+                        </div>
+
+                        {/* Explicit Date & Time Unlock Badge */}
+                        <span style={{
+                          fontSize: '10.5px',
+                          fontWeight: 800,
+                          color: '#0284c7',
+                          backgroundColor: '#f0f9ff',
+                          border: '1px solid #bae6fd',
+                          padding: '3px 9px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <span>🔒</span>
+                          <span>{formattedDropTime}</span>
+                        </span>
+                      </div>
+
+                      {/* Primary English Question */}
+                      <div style={{
+                        fontSize: '14.5px',
+                        fontWeight: 750,
+                        color: '#0f172a',
+                        lineHeight: 1.42,
+                        marginTop: '2px',
+                        letterSpacing: '-0.01em'
+                      }}>
+                        {lang === 'EN' ? item.title_en : item.title_hi}
+                      </div>
+
+                      {/* Secondary Localized Translation with Soft Divider & Breathing Room */}
+                      <div style={{
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: '#64748b',
+                        lineHeight: 1.45,
+                        paddingTop: '8px',
+                        marginTop: '2px',
+                        borderTop: '1px dashed #f1f5f9'
+                      }}>
+                        {lang === 'EN' ? item.title_hi : item.title_en}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
