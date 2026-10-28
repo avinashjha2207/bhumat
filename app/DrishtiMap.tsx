@@ -49,6 +49,7 @@ interface DrishtiMapProps {
   lang?: 'EN' | 'HI';
   verifiedOnly?: boolean;
   hideHeader?: boolean;
+  activeVotePulse?: { votedOptionIdx: number; votedAt: number } | null;
 }
 
 export default function DrishtiMap({
@@ -62,6 +63,7 @@ export default function DrishtiMap({
   hideHeader = false,
   cycleHorizon = 'current',
   cycleId,
+  activeVotePulse = null
 }: DrishtiMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -362,7 +364,12 @@ useEffect(() => {
       .attr('fill', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
-        if (livePulses[seatName]) return livePulses[seatName].color;
+        const isUserSeat = selectedConstituencyName && clean(selectedConstituencyName) === seatName;
+
+        // 1. ACTIVE VOTED OPTION PULSE: If the user just flipped to this map, flash their chosen option color
+        if (isUserSeat && activeVotePulse && (Date.now() - activeVotePulse.votedAt) < 2500) {
+          return OPTION_PALETTE[activeVotePulse.votedOptionIdx % OPTION_PALETTE.length];
+        }
 
         const row = tallyLookup.get(seatName);
         if (!row) {
@@ -554,6 +561,20 @@ tooltipTimeoutRef.current = setTimeout(() => {
         @keyframes stateRadarWave {
           0% { r: 6px; opacity: 0.95; stroke-width: 2.5px; }
           100% { r: 34px; opacity: 0; stroke-width: 0.3px; }
+        }
+        @keyframes optionVotePulseAura {
+          0% { filter: drop-shadow(0 0 0px rgba(16, 185, 129, 0.9)); }
+          50% { filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.8)); }
+          100% { filter: drop-shadow(0 0 0px rgba(16, 185, 129, 0)); }
+        }
+        @keyframes optionVotePulseAura {
+          0% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(249, 115, 22, 0.9)); }
+          50% { transform: scale(1.02); filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.8)); }
+          100% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(249, 115, 22, 0)); }
+        }
+        .voted-option-pulsing {
+          animation: optionVotePulseAura 1.2s ease-in-out infinite;
+          transform-origin: center;
         }
         .state-calm-radar {
           animation: stateRadarWave 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);

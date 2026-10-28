@@ -1,4 +1,5 @@
 'use client';
+
 import React, { useState, useEffect } from 'react';
 
 export type CivicNavTarget = 'schedule' | 'rankings' | 'search';
@@ -13,99 +14,122 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
 
   const slides = [
     {
-      id: 'proof_of_ballot',
-      icon: '🗳️',
-      tag: lang === 'HI' ? 'मतदान ही अधिकार' : 'Proof of Ballot',
-      tagColor: '#059669',
-      tagBg: '#ecfdf5',
-      tagBorder: '#a7f3d0',
+      id: 'bharat_voice',
+      icon: '🇮🇳',
+      accentColor: '#f97316',
+      tag: lang === 'HI' ? 'भारत का जनमत' : 'Bharat Scoreboard',
+      tagColor: '#ea580c',
+      tagBg: '#fff7ed',
+      tagBorder: '#ffedd5',
       title: lang === 'HI' 
-        ? 'मत दें, परिणाम देखें • ऐतिहासिक टाइमलाइन' 
-        : 'Vote to Reveal Data • Unbroken Timeline',
+        ? '543 संसदीय क्षेत्र • ज़मीनी जनमत का सीधा आईना' 
+        : '543 Constituencies. Direct Citizen Voice.',
       body: lang === 'HI'
-        ? 'भूमत पर निष्पक्षता सर्वोपरि है: मत देने के बाद ही आपके क्षेत्र के लाइव प्रतिशत और नक्शे दिखते हैं। हर चक्र में भाग लेकर अपनी ऐतिहासिक टाइमलाइन खुली रखें!'
-        : 'Zero bias: Live percentages and constituency heatmaps unlock strictly after you cast your ballot. Participate every cycle to build your permanent public opinion history!',
+        ? 'भूमत देश के हर संसदीय क्षेत्र की वास्तविक आवाज़ को सीधे राष्ट्रीय मानचित्र पर लाता है। यहां हर जिले की राय वहां के स्थानीय नागरिक खुद तय करते हैं।'
+        : 'BhuMat brings public sentiment directly from the ground to the map. Every Lok Sabha constituency speaks through its own verified local residents, building a living, transparent national scoreboard.',
       actionLabel: null,
       actionTab: null
     },
     {
-      id: 'cadence_schedule',
-      icon: '📅',
-      tag: lang === 'HI' ? 'मासिक चक्र नियम' : 'Monthly Cycle Rule',
-      tagColor: '#d97706',
-      tagBg: '#fffbeb',
-      tagBorder: '#fde68a',
-      title: lang === 'HI' 
-        ? 'मासिक प्रश्न कब खुलते और बंद होते हैं?' 
-        : 'How do Monthly Poll Windows Work?',
-      body: lang === 'HI'
-        ? 'हर मासिक प्रश्न जारी होने की तारीख से माह के अंतिम दिन तक खुला रहता है। माह के अंत में उस चक्र का परिणाम सील हो जाता है और अगले माह उसी तारीख को पुनः मतदान अनलॉक होता है।'
-        : 'Each monthly audit is open from its drop date through month-end. At month-end, consensus is sealed, and re-voting unlocks on the same date next month.',
-      actionLabel: lang === 'HI' ? 'कैलेंडर देखें ❯' : 'View Calendar ❯',
-      actionTab: 'schedule' as const
-    },
-    {
       id: 'secret_ballot',
       icon: '🔒',
-      tag: lang === 'HI' ? 'पूर्ण गोपनीयता' : '100% Secret Ballot',
-      tagColor: '#059669',
-      tagBg: '#ecfdf5',
-      tagBorder: '#a7f3d0',
-      title: lang === 'HI' 
-        ? 'शून्य जीपीएस • 100% अनाम जनमत ऑडिट' 
-        : 'Zero GPS • Completely Decoupled Audits',
-      body: lang === 'HI'
-        ? 'जनमत नागरिक ऑडिट में आपका फोन या पहचान कभी भी आपके वोट से नहीं जुड़ती। सिस्टम केवल यह सत्यापित करता है कि आपने मत दिया, किंतु आपका विकल्प पूरी तरह गोपनीय रहता है।'
-        : 'JanMat decouples your identity from your ballot. The ledger verifies that you voted to block duplicates, but no individuals, not even the BhuMat admin - can trace your choice.',
-      actionLabel: lang === 'HI' ? 'सुरक्षा प्रोटोकॉल ❯' : 'Security Protocol ❯',
-      actionTab: 'search' as const
-    },
-    {
-      id: 'quorum_fortification',
-      icon: '🛡️',
-      tag: lang === 'HI' ? 'सॉवरेन कोरम' : '50-Vote Quorum',
+      accentColor: '#0284c7',
+      tag: lang === 'HI' ? 'अभेद्य गोपनीयता' : 'Unlinked Ballot',
       tagColor: '#0284c7',
       tagBg: '#f0f9ff',
       tagBorder: '#bae6fd',
       title: lang === 'HI' 
-        ? 'नक्शे पर रंग कब दिखाई देता है?' 
-        : 'Why do Unfortified Seats Stay Slate?',
+        ? 'आपकी पहचान और आपके मत में कोई संबंध नहीं' 
+        : 'Your Identity & Your Vote Are Never Linked',
       body: lang === 'HI'
-        ? 'किसी संसदीय क्षेत्र में जब तक 50 सत्यापित नागरिक मतदान नहीं करते, तब तक वहां का नक्शा तटस्थ रहता है। यह नियम अल्प-संख्यात्मक पूर्वाग्रह को रोकता है।'
-        : 'Constituency polygons remain neutral slate until ≥50 verified citizen ballots land. This statistical threshold prevents small-sample skew from distorting regional opinion.',
+        ? 'जैसे मतदान केंद्र पर उंगली की स्याही सिर्फ यह दर्ज करती है कि आपने वोट दिया, वैसे ही भूमत पर आपकी पहचान और आपकी पसंद दो अलग-अलग बंद कमरों में रहती है। आपने किसे चुना, यह कोई नहीं जान सकता, भूमत भी नहीं।'
+        : 'Like indelible ink on your finger, mobile verification only proves you showed up (blocking fake bots). The option you select drops into an encrypted vault with zero phone numbers, zero tokens, and zero timestamps. No one, not even BhuMat can see your vote.',
+      actionLabel: lang === 'HI' ? 'सुरक्षा नियम ❯' : 'Security Shield ❯',
+      actionTab: 'search' as const
+    },
+    {
+      id: 'proof_of_ballot',
+      icon: '🗳️',
+      accentColor: '#059669',
+      tag: lang === 'HI' ? 'निष्पक्ष सहभागिता' : 'Proof of Ballot',
+      tagColor: '#059669',
+      tagBg: '#ecfdf5',
+      tagBorder: '#a7f3d0',
+      title: lang === 'HI' 
+        ? 'पहले अपना मत दर्ज करें, फिर देखें जनता का रुख' 
+        : 'Vote First, Then Reveal the Collective Mood',
+      body: lang === 'HI'
+        ? 'ताकि पहले से दिख रहे रुझान आपके व्यक्तिगत फैसले को प्रभावित न करें। जैसे ही आप अपना मत दर्ज करते हैं, आपके जिले और पूरे देश के आंकड़े तुरंत खुल जाते हैं।'
+        : 'To keep public opinion completely honest and free from peer pressure, live constituency percentages and heatmaps unlock only after you vote. Your sincere voice comes first.',
+      actionLabel: null,
+      actionTab: null
+    },
+    {
+      id: 'quorum_evolution',
+      icon: '🛡️',
+      accentColor: '#d97706',
+      tag: lang === 'HI' ? 'सशक्त कोरम' : '50-Vote Quorum',
+      tagColor: '#b45309',
+      tagBg: '#fef3c7',
+      tagBorder: '#fde68a',
+      title: lang === 'HI' 
+        ? 'पहले वोट से शुरुआती रुझान • 50 मतों पर पक्का कोरम' 
+        : 'From Early Trends to Certified District Consensus',
+      body: lang === 'HI'
+        ? 'पहले ही वोट से आपके जिले का रंग हल्के शेड में दिखने लगता है। जैसे ही क्षेत्र के 50 नागरिक मतदान पूरा करते हैं, आपके जिले का जनमत आधिकारिक रूप से सुदृढ़ होकर गहरे रंग में चमक उठता है।'
+        : 'Your constituency boundary reflects live sentiment from the very first vote in a subtle tone. Once 50 verified local residents participate, your seat solidifies into a certified, deep consensus color.',
       actionLabel: null,
       actionTab: null
     },
     {
       id: 'dual_rhythm',
       icon: '🌅',
-      tag: lang === 'HI' ? 'दैनिक लय' : 'Daily Dual Drops',
-      tagColor: '#b45309',
-      tagBg: '#fef3c7',
-      tagBorder: '#fde68a',
+      accentColor: '#ea580c',
+      tag: lang === 'HI' ? 'दैनिक संतुलन' : 'Daily Rhythm',
+      tagColor: '#c2410c',
+      tagBg: '#fff7ed',
+      tagBorder: '#ffedd5',
       title: lang === 'HI' 
-        ? 'सुबह 8 बजे लोकमत • रात 8 बजे जनमत' 
-        : '8:00 AM LokMat • 8:00 PM JanMat',
+        ? 'सुबह चाय पर सांस्कृतिक चर्चा • रात 8 बजे शहर का ऑडिट' 
+        : 'Morning Chai Debates • Evening District Audits',
       body: lang === 'HI'
-        ? 'सुबह की चाय पर भारत की सांस्कृतिक राय (खेल, सिनेमा, जीवनशैली) और रात 8 बजे अपने जिले की सड़कों, बिजली, स्वास्थ्य और नागरिक व्यवस्था का निष्पक्ष ऑडिट।'
-        : 'Morning chai brings open cultural debates (cinema, sports, heritage), while 8:00 PM transitions to verified civic and governance audits for your constituency.',
-      actionLabel: lang === 'HI' ? 'आगामी प्रश्न ❯' : 'Upcoming Drops ❯',
+        ? 'सुबह 8 बजे लोकमत पर खेल, सिनेमा और जीवनशैली से जुड़ी सांस्कृतिक चर्चाएं। \nरात 8 बजे जनमत पर अपने क्षेत्र की नागरिक व्यवस्था का निष्पक्ष ऑडिट।'
+        : '8:00 AM LokMat brings high-spirited cultural debates on sports, cinema, and heritage. \n8:00 PM JanMat transitions to uncompromised civic audits on local governance.',
+      actionLabel: lang === 'HI' ? 'दैनिक कार्यक्रम ❯' : 'Daily Schedule ❯',
+      actionTab: 'schedule' as const
+    },
+    {
+      id: 'monthly_cycle',
+      icon: '📅',
+      accentColor: '#059669',
+      tag: lang === 'HI' ? 'मासिक चक्र' : 'Monthly Cycle',
+      tagColor: '#047857',
+      tagBg: '#ecfdf5',
+      tagBorder: '#a7f3d0',
+      title: lang === 'HI' 
+        ? 'साल के 12 नियमित मासिक चक्र' 
+        : '12 Monthly Seasons per Year',
+      body: lang === 'HI'
+        ? 'हर मासिक प्रश्न जारी होने की तारीख से महीने के आखिरी दिन तक खुला रहता है। माह के अंत में उस चक्र के नतीजे सील होते हैं और अगले महीने उसी तारीख को नया चक्र खुलता है।'
+        : 'Each monthly poll runs from its drop date through the final second of that calendar month. Standings lock at month-end, and a fresh round unlocks on the exact same date next month.',
+      actionLabel: lang === 'HI' ? 'कैलेंडर देखें ❯' : 'View Calendar ❯',
       actionTab: 'schedule' as const
     },
     {
       id: 'civic_league',
       icon: '🏆',
-      tag: lang === 'HI' ? 'भारत नागरिक लीग' : 'Bharat Civic League',
-      tagColor: '#7c3aed',
+      accentColor: '#7c3aed',
+      tag: lang === 'HI' ? 'संसदीय गौरव' : 'Civic League',
+      tagColor: '#6d28d9',
       tagBg: '#f5f3ff',
       tagBorder: '#ddd6fe',
       title: lang === 'HI' 
-        ? 'अपनी सीट को राष्ट्रीय चैंपियन बनाएं' 
-        : 'Earn DBG & Elevate Your Home Seat',
+        ? 'अपनी भागीदारी से अपने संसदीय क्षेत्र का मान बढ़ाएं' 
+        : 'Earn DBG Credits & Elevate Your Lok Sabha',
       body: lang === 'HI'
-        ? 'प्रत्येक मतदान पर DBG अंक और XP प्राप्त करें। आपके क्षेत्र से जितना अधिक मतदान होगा, आपका संसदीय क्षेत्र राष्ट्रीय लीडरबोर्ड में उतना ही ऊपर पहुंचेगा।'
-        : 'Earn DBG credits and civic XP with every ballot. High local turnout propels your Parliamentary Constituency to the top of the monthly All-India leaderboard.',
-      actionLabel: lang === 'HI' ? 'रैंकिंग देखें ❯' : 'View League ❯',
+        ? 'हर मतदान पर DBG क्रेडिट और नागरिक XP पाएं। आपके क्षेत्र से जितनी अधिक भागीदारी होगी, आपकी लोकसभा सीट अखिल भारतीय लीडरबोर्ड पर उतनी ही ऊपर पहुंचेगी।'
+        : 'Collect DBG points and civic XP with every vote. Active participation strengthens your constituency\'s voice and propels your Lok Sabha seat up the All-India Leaderboard.',
+      actionLabel: lang === 'HI' ? 'लीडरबोर्ड देखें ❯' : 'View League ❯',
       actionTab: 'rankings' as const
     }
   ];
@@ -131,19 +155,45 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         backgroundColor: '#ffffff',
         border: '1.5px solid #e2e8f0',
         borderRadius: '20px',
-        padding: '14px 16px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        padding: '14px 16px 12px 16px',
+        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.04)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        minHeight: '128px',
+        height: '176px',
+        maxHeight: '176px',
+        boxSizing: 'border-box',
         position: 'relative',
+        overflow: 'hidden',
         transition: 'all 0.25s ease'
       }}>
-        {/* Top Header Row: Icon + Badge + Navigation Dots */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Subtle Top Gradient Accent Strip */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          backgroundColor: slide.accentColor,
+          transition: 'background-color 0.4s ease'
+        }} />
+
+        {/* Top Header Row: Icon Badge + Category Pill + Step Indicator */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '18px', lineHeight: 1 }}>{slide.icon}</span>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '28px',
+              borderRadius: '8px',
+              backgroundColor: slide.tagBg,
+              border: `1px solid ${slide.tagBorder}`,
+              fontSize: '15px'
+            }}>
+              {slide.icon}
+            </span>
             <span style={{
               fontSize: '10px',
               fontWeight: 800,
@@ -159,18 +209,18 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
             </span>
           </div>
 
-          {/* Dots Indicator */}
-          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+          {/* Micro Pill Dots */}
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             {slides.map((_, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => setCurrentSlide(idx)}
                 style={{
-                  width: idx === currentSlide ? '16px' : '6px',
-                  height: '6px',
+                  width: idx === currentSlide ? '18px' : '5px',
+                  height: '5px',
                   borderRadius: '999px',
-                  backgroundColor: idx === currentSlide ? '#0f172a' : '#cbd5e1',
+                  backgroundColor: idx === currentSlide ? slide.accentColor : '#cbd5e1',
                   border: 'none',
                   padding: 0,
                   cursor: 'pointer',
@@ -182,8 +232,8 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
           </div>
         </div>
 
-        {/* Content Body */}
-        <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+        {/* Content Body: Header + Full 4-Line Narrative */}
+        <div style={{ marginTop: '6px', marginBottom: '4px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <h4 style={{
             fontSize: '13.5px',
             fontWeight: 850,
@@ -197,13 +247,17 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
             fontSize: '11.5px',
             color: '#475569',
             margin: 0,
-            lineHeight: 1.45
+            lineHeight: 1.48,
+            display: '-webkit-box',
+            WebkitLineClamp: 4,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
           }}>
             {slide.body}
           </p>
         </div>
 
-        {/* Footer Row: Progress bar + Contextual Action Link */}
+        {/* Footer Row: Sequence Indicator + Action Link */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -212,7 +266,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
           paddingTop: '6px',
           fontSize: '10.5px'
         }}>
-          <span style={{ color: '#94a3b8', fontWeight: 600 }}>
+          <span style={{ color: '#94a3b8', fontWeight: 700 }}>
             {currentSlide + 1} / {slides.length} • BhuMat Protocol
           </span>
           {slide.actionLabel && onNavigateTab && (
@@ -222,11 +276,14 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#0284c7',
+                color: slide.tagColor,
                 fontWeight: 800,
                 fontSize: '11px',
                 cursor: 'pointer',
-                padding: '2px 4px'
+                padding: '2px 4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '2px'
               }}
             >
               {slide.actionLabel}

@@ -847,7 +847,7 @@ export default function AdminAuditPanel() {
   const handleRunParityCheck = async () => {
     setParityReport({ passed: true, message: 'Validating cryptographic matrix...' });
     const { data, error } = await supabase.rpc('admin_verify_parity_integrity', {
-      p_poll_id: selectedPollId
+      p_poll_id: selectedPollId === 'ALL' ? null : selectedPollId
     });
     if (error || !data) {
       setParityReport({ passed: false, message: `Check failed: ${error?.message}` });
@@ -907,7 +907,7 @@ export default function AdminAuditPanel() {
       next_starts_at: newNextStartsAt ? new Date(newNextStartsAt).toISOString() : undefined,
       closes_at: isExpiry && customClosesAt ? new Date(customClosesAt).toISOString() : closeDate.toISOString(),
       is_active: true,
-      target_region_type: newTargetType === 'PAN_INDIA' ? 'PAN_INDIA' : 'CUSTOM_SEATS',
+      target_region_type: newTargetType,
       target_seats: finalTargetSeats,
       blackout_seats: []
     };
@@ -1646,6 +1646,49 @@ export default function AdminAuditPanel() {
                     </button>
                   </div>
                   {blackoutActionStatus && <div style={{ fontSize: '11px', color: '#059669', marginTop: '4px', fontWeight: 700 }}>{blackoutActionStatus}</div>}
+                  
+                  {/* Active Blackout Seats Display with 1-Click Unmute */}
+                  {selectedPoll.blackout_seats && selectedPoll.blackout_seats.length > 0 && (
+                    <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#dc2626' }}>
+                        Active Silenced Seats:
+                      </span>
+                      {selectedPoll.blackout_seats.map((seat) => (
+                        <span
+                          key={seat}
+                          style={{
+                            backgroundColor: '#fee2e2',
+                            color: '#b91c1c',
+                            border: '1px solid #fca5a5',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <span>📍 {seat}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBlackout(seat)}
+                            title="Remove silence and restore public voting"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              fontWeight: 900,
+                              padding: 0
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

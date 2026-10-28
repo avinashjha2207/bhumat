@@ -235,21 +235,21 @@ export default function AuthModal({
               style={{
                 backgroundColor: '#f0fdf4',
                 border: '1.5px solid #86efac',
-                borderRadius: '12px',
-                padding: '10px 12px',
+                borderRadius: '14px',
+                padding: '12px 14px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '4px',
+                gap: '6px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 900, color: '#166534' }}>
-                <span>📱</span>
-                <span>{lang === 'HI' ? 'एकमुश्त मोबाइल सत्यापन अनिवार्य' : 'One-Time Mobile Verification Required'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 900, color: '#166534' }}>
+                <span>🗳️</span>
+                <span>{lang === 'HI' ? 'डिजिटल स्याही नियम • 100% अनाम मत' : 'The Digital EVM Ink Principle • 100% Secret'}</span>
               </div>
-              <p style={{ fontSize: '10.5px', color: '#15803d', margin: 0, lineHeight: 1.4 }}>
+              <p style={{ fontSize: '11px', color: '#15803d', margin: 0, lineHeight: 1.48 }}>
                 {lang === 'HI'
-                  ? 'जनमत संवैधानिक ऑडिट में वास्तविक भारतीय नागरिकता सुनिश्चित करने व बॉट्स रोकने हेतु मोबाइल OTP अनिवार्य है। आपका मत पूर्णतः गोपनीय रहता है और किसी भी डेटाबेस इंजीनियर द्वारा आपकी पहचान से नहीं जोड़ा जा सकता।'
-                  : 'Mandatory one-time mobile OTP ensures authentic resident presence and eliminates bot farming. BhuMat verifies your ballot right, but your choice drops into a decoupled blind vault with zero identity links.'}
+                  ? 'जैसे मतदान केंद्र पर उंगली की स्याही सिर्फ यह दर्ज करती है कि आप वोट देने आए थे, वैसे ही मोबाइल OTP सिर्फ फर्जी बॉट्स को रोकता है। आपका वोट किस विकल्प पर गया, यह पूरी तरह अनाम मतपेटी में सुरक्षित रहता है।'
+                  : 'Like indelible ink on your finger proves you arrived at the polling booth without revealing which EVM button you pressed - mobile verification eliminates duplicate bots, while your vote choice drops into a completely blind, untraceable vault.'}
               </p>
             </div>
           ) : (

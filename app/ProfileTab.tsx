@@ -134,28 +134,38 @@ export default function ProfileTab({
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [localLedger, setLocalLedger] = useState<any[]>([]);
 
-const loadLedgerDirectly = async () => {
-  try {
-    const activeToken = safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash;
-    if (!activeToken) return;
+  const loadLedgerDirectly = async () => {
+    try {
+      const activeToken = safeStorage.getItem('bhumat_voter_token') || safeStorage.getItem('bhumat_device_hash') || deviceHash;
+      const email = safeStorage.getItem('bhumat_user_email') || linkedEmail || null;
+      const phone = safeStorage.getItem('bhumat_user_phone') || linkedPhone || null;
 
-    const { data, error } = await supabase
-      .from('dbg_point_ledger')
-      .select('*')
-      .eq('voter_token', activeToken)
-      .order('created_at', { ascending: false });
+      const { data, error } = await supabase.rpc('get_citizen_wallet_and_ledger', {
+        p_voter_token: activeToken || 'bn_guest_fallback',
+        p_email: email,
+        p_phone: phone
+      });
 
-    if (!error && data) {
-      setLocalLedger(data);
+      if (!error && data?.success) {
+        if (data.canonical_token && data.canonical_token !== activeToken) {
+          safeStorage.setItem('bhumat_voter_token', data.canonical_token);
+        }
+        if (typeof data.balance === 'number' && setDbgPoints) {
+          setDbgPoints(data.balance);
+          safeStorage.setItem('bhumat_dbg_balance', String(data.balance));
+        }
+        if (Array.isArray(data.ledger)) {
+          setLocalLedger(data.ledger);
+        }
+      }
+    } catch (e) {
+      console.warn('Unified ledger fetch error:', e);
     }
-  } catch (e) {
-    console.warn('Direct ledger fetch notice:', e);
-  }
-};
+  };
 
-React.useEffect(() => {
-  loadLedgerDirectly();
-}, [deviceHash]);
+  React.useEffect(() => {
+    loadLedgerDirectly();
+  }, [deviceHash, linkedPhone, linkedEmail, isLedgerOpen]);
 
   // Distinct LokMat Stance Visibility Toggle
   const [showLokMatStances, setShowLokMatStances] = useState<boolean>(() => {
@@ -447,7 +457,7 @@ React.useEffect(() => {
             </div>
           </div>
 
-          {/* Sub-Row: Location on Left, Civic Rank Badge on Right (Clean Breathing Room) */}
+          {/* Sub-Row: Location on Left, Civic Rank Badge on Right */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -459,9 +469,39 @@ React.useEffect(() => {
             <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>📍 {selectedSeat?.name || 'Unclaimed'} • {selectedSeat?.state || 'Bharat'}</span>
             </div>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: recognitionTier.color }}>
-              {recognitionTier.title}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {(() => {
+                const pCount = parseInt(safeStorage.getItem('bhumat_pioneer_count') || '0', 10);
+                if (pCount <= 0 && safeStorage.getItem('bhumat_is_pioneer_voter') !== 'true') return null;
+                const displayCount = Math.max(1, pCount);
+                return (
+                  <span
+                    onClick={(e) => handleInfo(
+                      lang === 'HI' ? `प्रथम 10 नागरिक (${displayCount}×)` : `Pratham 10 Nagrik (${displayCount}×)`,
+                      lang === 'HI'
+                        ? `🏛️ यह सम्मान उन नागरिकों को दिया जाता है जिन्होंने अपने संसदीय क्षेत्र में शुरुआती 10 मतों में सहभागिता की है। आपने ${displayCount} प्रश्नों पर यह उपलब्धि हासिल की है! (+25 XP बोनस प्राप्त)`
+                        : `🏛️ Awarded to founding citizens who cast one of the first 10 ballots in their parliamentary constituency. You achieved this across ${displayCount} polls! (+25 XP Bonus each).`,
+                      e
+                    )}
+                    style={{
+                      fontSize: '9.5px',
+                      fontWeight: 800,
+                      color: '#fbbf24',
+                      backgroundColor: 'rgba(251, 191, 36, 0.12)',
+                      border: '1px solid rgba(251, 191, 36, 0.4)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏛️ Pioneer{displayCount > 1 ? ` (${displayCount}×)` : ''}
+                  </span>
+                );
+              })()}
+              <span style={{ fontSize: '11px', fontWeight: 800, color: recognitionTier.color }}>
+                {recognitionTier.title}
+              </span>
+            </div>
           </div>
 
           {/* Civic Rank Progress Bar & Level Milestones */}
@@ -1232,27 +1272,25 @@ React.useEffect(() => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
               <span
                 onClick={(e) => handleInfo(
-                  lang === 'HI' ? 'गोपनीयता व मोबाइल सत्यापन' : 'Privacy Shield & Mobile',
+                  lang === 'HI' ? 'गोपनीयता व नागरिक सत्यापन' : 'Privacy Shield & Verification',
                   lang === 'HI' 
-                    ? 'एकमुश्त सत्यापन केवल फर्जी बॉट्स रोकने हेतु है। आपका मोबाइल नंबर कभी भी आपके जनमत गुप्त मतों से नहीं जोड़ा जाता।' 
-                    : 'One-time verification eliminates automated bots. Your mobile number is never linked to your confidential JanMat votes.',
+                    ? 'सत्यापन केवल फर्जी बॉट्स रोकने हेतु है। आपकी पहचान कभी भी आपके जनमत गुप्त मतों से नहीं जोड़ी जाती।' 
+                    : 'One-time verification eliminates automated bots. Your identity is never linked to your confidential JanMat votes.',
                   e
                 )}
                 style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
               >
-                <span>📱 {lang === 'HI' ? 'सत्यापित अकाउंट:' : 'Linked Account:'}</span>
+                <span>{linkedPhone ? '📱' : (linkedEmail ? '✉️' : '👤')} {lang === 'HI' ? 'सत्यापित अकाउंट:' : 'Linked Account:'}</span>
                 <span style={{ fontSize: '10px', color: '#0284c7' }}>ⓘ</span>
               </span>
-              <span style={{ fontWeight: 800, color: linkedPhone ? '#0284c7' : '#94a3b8' }}>
-                {linkedPhone ? maskPhoneNumber(linkedPhone) : (lang === 'HI' ? 'अतिथि (असत्यापित)' : 'Guest (Unverified)')}
+              <span style={{ fontWeight: 800, color: (linkedPhone || linkedEmail) ? '#0284c7' : '#94a3b8' }}>
+                {linkedPhone 
+                  ? maskPhoneNumber(linkedPhone) 
+                  : (linkedEmail 
+                      ? maskEmailAddress(linkedEmail) 
+                      : (lang === 'HI' ? 'अतिथि (असत्यापित)' : 'Guest (Unverified)'))}
               </span>
             </div>
-            {linkedEmail && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                <span style={{ color: '#64748b' }}>✉️ {lang === 'HI' ? 'सत्यापित ईमेल:' : 'Linked Email:'}</span>
-                <span style={{ fontWeight: 800, color: '#475569' }}>{maskEmailAddress(linkedEmail)}</span>
-              </div>
-            )}
           </div>
 
           <button
@@ -1278,55 +1316,65 @@ React.useEffect(() => {
           </button>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                const confirmMsg = lang === 'HI' 
-                  ? 'क्या आप इस फोन से अपना खाता हटाना चाहते हैं? दोबारा जुड़ने के लिए मोबाइल या ईमेल से प्रवेश करना होगा।'
-                  : 'Remove your account from this phone? You can easily log back in anytime using your phone or email.';
-                if (confirm(confirmMsg)) {
-                  safeStorage.removeItem('bhumat_user_phone');
-                  safeStorage.removeItem('bhumat_user_email');
-                  safeStorage.removeItem('bhumat_voter_token');
-                  safeStorage.removeItem('bhumat_username');
-                  safeStorage.removeItem('bhumat_voted_cycles');
-                  safeStorage.removeItem('bhumat_voted_polls');
-                  safeStorage.removeItem('bhumat_vote_timestamps');
-                  safeStorage.removeItem('bhumat_guest_vote_count');
-                  safeStorage.removeItem('bhumat_dbg_balance');
-                  safeStorage.removeItem('bhumat_user_seat');
-                  safeStorage.removeItem('bhumat_user_state');
-                  safeStorage.removeItem('bhumat_seen_onboarding_guide');
-                  safeStorage.removeItem('bhumat_show_lokmat_stances');
-                  if (typeof document !== 'undefined') {
-                    document.cookie = 'bhumat_voter_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-                  }
-                  window.location.href = '/';
-                }
-              }}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#ffffff',
-                border: '1.5px solid #fecaca',
-                borderRadius: '10px',
-                color: '#dc2626',
-                fontSize: '11.5px',
-                fontWeight: 750,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 1px 3px rgba(220, 38, 38, 0.05)'
-              }}
-            >
-              <span>⏻</span>
-              <span>{lang === 'HI' ? 'इस फोन से खाता हटाएं (Log Out)' : 'Log Out from this Device'}</span>
-            </button>
-            <span style={{ fontSize: '10px', color: '#94a3b8', textAlign: 'center' }}>
-              {lang === 'HI' 
-                ? 'यदि यह साझा या किसी अन्य का फोन है, तो यहां से सुरक्षित बाहर निकलें।'
-                : 'Safely clear data on shared or public phones.'}
-            </span>
+            {isVerified ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const confirmMsg = lang === 'HI' 
+                      ? 'क्या आप इस फोन से अपना खाता हटाना चाहते हैं? दोबारा जुड़ने के लिए मोबाइल या ईमेल से प्रवेश करना होगा।'
+                      : 'Log out from this device? You can log back in anytime with your phone or email.';
+                    if (confirm(confirmMsg)) {
+                      safeStorage.removeItem('bhumat_user_phone');
+                      safeStorage.removeItem('bhumat_user_email');
+                      safeStorage.removeItem('bhumat_voter_token');
+                      safeStorage.removeItem('bhumat_username');
+                      safeStorage.removeItem('bhumat_voted_cycles');
+                      safeStorage.removeItem('bhumat_voted_polls');
+                      safeStorage.removeItem('bhumat_vote_timestamps');
+                      safeStorage.removeItem('bhumat_guest_vote_count');
+                      safeStorage.removeItem('bhumat_dbg_balance');
+                      safeStorage.removeItem('bhumat_user_seat');
+                      safeStorage.removeItem('bhumat_user_state');
+                      safeStorage.removeItem('bhumat_seen_onboarding_guide');
+                      safeStorage.removeItem('bhumat_show_lokmat_stances');
+                      if (typeof document !== 'undefined') {
+                        document.cookie = 'bhumat_voter_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                      }
+                      window.location.href = '/';
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#ffffff',
+                    border: '1.5px solid #fecaca',
+                    borderRadius: '10px',
+                    color: '#dc2626',
+                    fontSize: '11.5px',
+                    fontWeight: 750,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 1px 3px rgba(220, 38, 38, 0.05)'
+                  }}
+                >
+                  <span>⏻</span>
+                  <span>{lang === 'HI' ? `लॉग आउट करें (@${username})` : `Log Out (@${username})`}</span>
+                </button>
+                <span style={{ fontSize: '10px', color: '#94a3b8', textAlign: 'center' }}>
+                  {lang === 'HI' 
+                    ? 'यदि यह साझा या किसी अन्य का फोन है, तो सुरक्षित बाहर निकलें।'
+                    : 'Safely clear data on shared or public phones.'}
+                </span>
+              </>
+            ) : (
+              <span style={{ fontSize: '10.5px', color: '#64748b', textAlign: 'center', padding: '6px 0' }}>
+                {lang === 'HI'
+                  ? '🌱 आप वर्तमान में अतिथि मोड में हैं। संपूर्ण नागरिक विशेषाधिकार हेतु सत्यापन करें।'
+                  : '🌱 You are browsing in Guest Mode. Verify to claim permanent citizenship & rewards.'}
+              </span>
+            )}
           </div>
       </div>
       {/* Render the Suggest Poll Modal */}

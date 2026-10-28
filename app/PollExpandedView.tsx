@@ -81,6 +81,7 @@ interface PollExpandedViewProps {
   lang: 'EN' | 'HI';
   onBack: () => void;
   initialTallies?: any[];
+  activeVotePulse?: { votedOptionIdx: number; votedAt: number } | null;
 }
 
 export default function PollExpandedView({
@@ -90,7 +91,8 @@ export default function PollExpandedView({
   userVotedOptionIdx,
   lang,
   onBack,
-  initialTallies = []
+  initialTallies = [],
+  activeVotePulse = null
 }: PollExpandedViewProps) {
   const [viewMode, setViewMode] = useState<'MAP' | 'GRID'>('MAP');
   const [tallies, setTallies] = useState<any[]>(initialTallies);
@@ -600,14 +602,19 @@ useEffect(() => {
       .attr('fill', (d: any) => {
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
-        if (livePulses[seat]) return livePulses[seat].color;
+        const isUserSeat = userSeatName && clean(userSeatName) === seat;
+
+        // Active voted option pulse on Pan-Bharat view
+        if (isUserSeat && activeVotePulse && (Date.now() - activeVotePulse.votedAt) < 2500) {
+          return OPTION_PALETTE[activeVotePulse.votedOptionIdx % OPTION_PALETTE.length];
+        }
 
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const match = tallyMap.get(`${seat}___${state}`);
         if (!match || match.totalVotes === 0) return UNPOLLED_SEAT_COLOR;
 
         const customHex = match.leadingOptionIdx !== null ? poll.options[match.leadingOptionIdx]?.color : undefined;
-return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.isTie, customHex);
+        return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.isTie, customHex);
       })
       .attr('stroke', (d: any) => {
         const props = d.properties || {};
