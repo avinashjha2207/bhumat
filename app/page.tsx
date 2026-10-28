@@ -40,7 +40,7 @@ const PollExpandedView = dynamic(() => import('./PollExpandedView'), {
       fontSize: '13px'
     }}>
       <div style={{ width: '32px', height: '32px', border: '3px solid #e0f2fe', borderTopColor: '#0284c7', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-      <span>Loading 543 Sovereign Grid...</span>
+      <span>Loading 543 Lok Sabha Grid...</span>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
@@ -928,7 +928,7 @@ export default function BhuMatApp() {
       showPointerToast(
         lang === 'HI'
           ? '🔒 सीट बदलने और 5 DBG स्वागत बोनस पाने के लिए साइन अप करें!'
-          : '🔒 Signup to change seat and get 5 DBG as welcome bonus to participate in sovereign voting!'
+          : '🔒 Signup to change seat and get 5 DBG as welcome bonus!'
       );
       setTimeout(() => {
         setAuthModalState({ isOpen: true, requiredFor: 'General' });
@@ -1527,9 +1527,8 @@ export default function BhuMatApp() {
     >
       <style>{`
         html, body {
-          overscroll-behavior-y: contain;
+          overscroll-behavior-y: auto;
           -webkit-tap-highlight-color: transparent;
-          touch-action: manipulation;
         }
         @keyframes gentleLiveBlink {
           0% { opacity: 0.35; transform: scale(0.92); }
@@ -2130,9 +2129,9 @@ export default function BhuMatApp() {
                                       {item.total_votes} {item.total_votes === 1 ? 'Vote' : 'Votes'} ({item.quorum_pct}%)
                                     </span>
                                   </div>
-                                  <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-                                    <div style={{ width: `${Math.max(item.quorum_pct || 0, 2)}%`, height: '100%', backgroundColor: isHome ? '#10b981' : '#0284c7', transition: 'width 0.4s ease' }} />
-                                  </div>
+                                  <div style={{ width: '100%', height: '4px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.max(item.quorum_pct || 0, 2)}%`, height: '100%', backgroundColor: item.total_votes >= 50 ? '#0f172a' : '#475569', transition: 'width 0.4s ease' }} />
+              </div>
                                 </div>
                               );
                             })}
@@ -3031,10 +3030,10 @@ export default function BhuMatApp() {
                             </div>
                           </div>
 
-                          {/* BOTTOM ANCHORED SECTION */}
-                          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                          {/* BOTTOM ANCHORED SECTION (Unified & Uncluttered) */}
+                          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', paddingTop: '8px' }}>
                             
-                            {/* 💡 CONTEXT-AWARE LOCAL ANALYTICS REVEAL */}
+                            {/* 💡 UNIFIED CONSTITUENCY STANCE & TURF ALERT ROW */}
                             {(() => {
                               const dynamicCycle = (poll.participation_mode === 'recurring' && poll.recurrence !== 'expiry')
                                 ? getCurrentCycleId(poll.recurrence, poll.starts_at)
@@ -3042,56 +3041,29 @@ export default function BhuMatApp() {
                               const userChoice = sessionBallotChoices[`${poll.id}___${dynamicCycle}`];
                               const tallies = cachedTalliesByPoll[poll.id] || [];
                               const seatNorm = (selectedSeat?.name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-const stateNorm = (selectedSeat?.state || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                              const stateNorm = (selectedSeat?.state || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
 
-// 1. Declare stateTallies once, matching both state_name and state_ut robustly
-const stateTallies = (tallies || []).filter((t: any) => {
-  const rowSt = (t.state_name || t.state_ut || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-  return rowSt === stateNorm;
-});
+                              const stateTallies = (tallies || []).filter((t: any) => {
+                                const rowSt = (t.state_name || t.state_ut || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                                return rowSt === stateNorm;
+                              });
 
-// 2. Find homeTally from stateTallies or fallback to entire tallies array
-const homeTally = stateTallies.find((t: any) => {
-  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-  return rowSeat === seatNorm;
-}) || (tallies || []).find((t: any) => {
-  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-  return rowSeat === seatNorm;
-});
+                              const homeTally = stateTallies.find((t: any) => {
+                                const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                                return rowSeat === seatNorm;
+                              }) || (tallies || []).find((t: any) => {
+                                const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                                return rowSeat === seatNorm;
+                              });
 
-// 3. Read true raw votes from authoritative tally
-const homeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
-
-// 4. Map turfStandings cleanly, ensuring home seat is guaranteed with homeTotal
-let hasHomeInStandings = false;
-const turfStandings = stateTallies.map((t: any) => {
-  const rowSeat = (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-  const isHome = rowSeat === seatNorm;
-  if (isHome) hasHomeInStandings = true;
-  return {
-    seat: t.constituency_name || t.pc_name || 'Constituency',
-    total_votes: isHome ? homeTotal : Number(t.total_votes || t.total_ballots || 0),
-    is_home: isHome
-  };
-});
-
-// If home seat had 0 initial records in stateTallies, append it directly with homeTotal
-if (!hasHomeInStandings && selectedSeat?.name) {
-  turfStandings.push({
-    seat: selectedSeat.name,
-    total_votes: homeTotal,
-    is_home: true
-  });
-}
+                              const homeTotal = Number(homeTally?.total_votes || homeTally?.total_ballots || 0);
                               const chosenOptIdx = userChoice !== undefined ? userChoice : 0;
                               const optKeyCount = `opt_${chosenOptIdx}_count`;
                               const optKeyVotes = `opt_${chosenOptIdx}_votes`;
                               const homeChosenVotes = Number(homeTally?.[optKeyCount] ?? homeTally?.[optKeyVotes] ?? 0);
-                              
                               const homePct = homeTotal > 0 ? Math.min(100, Math.max(0, Math.round((homeChosenVotes / Math.max(homeTotal, homeChosenVotes)) * 100))) : 0;
-                              const isPioneer = homeTotal <= 1;
+                              const isPioneer = homeTotal < 10;
 
-                              // State calculations
                               let stateTotal = 0;
                               let stateChosenVotes = 0;
                               stateTallies.forEach((t: any) => {
@@ -3101,117 +3073,106 @@ if (!hasHomeInStandings && selectedSeat?.name) {
                               const statePct = stateTotal > 0 ? Math.min(100, Math.max(0, Math.round((stateChosenVotes / Math.max(stateTotal, stateChosenVotes)) * 100))) : homePct;
                               const delta = homePct - statePct;
 
-                             
                               const chosenOpt = poll.options[chosenOptIdx];
                               const rawOptLabel = lang === 'HI' ? (chosenOpt?.text_hi || chosenOpt?.text_en) : chosenOpt?.text_en;
                               const optLabel = rawOptLabel ? rawOptLabel.split('(')[0].trim() : '';
 
-                              return (
-                                <div style={{
-                                  backgroundColor: '#f0fdf4',
-                                  border: '1.5px solid #bbf7d0',
-                                  borderRadius: '12px',
-                                  padding: '8px 12px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: '8px',
-                                  boxSizing: 'border-box'
-                                }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '13px' }}>{isPioneer ? '🌱' : '💡'}</span>
-                                    <div style={{ fontSize: '11px', color: '#166534', fontWeight: 600, lineHeight: 1.35 }}>
-                                      {isPioneer ? (
-                                        lang === 'HI' ? (
-                                          <span>
-                                            आप <strong>{selectedSeat?.name || 'अपने क्षेत्र'}</strong> से इस रुख (<em>{optLabel}</em>) पर <strong>प्रथम नागरिक मत</strong> हैं! (राज्य औसत: {statePct}%)।
-                                          </span>
-                                        ) : (
-                                          <span>
-                                            You cast the <strong>pioneer ballot in {selectedSeat?.name || 'your seat'}</strong> for <em>{optLabel}</em>! ({selectedSeat?.state || 'State'} average: {statePct}%).
-                                          </span>
-                                        )
-                                      ) : (
-                                        lang === 'HI' ? (
-                                          <span>
-                                            <strong>{selectedSeat?.name || 'आपके क्षेत्र'}</strong> में <strong>{homePct}%</strong> नागरिक आपके रुख (<em>{optLabel}</em>) से सहमत हैं
-                                            {Math.abs(delta) >= 3 ? ` (राज्य औसत से ${delta > 0 ? `${Math.abs(delta)}% अधिक` : `${Math.abs(delta)}% कम`})` : ''}।
-                                          </span>
-                                        ) : (
-                                          <span>
-                                            In <strong>{selectedSeat?.name || 'your seat'}</strong>, <strong>{homePct}%</strong> align with your stance (<em>{optLabel}</em>)
-                                            {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${Math.abs(delta)}% above` : `${Math.abs(delta)}% below`} ${selectedSeat?.state || 'state'} average)` : ''}.
-                                          </span>
-                                        )
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span style={{
-                                    fontSize: '10px',
-                                    fontWeight: 900,
-                                    color: '#15803d',
-                                    backgroundColor: '#dcfce7',
-                                    padding: '2px 7px',
-                                    borderRadius: '5px',
-                                    whiteSpace: 'nowrap'
-                                  }}>
-                                    {isPioneer ? '🌱 Pioneer Ballot' : `${homePct}% Local Match`}
-                                  </span>
-                                </div>
+                              // Find top rival in state
+                              const homeRow = (tallies || []).find((t: any) =>
+                                (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') === seatNorm
                               );
-                            })()}
-                            
-                            {/* Live Neighbor Rivalry Alert */}
-                            {stateBastionsByPoll[poll.id] && stateBastionsByPoll[poll.id].length > 1 && (() => {
-                              const homeNorm = (selectedSeat?.name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-                              const pollTallies = cachedTalliesByPoll[poll.id] || [];
-
-                              // Find home seat directly from cachedTallies or stateBastions
-                              const homeRow = (pollTallies || []).find((t: any) =>
-                                (t.constituency_name || t.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') === homeNorm
-                              ) || stateBastionsByPoll[poll.id].find((b: any) =>
-                                (b.constituency_name || b.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') === homeNorm
+                              const trueHomeVotes = Number(homeRow?.total_votes ?? homeRow?.total_ballots ?? homeTotal);
+                              const stateBastions = stateBastionsByPoll[poll.id] || [];
+                              const rival = stateBastions.find((b: any) => 
+                                (b.constituency_name || b.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') !== seatNorm
                               );
-                              const trueHomeVotes = Number(homeRow?.total_votes ?? homeRow?.total_ballots ?? 0);
-
-                              // Identify top rival seat in the state
-                              const rival = stateBastionsByPoll[poll.id].find((b: any) => 
-                                (b.constituency_name || b.pc_name || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '') !== homeNorm
-                              );
-                              const rivalName = rival?.constituency_name || rival?.pc_name || 'State Rival';
+                              const rivalName = rival?.constituency_name || rival?.pc_name || null;
                               const rivalVotes = Number(rival?.total_votes ?? rival?.total_ballots ?? 0);
-
                               const isLeading = trueHomeVotes >= rivalVotes && trueHomeVotes > 0;
 
                               return (
                                 <div style={{
-                                  backgroundColor: '#fffbeb',
-                                  border: '1px solid #fde68a',
-                                  borderRadius: '10px',
-                                  padding: '6px 10px',
+                                  backgroundColor: '#f8fafc',
+                                  border: '1.5px solid #e2e8f0',
+                                  borderRadius: '14px',
+                                  padding: '10px 12px',
                                   display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  fontSize: '10.5px',
-                                  fontWeight: 700,
-                                  color: '#92400e'
+                                  flexDirection: 'column',
+                                  gap: '6px',
+                                  boxSizing: 'border-box'
                                 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>⚔️</span>
-                                    <span>
-                                      {selectedSeat?.name || 'Home'}: <strong>{trueHomeVotes}</strong> vs {rivalName}: <strong>{rivalVotes}</strong>
+                                  {/* Row 1: Local Stance Insight */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '13px' }}>{isPioneer ? '🌱' : '💡'}</span>
+                                      <div style={{ fontSize: '11px', color: '#0f172a', fontWeight: 650, lineHeight: 1.35 }}>
+                                        {isPioneer ? (
+                                          lang === 'HI' ? (
+                                            <span>
+                                              <strong>{selectedSeat?.name || 'क्षेत्र'}</strong>: शुरुआती मत (<em>{optLabel}</em>) दर्ज • राज्य औसत: {statePct}%
+                                            </span>
+                                          ) : (
+                                            <span>
+                                              <strong>{selectedSeat?.name || 'Your Seat'}</strong>: Early ballot for <em>{optLabel}</em> ({selectedSeat?.state || 'State'} avg: {statePct}%)
+                                            </span>
+                                          )
+                                        ) : (
+                                          lang === 'HI' ? (
+                                            <span>
+                                              <strong>{selectedSeat?.name || 'क्षेत्र'}</strong> में <strong>{homePct}%</strong> नागरिक <em>{optLabel}</em> के साथ हैं
+                                              {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${Math.abs(delta)}%` : `-${Math.abs(delta)}%`} राज्य औसत से)` : ''}
+                                            </span>
+                                          ) : (
+                                            <span>
+                                              In <strong>{selectedSeat?.name || 'Your Seat'}</strong>, <strong>{homePct}%</strong> back <em>{optLabel}</em>
+                                              {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${Math.abs(delta)}%` : `${delta}%`} vs State)` : ''}
+                                            </span>
+                                          )
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span style={{
+                                      fontSize: '9.5px',
+                                      fontWeight: 850,
+                                      color: '#059669',
+                                      backgroundColor: '#ecfdf5',
+                                      border: '1px solid #a7f3d0',
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {isPioneer ? '🌱 Pioneer' : `${homePct}% Local`}
                                     </span>
                                   </div>
-                                  <span style={{
-                                    fontSize: '9.5px',
-                                    fontWeight: 800,
-                                    color: isLeading ? '#065f46' : '#b45309',
-                                    backgroundColor: isLeading ? '#d1fae5' : '#fef3c7',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px'
-                                  }}>
-                                    {isLeading ? '🏆 Leading' : '⚡ Contested'}
-                                  </span>
+
+                                  {/* Row 2: Subtle Neighbor Rivalry Alert */}
+                                  {rivalName && (
+                                    <div style={{
+                                      borderTop: '1px dashed #e2e8f0',
+                                      paddingTop: '5px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      fontSize: '10.5px'
+                                    }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#64748b', fontWeight: 600 }}>
+                                        <span>⚔️</span>
+                                        <span>
+                                          {selectedSeat?.name || 'Home'}: <strong>{trueHomeVotes}</strong> vs {rivalName}: <strong>{rivalVotes}</strong>
+                                        </span>
+                                      </div>
+                                      <span style={{
+                                        fontSize: '9px',
+                                        fontWeight: 800,
+                                        color: isLeading ? '#065f46' : '#b45309',
+                                        backgroundColor: isLeading ? '#d1fae5' : '#fef3c7',
+                                        padding: '1px 5px',
+                                        borderRadius: '4px'
+                                      }}>
+                                        {isLeading ? '🏆 Leading' : '⚡ Contested'}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })()}
@@ -3293,9 +3254,14 @@ if (!hasHomeInStandings && selectedSeat?.name) {
             </span>
             <span style={{ color: '#0f172a' }}>{bastion.total_votes}/50 Ballots</span>
           </div>
-          {/* Neutral Civic Turnout Track (Never confuses users with candidate colors) */}
-          <div style={{ width: '100%', height: '3.5px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(100, Math.max(4, Math.round((bastion.total_votes / 50) * 100)))}%`, height: '100%', backgroundColor: bastion.total_votes >= 50 ? '#059669' : '#0284c7', transition: 'width 0.4s ease' }} />
+          {/* Neutral Civic Turnout Track (Decoupled from candidate option palette) */}
+          <div style={{ width: '100%', height: '3.5px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.min(100, Math.max(4, Math.round((bastion.total_votes / 50) * 100)))}%`,
+              height: '100%',
+              backgroundColor: bastion.total_votes >= 50 ? '#0f172a' : '#475569',
+              transition: 'width 0.4s ease'
+            }} />
           </div>
         </div>
       </div>
@@ -3574,7 +3540,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <span style={{ backgroundColor: '#fef3c7', color: '#d97706', fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>
-                {lang === 'HI' ? 'संप्रभु पुनर्नामांकन' : 'SOVEREIGN RE-ENROLLMENT'}
+                {lang === 'HI' ? 'पुनर्नामांकन' : 'RE-ENROLLMENT'}
               </span>
               <button
                 onClick={() => setIsChangeSeatModalOpen(false)}
@@ -4070,7 +4036,7 @@ if (!hasHomeInStandings && selectedSeat?.name) {
                 marginTop: '2px'
               }}
             >
-              ✓ {lang === 'HI' ? 'फीड पर वापस लौटें' : 'Return to Sovereign Feed'}
+              ✓ {lang === 'HI' ? 'फीड पर वापस लौटें' : 'Return to Feed'}
             </button>
           </div>
         </div>

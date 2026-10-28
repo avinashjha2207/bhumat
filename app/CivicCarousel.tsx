@@ -160,8 +160,8 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        height: '176px',
-        maxHeight: '176px',
+        height: '198px',
+        maxHeight: '198px',
         boxSizing: 'border-box',
         position: 'relative',
         overflow: 'hidden',
@@ -232,7 +232,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
           </div>
         </div>
 
-        {/* Content Body: Header + Full 4-Line Narrative */}
+        {/* Content Body: Header + Full 5-Line Narrative */}
         <div style={{ marginTop: '6px', marginBottom: '4px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <h4 style={{
             fontSize: '13.5px',
@@ -247,9 +247,9 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
             fontSize: '11.5px',
             color: '#475569',
             margin: 0,
-            lineHeight: 1.48,
+            lineHeight: 1.46,
             display: '-webkit-box',
-            WebkitLineClamp: 4,
+            WebkitLineClamp: 5,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden'
           }}>

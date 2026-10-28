@@ -199,6 +199,20 @@ export default function PollExpandedView({
   }, [poll?.id, userSeatName, tallies, telemetryHorizon]);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+  if (!svgRef.current) return;
+  const svg = d3.select(svgRef.current);
+  const g = svg.select('g.map-container');
+
+  const zoom = d3.zoom()
+    .scaleExtent([1, 8]) // 1x to 8x zoom
+    .translateExtent([[0, 0], [800, 900]])
+    .on('zoom', (event) => {
+      g.attr('transform', event.transform);
+    });
+
+  svg.call(zoom as any);
+}, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const gridSectionRef = useRef<HTMLDivElement>(null);
   const zoomBehaviorRef = useRef<any>(null);
@@ -465,25 +479,24 @@ useEffect(() => {
         totalStateVotes += seatTotal;
       }
 
-      let highestVotes = -1;
-      let winningOptIdx: number | null = null;
-      let isTie = false;
+      // Sort counts descending to support dynamic N-option Battleground margin
+      const sortedVotePairs = Object.entries(counts)
+        .map(([idxStr, c]) => ({ optIdx: parseInt(idxStr, 10), count: c }))
+        .sort((a, b) => b.count - a.count);
 
-      Object.entries(counts).forEach(([idxStr, count]) => {
-        const optIdx = parseInt(idxStr, 10);
-        if (count > highestVotes) {
-          highestVotes = count;
-          winningOptIdx = optIdx;
-          isTie = false;
-        } else if (count === highestVotes && count > 0) {
-          isTie = true;
-        }
-      });
+      const topCount = sortedVotePairs[0]?.count || 0;
+      const runnerUpCount = sortedVotePairs[1]?.count || 0;
+      const winningOptIdx = topCount > 0 ? sortedVotePairs[0].optIdx : null;
+      const isTie = topCount > 0 && topCount === runnerUpCount;
 
-      const leadingPct = seatTotal > 0 && highestVotes > 0 ? Math.round((highestVotes / seatTotal) * 100) : 0;
+      const leadingPct = seatTotal > 0 && topCount > 0 ? Math.round((topCount / seatTotal) * 100) : 0;
+      const runnerUpPct = seatTotal > 0 ? Math.round((runnerUpCount / seatTotal) * 100) : 0;
+      const victoryMarginPct = leadingPct - runnerUpPct;
+      // Universal Battleground: minimum 5 votes and victory margin <= 8%
+      const isBattleground = seatTotal >= 5 && (isTie || victoryMarginPct <= 8);
       const leadingText = isTie
         ? (lang === 'HI' ? 'खंडित मत (टाई)' : 'Split Mat (Tie)')
-        : winningOptIdx !== null && highestVotes > 0
+        : winningOptIdx !== null && topCount > 0
         ? (lang === 'HI' ? poll.options[winningOptIdx]?.text_hi : poll.options[winningOptIdx]?.text_en) || (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')
         : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots');
 
@@ -505,6 +518,8 @@ useEffect(() => {
         leadingOptionText: leadingText,
         leadingPercent: leadingPct,
         isTie,
+        isBattleground,
+        victoryMarginPct,
         trend: trendLabel
       };
       const key = `${clean(rawSeat)}___${clean(rawState)}`;
@@ -604,14 +619,14 @@ useEffect(() => {
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const isUserSeat = userSeatName && clean(userSeatName) === seat;
 
-        // Active voted option pulse on Pan-Bharat view
         if (isUserSeat && activeVotePulse && (Date.now() - activeVotePulse.votedAt) < 2500) {
           return OPTION_PALETTE[activeVotePulse.votedOptionIdx % OPTION_PALETTE.length];
         }
 
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const match = tallyMap.get(`${seat}___${state}`);
-        if (!match || match.totalVotes === 0) return UNPOLLED_SEAT_COLOR;
+        // Cold-Start Territory: soft parchment off-white for unpolled seats
+        if (!match || match.totalVotes === 0) return '#f8fafc';
 
         const customHex = match.leadingOptionIdx !== null ? poll.options[match.leadingOptionIdx]?.color : undefined;
         return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.isTie, customHex);
@@ -621,44 +636,55 @@ useEffect(() => {
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const isTarget = (selectedSearchedSeat && selectedSearchedSeat === seat) || (mapTooltip && clean(mapTooltip.seatName) === seat);
-        if (isTarget) return '#0284c7'; // Active highlighted seat outline
+        if (isTarget) return '#0f172a'; // Neutral charcoal selection outline
         if (userSeatName && clean(userSeatName) === seat) return '#10b981'; // Home seat green outline
-        if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) return '#38bdf8';
+        if (searchKeyword && (seat.includes(searchKeyword) || state.includes(searchKeyword))) return '#0284c7';
+
         const match = tallyMap.get(`${seat}___${state}`);
+        if (battlegroundOnly && match?.isBattleground) return '#f59e0b'; // Radiant Gold for battlegrounds
         if (match && match.totalVotes >= 50) return '#ffffff';
         return '#cbd5e1';
+      })
+      .attr('stroke-dasharray', (d: any) => {
+        const props = d.properties || {};
+        const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
+        const match = tallyMap.get(`${seat}___${state}`);
+        // Cold-Start Pioneer Territory: Delicate dashed outline
+        return (!match || match.totalVotes === 0) ? '2.5,2.5' : 'none';
       })
       .attr('stroke-width', (d: any) => {
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+        const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const isTarget = (selectedSearchedSeat && selectedSearchedSeat === seat) || (mapTooltip && clean(mapTooltip.seatName) === seat);
-        if (isTarget) return 3.2; // Bold outline for tapped or searched seat
-        if (userSeatName && clean(userSeatName) === seat) return 2.6;
-        if (searchKeyword && clean(props.PC_NAME || '').includes(searchKeyword)) return 2.2;
-        const match = tallyMap.get(`${seat}___${clean(props.ST_NAME || '')}`);
-        if (match && match.totalVotes >= 50) return 0.9;
-        return 0.35;
+        if (isTarget) return 2.8;
+        if (userSeatName && clean(userSeatName) === seat) return 2.2;
+        const match = tallyMap.get(`${seat}___${state}`);
+        if (battlegroundOnly && match?.isBattleground) return 1.8;
+        return 0.45;
       })
       .attr('opacity', (d: any) => {
         const props = d.properties || {};
         const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
         const match = tallyMap.get(`${seat}___${state}`);
-        
-        // Creative Concept 1: Battleground Radar
+
+        // Dynamic N-Option Battleground Filter
         if (battlegroundOnly) {
-          if (!match || match.totalVotes === 0 || (!match.isTie && Math.abs((match.leadingPercent || 50) - 50) > 8)) {
-            return 0.12;
+          if (!match || match.totalVotes < 5 || !match.isBattleground) {
+            return 0.14; // Dim out non-battleground and unpolled seats
           }
-          return 1;
+          return 1; // Illuminate tight battleground seats
         }
 
         if (selectedOptionFilter !== null) {
-          if (!match || match.leadingOptionIdx !== selectedOptionFilter) return 0.15;
+          if (!match || match.leadingOptionIdx !== selectedOptionFilter) return 0.16;
           return 1;
         }
+
         if (!searchKeyword) return 1;
-        return seat.includes(searchKeyword) || state.includes(searchKeyword) ? 1 : 0.25;
+        return seat.includes(searchKeyword) || state.includes(searchKeyword) ? 1 : 0.22;
       })
       .attr('opacity', (d: any) => {
         const props = d.properties || {};
@@ -693,7 +719,7 @@ useEffect(() => {
           .attr('stroke', (dt: any) => {
             const p = dt.properties || {};
             const sName = clean(p.PC_NAME || p.pc_name || p.name || '');
-            if (sName === activeCleanSeat) return '#0284c7';
+            if (sName === activeCleanSeat) return '#0f172a';
             if (userSeatName && clean(userSeatName) === sName) return '#10b981';
             const match = tallyMap.get(`${sName}___${clean(p.ST_NAME || '')}`);
             return match && match.totalVotes >= 50 ? '#ffffff' : '#cbd5e1';
@@ -737,13 +763,23 @@ useEffect(() => {
 
         if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
 
+        const isPioneerTerritory = totalV === 0;
+
+        const leadingTxt = isPioneerTerritory
+          ? (lang === 'HI' ? '🌱 प्रथम नागरिक मत प्रतीक्षित (+25 XP)' : '🌱 Awaiting First Pioneer (+25 XP)')
+          : (totalV > 0 ? optText : (lang === 'HI' ? 'मतदान प्रतीक्षित' : 'Awaiting Ballots'));
+
+        const leadingClr = isPioneerTerritory
+          ? '#10b981'
+          : (totalV > 0 ? optColor : '#64748b');
+
         setMapTooltip({
           seatName,
           stateName,
           totalVotes: totalV,
-          leadingText: totalV > 0 ? optText : (lang === 'HI' ? 'मतदान प्रतीक्षित' : 'Awaiting Ballots'),
-          leadingColor: totalV > 0 ? optColor : '#64748b',
-          x: Math.max(16, Math.min(clientX - 90, window.innerWidth - 200)),
+          leadingText: leadingTxt,
+          leadingColor: leadingClr,
+          x: Math.max(16, Math.min(clientX - 90, window.innerWidth - 220)),
           y: Math.max(80, clientY - 85)
         });
 
@@ -839,10 +875,10 @@ useEffect(() => {
         `*प्रश्न:* ${questionText}\n` +
         `📍 *अग्रणी मत:* ${leadingStance} (${leadingPct}%)\n\n` +
         `अपने संसदीय क्षेत्र के आंकड़े देखें और अपना मत दर्ज करें:\n${shareUrl}`
-      : `🇮🇳 *BhuMat Sovereign Audit - ${shareSeat}*\n\n` +
+      : `🇮🇳 *BhuMat Civic Audit - ${shareSeat}*\n\n` +
         `*Question:* ${questionText}\n` +
         `📍 *Leading Stance:* ${leadingStance} (${leadingPct}%)\n\n` +
-        `See how your seat stands & cast your sovereign ballot:\n${shareUrl}`;
+        `See how your seat stands & cast your vote:\n${shareUrl}`;
 
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
   };
@@ -874,19 +910,26 @@ useEffect(() => {
   };
 
   const filteredGrid = useMemo(() => {
-    if (!searchFilter.trim()) return formattedGridList;
-    const q = clean(searchFilter);
-    return formattedGridList.filter(
-      (s) =>
-        clean(s.seatName).includes(q) ||
-        clean(s.stateName).includes(q) ||
-        clean(s.leadingOptionText).includes(q)
-    );
+    let list = formattedGridList;
+    if (searchFilter.trim()) {
+      const q = clean(searchFilter);
+      list = list.filter(
+        (s) =>
+          clean(s.seatName).includes(q) ||
+          clean(s.stateName).includes(q) ||
+          clean(s.leadingOptionText).includes(q)
+      );
+    } else {
+      // Default: Only show active voting seats (Zero-vote clutter removed)
+      list = list.filter((s) => (s.totalVotes || 0) > 0);
+    }
+    // High-activity sort: Most ballots first
+    return [...list].sort((a, b) => (b.totalVotes || 0) - (a.totalVotes || 0));
   }, [formattedGridList, searchFilter]);
 
   const getRecurrenceBadgeText = () => {
     const r = (poll.recurrence || 'monthly').toLowerCase();
-    if (r === 'lifetime' || r === 'one_time') return lang === 'HI' ? '🔒 एकमुश्त संप्रभु मत' : '🔒 Sovereign One-Time';
+    if (r === 'lifetime' || r === 'one_time') return lang === 'HI' ? '🔒 एकमुश्त मत' : '🔒 One-Time';
     if (r.includes('day')) return lang === 'HI' ? '⚡ 24 घंटे में पुनर्मत' : '⚡ 24h Daily Rerun';
     if (r.includes('week')) return lang === 'HI' ? '📅 साप्ताहिक पल्स' : '📅 Weekly Pulse';
     return lang === 'HI' ? '📅 मासिक चक्र' : '📅 Monthly Cycle';
@@ -902,7 +945,7 @@ useEffect(() => {
         const dateFormatted = d.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
         return lang === 'HI' ? `समाप्ति: ${dateFormatted}` : `Active until ${dateFormatted}`;
       }
-      return lang === 'HI' ? 'एकमुश्त संप्रभु मत' : 'One-Time Sovereign Mat';
+      return lang === 'HI' ? 'एकमुश्त मत' : 'One-Vote Mat';
     }
 
     // Dynamic Next Unlock Date based on poll.starts_at cadence
@@ -980,32 +1023,35 @@ useEffect(() => {
           onClick={() => setActiveInfoPopup(null)}
           style={{
             position: 'fixed',
-            left: `${activeInfoPopup.x}px`,
-            top: `${activeInfoPopup.y}px`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            top: `${Math.min(activeInfoPopup.y, typeof window !== 'undefined' ? window.innerHeight - 190 : 350)}px`,
             zIndex: 140,
             backgroundColor: '#0f172a',
             color: '#ffffff',
-            padding: '10px 14px',
-            borderRadius: '12px',
-            width: 'max-content',
-            maxWidth: 'calc(100vw - 32px)',
+            padding: '12px 14px',
+            borderRadius: '14px',
+            width: 'calc(100vw - 36px)',
+            maxWidth: '320px',
             boxSizing: 'border-box',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-            border: '1px solid #334155',
-            cursor: 'pointer',
-            wordBreak: 'break-word'
+            boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+            border: '1.5px solid #334155',
+            cursor: 'pointer'
           }}
         >
-          <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#38bdf8', marginBottom: '3px' }}>
-            {activeInfoPopup.title}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#38bdf8' }}>
+              {activeInfoPopup.title}
+            </span>
+            <span style={{ fontSize: '10px', color: '#94a3b8', opacity: 0.7 }}>✕</span>
           </div>
-          <div style={{ fontSize: '10.5px', color: '#cbd5e1', lineHeight: 1.4 }}>
+          <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>
             {activeInfoPopup.desc}
           </div>
         </div>
       )}
 
-      {/* Header */}
+      {/* Header (Aligned with content card boundaries) */}
       <header
         style={{
           height: '56px',
@@ -1017,10 +1063,10 @@ useEffect(() => {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '0 14px'
+          padding: '0 16px'
         }}
       >
-        <div style={{ width: '100%', maxWidth: '460px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ width: '100%', maxWidth: '440px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
             onClick={onBack}
             style={{
@@ -1959,28 +2005,58 @@ useEffect(() => {
                 )}
               </div>
 
-              {/* Zoom Controls + Creative Concept 1: Battleground Radar Toggle */}
+              {/* Zoom Controls + Battleground Radar with 'i' Explainer */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  onClick={() => setBattlegroundOnly(!battlegroundOnly)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: `1.5px solid ${battlegroundOnly ? '#f59e0b' : '#cbd5e1'}`,
-                    backgroundColor: battlegroundOnly ? '#fef3c7' : '#ffffff',
-                    color: battlegroundOnly ? '#b45309' : '#475569',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>⚖️</span>
-                  <span>{lang === 'HI' ? 'क्लोज़ कांटे की सीटें' : 'Battlegrounds Radar'}</span>
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBattlegroundOnly(!battlegroundOnly)}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      border: `1.5px solid ${battlegroundOnly ? '#f59e0b' : '#cbd5e1'}`,
+                      backgroundColor: battlegroundOnly ? '#fef3c7' : '#ffffff',
+                      color: battlegroundOnly ? '#b45309' : '#475569',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <span>⚖️</span>
+                    <span>{lang === 'HI' ? 'कांटे की टक्कर (Battlegrounds)' : 'Battlegrounds Radar'}</span>
+                  </button>
+                  <span
+                    onClick={(e) => triggerInfoPopup(
+                      lang === 'HI' ? 'कांटे की टक्कर (Battlegrounds Radar)' : 'Battlegrounds Radar',
+                      lang === 'HI'
+                        ? 'यह उन सीटों को चमकाता है जहां शीर्ष 2 विकल्पों में 8% से कम का अंतर है। एकतरफा सीटें हल्की हो जाती हैं।'
+                        : 'Illuminates razor-thin contested seats where the margin between the top 2 options is <= 8% (min 5 ballots). Decisive seats are dimmed.',
+                      e
+                    )}
+                    style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '2px 4px' }}
+                    title="What is Battlegrounds Radar?"
+                  >
+                    ⓘ
+                  </span>
+                </div>
+                  <span
+                    onClick={(e) => triggerInfoPopup(
+                      lang === 'HI' ? 'कांटे की टक्कर (Battlegrounds Radar)' : 'Battlegrounds Radar',
+                      lang === 'HI'
+                        ? 'यह उन संसदीय क्षेत्रों को चमकाता है जहां जनमत बेहद करीबी है और कोई भी विकल्प 8% से अधिक की बढ़त पर नहीं है। एकतरफा सीटें हल्की हो जाती हैं।'
+                        : 'Highlights razor-thin contested seats where public opinion is sharply divided and no single option leads by more than 8%. One-sided seats are dimmed.',
+                      e
+                    )}
+                    style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '2px 4px' }}
+                    title="What is Battlegrounds Radar?"
+                  >
+                    ⓘ
+                  </span>
+                </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <button
@@ -2155,21 +2231,21 @@ useEffect(() => {
               )}
             </div>
 
-            <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '11.5px' }}>
+            <div style={{ overflowX: 'auto', maxHeight: '420px', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', minWidth: '380px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10.5px' }}>
                 <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
-                  <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b' }}>
-                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>{lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency'}</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>{lang === 'HI' ? 'राज्य' : 'State'}</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>{lang === 'HI' ? 'अग्रणी रुख' : 'Leading Stance'}</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 800 }}>{lang === 'HI' ? 'स्थिति' : 'Trend'}</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 800, textAlign: 'right' }}>{lang === 'HI' ? 'मत' : 'Ballots'}</th>
+                  <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    <th style={{ padding: '7px 4px', fontWeight: 800, width: '28%' }}>{lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency'}</th>
+                    <th style={{ padding: '7px 4px', fontWeight: 800, width: '20%' }}>{lang === 'HI' ? 'राज्य' : 'State'}</th>
+                    <th style={{ padding: '7px 4px', fontWeight: 800, width: '30%' }}>{lang === 'HI' ? 'अग्रणी रुख' : 'Leading Stance'}</th>
+                    <th style={{ padding: '7px 4px', fontWeight: 800, width: '12%', textAlign: 'right' }}>{lang === 'HI' ? 'मत' : 'Ballots'}</th>
+                    <th style={{ padding: '7px 4px', fontWeight: 800, width: '10%', textAlign: 'center' }}>{lang === 'HI' ? 'स्थिति' : 'Trend'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredGrid.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: '24px 0' }}>
+                      <td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: '24px 0', fontSize: '11.5px' }}>
                         {lang === 'HI' ? 'कोई सीट नहीं मिली।' : 'No constituency records found.'}
                       </td>
                     </tr>
@@ -2180,22 +2256,36 @@ useEffect(() => {
                         : item.leadingOptionIdx !== null && item.leadingOptionIdx !== undefined
                         ? OPTION_PALETTE[item.leadingOptionIdx % OPTION_PALETTE.length]
                         : '#64748b';
+                      const cleanStance = (item.leadingOptionText || '').split('(')[0].trim();
 
                       return (
-                        <tr key={`${item.seatName}_${item.stateName}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '8px 6px', fontWeight: 800, color: '#0f172a' }}>{item.seatName}</td>
-                          <td style={{ padding: '8px 6px', color: '#64748b' }}>{item.stateName}</td>
-                          <td style={{ padding: '8px 6px', fontWeight: 700, color }}>
-                            <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: color, marginRight: '5px' }} />
-                            {item.leadingOptionText}
+                        <tr key={`${item.seatName}_${item.stateName}`} style={{ borderBottom: '1px solid #f1f5f9', height: '36px' }}>
+                          <td style={{ padding: '6px 4px', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '105px' }}>
+                            {item.seatName}
                           </td>
-                          <td style={{ padding: '8px 6px' }}>
-                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: item.totalVotes >= 50 ? '#ecfdf5' : '#f8fafc', color: item.totalVotes >= 50 ? '#059669' : '#64748b', fontWeight: 700 }}>
-                              {item.trend}
-                            </span>
+                          <td style={{ padding: '6px 4px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '75px' }}>
+                            {item.stateName}
                           </td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                          <td style={{ padding: '6px 4px', fontWeight: 700, color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '115px' }} title={item.leadingOptionText}>
+                            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: color, marginRight: '4px', verticalAlign: 'middle' }} />
+                            {cleanStance}
+                          </td>
+                          <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 900, color: item.totalVotes > 0 ? '#0f172a' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
                             {item.totalVotes}
+                          </td>
+                          <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                            <span style={{
+                              fontSize: '8.5px',
+                              padding: '1.5px 5px',
+                              borderRadius: '4px',
+                              backgroundColor: item.totalVotes >= 50 ? '#ecfdf5' : '#f8fafc',
+                              color: item.totalVotes >= 50 ? '#059669' : '#64748b',
+                              border: `1px solid ${item.totalVotes >= 50 ? '#a7f3d0' : '#e2e8f0'}`,
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {item.totalVotes >= 50 ? (lang === 'HI' ? 'सत्यापित' : 'Fortified') : (lang === 'HI' ? 'प्रारंभिक' : 'Early')}
+                            </span>
                           </td>
                         </tr>
                       );
