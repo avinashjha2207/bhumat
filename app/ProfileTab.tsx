@@ -1372,7 +1372,7 @@ export default function ProfileTab({
               <span style={{ fontSize: '10.5px', color: '#64748b', textAlign: 'center', padding: '6px 0' }}>
                 {lang === 'HI'
                   ? '🌱 आप वर्तमान में अतिथि मोड में हैं। संपूर्ण नागरिक विशेषाधिकार हेतु सत्यापन करें।'
-                  : '🌱 You are browsing in Guest Mode. Verify to claim permanent citizenship & rewards.'}
+                  : '🌱 You are browsing in Guest Mode. Verify to claim permanent membership & rewards.'}
               </span>
             )}
           </div>

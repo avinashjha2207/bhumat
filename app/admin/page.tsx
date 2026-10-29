@@ -350,6 +350,17 @@ export default function AdminAuditPanel() {
     }
   }
 
+  // Ensure simOption is never out-of-bounds for the targeted poll
+  useEffect(() => {
+    const targetPollId = isAllPollsSelected ? simTargetPollId : selectedPollId;
+    const currentPoll = polls.find(p => p.id === targetPollId);
+    if (currentPoll && Array.isArray(currentPoll.options)) {
+      if (simOption >= currentPoll.options.length) {
+        setSimOption(0);
+      }
+    }
+  }, [selectedPollId, simTargetPollId, polls]);
+
   async function fetchOtps() {
     try {
       const { data } = await supabase
@@ -473,6 +484,17 @@ export default function AdminAuditPanel() {
         setVerifiedPhones(verifiedCount);
         setTotalDbgCirculating(sumDbg);
       }
+
+      // Compute accurate active geographic metrics
+      const populatedTallies = (tallies || []).filter(t => Number(t.total_votes || t.total_ballots || 0) > 0);
+      setActiveSeatsCount(populatedTallies.length);
+      setActiveStatesCount(new Set(populatedTallies.map(t => t.state_name || t.state_ut)).size);
+
+      // Compute sub-track metrics accurately
+      setTodayLokmatBallots(actualLok);
+      setTodayJanmatBallots(actualJan);
+      setMonthLokmatBallots(actualLok);
+      setMonthJanmatBallots(actualJan);
 
       // 4. Derive Real Hotspots directly from Tallies & Live DB (No "Awaiting Data")
       if (tallies && tallies.length > 0) {
@@ -800,12 +822,15 @@ export default function AdminAuditPanel() {
     }
 
     const derivedState = SEAT_TO_STATE_MAP[simSeat] || QUICK_SEATS[simSeat] || 'Bihar';
+    const validOptsCount = activePollObj?.options?.length || 2;
+    const safeOption = Math.min(Number(simOption), validOptsCount - 1);
+
     const { data, error } = await supabase.rpc('admin_batch_cast_ballots', {
       p_poll_id: targetPoll,
       p_cycle_id: targetCycle,
       p_constituency_name: simSeat,
       p_state_name: derivedState,
-      p_selected_option: Number(simOption),
+      p_selected_option: safeOption,
       p_vote_count: Number(batchCount),
       p_as_verified: Boolean(injectAsVerified)
     });

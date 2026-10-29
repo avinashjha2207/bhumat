@@ -624,6 +624,12 @@ useEffect(() => {
         }
 
         const state = clean(props.ST_NAME || props.st_name || props.state || '');
+
+        // 1. Real-time civic pulse: if any user just voted in this seat, flash their option color
+        if (livePulses[seat] && livePulses[seat].expiresAt > Date.now()) {
+          return livePulses[seat].color;
+        }
+
         const match = tallyMap.get(`${seat}___${state}`);
         // Cold-Start Territory: soft parchment off-white for unpolled seats
         if (!match || match.totalVotes === 0) return '#f8fafc';
@@ -727,10 +733,11 @@ useEffect(() => {
           .attr('stroke-width', (dt: any) => {
             const p = dt.properties || {};
             const sName = clean(p.PC_NAME || p.pc_name || p.name || '');
-            if (sName === activeCleanSeat) return 3.4;
-            if (userSeatName && clean(userSeatName) === sName) return 2.6;
+            // Delicate 1.5px stroke so small constituencies (e.g. Sultanpur, Phulpur) never turn into solid black blobs
+            if (sName === activeCleanSeat) return 1.5;
+            if (userSeatName && clean(userSeatName) === sName) return 2.0;
             const match = tallyMap.get(`${sName}___${clean(p.ST_NAME || '')}`);
-            return match && match.totalVotes >= 50 ? 0.9 : 0.35;
+            return match && match.totalVotes >= 50 ? 0.8 : 0.35;
           });
 
         d3.select(this).raise();
@@ -773,14 +780,16 @@ useEffect(() => {
           ? '#10b981'
           : (totalV > 0 ? optColor : '#64748b');
 
+        // Strict non-occluding offset: renders 95px above the finger so seat boundary remains visible
+        const safeY = clientY < 180 ? clientY + 35 : clientY - 95;
         setMapTooltip({
           seatName,
           stateName,
           totalVotes: totalV,
           leadingText: leadingTxt,
           leadingColor: leadingClr,
-          x: Math.max(16, Math.min(clientX - 90, window.innerWidth - 220)),
-          y: Math.max(80, clientY - 85)
+          x: Math.max(16, Math.min(clientX - 100, (typeof window !== 'undefined' ? window.innerWidth : 360) - 215)),
+          y: Math.max(65, safeY)
         });
 
         tooltipTimeoutRef.current = setTimeout(() => {
@@ -979,6 +988,28 @@ useEffect(() => {
 
     return lang === 'HI' ? `🔓 अगला चक्र: ${unlockStr}` : `🔓 Re-vote: ${unlockStr}`;
   };
+
+  // Pan-Bharat: Settle pulsing seats back to their consensus color after 3.2s
+  useEffect(() => {
+    if (!svgRef.current || viewMode !== 'MAP') return;
+    const timer = setTimeout(() => {
+      const svg = d3.select(svgRef.current);
+      svg.selectAll('path.constituency')
+        .transition()
+        .duration(700)
+        .attr('fill', (d: any) => {
+          const props = d.properties || {};
+          const seat = clean(props.PC_NAME || props.pc_name || props.name || '');
+          const state = clean(props.ST_NAME || props.st_name || props.state || '');
+          const match = tallyMap.get(`${seat}___${state}`);
+          if (!match || match.totalVotes === 0) return '#f8fafc';
+          const customHex = match.leadingOptionIdx !== null ? poll.options[match.leadingOptionIdx]?.color : undefined;
+          return getConstituencyTierColor(match.leadingOptionIdx, match.totalVotes, match.isTie, customHex);
+        });
+    }, 3200);
+
+    return () => clearTimeout(timer);
+  }, [livePulses, tallyMap, viewMode, poll.options]);
 
   return (
     <div
@@ -2043,19 +2074,6 @@ useEffect(() => {
                     ⓘ
                   </span>
                 </div>
-                  <span
-                    onClick={(e) => triggerInfoPopup(
-                      lang === 'HI' ? 'कांटे की टक्कर (Battlegrounds Radar)' : 'Battlegrounds Radar',
-                      lang === 'HI'
-                        ? 'यह उन संसदीय क्षेत्रों को चमकाता है जहां जनमत बेहद करीबी है और कोई भी विकल्प 8% से अधिक की बढ़त पर नहीं है। एकतरफा सीटें हल्की हो जाती हैं।'
-                        : 'Highlights razor-thin contested seats where public opinion is sharply divided and no single option leads by more than 8%. One-sided seats are dimmed.',
-                      e
-                    )}
-                    style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '2px 4px' }}
-                    title="What is Battlegrounds Radar?"
-                  >
-                    ⓘ
-                  </span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

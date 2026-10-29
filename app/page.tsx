@@ -15,6 +15,7 @@ import ScheduleTab from './ScheduleTab';
 import SearchTab from './SearchTab';
 import ProfileTab from './ProfileTab';
 import CivicCarousel from './CivicCarousel';
+import BhuMatLogo from './BhuMatLogo';
 
 const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
   ssr: false,
@@ -63,7 +64,7 @@ interface Poll {
   recurrence?: string;
   is_active?: boolean;
   next_starts_at?: string;
-  options: { id: number; text_en: string; text_hi: string }[];
+  options: { id: number; text_en: string; text_hi: string; color?: string }[];
 }
 
 const GROUPED_PARLIAMENTARY_SEATS: Record<string, string[]> = {
@@ -209,6 +210,10 @@ export default function BhuMatApp() {
           }
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
             window.speechSynthesis.cancel();
+          }
+          if (activeAudioRef.current) {
+          activeAudioRef.current.pause();
+          activeAudioRef.current = null;
           }
           setActivePlayingPollId(null);
         }
@@ -1110,7 +1115,7 @@ export default function BhuMatApp() {
       setFlippedOverrides((prev) => ({ ...prev, [poll.id]: true }));
       setActiveVotePulseByPoll((prev) => ({
         ...prev,
-        [poll.id]: { votedOptionIdx: optionIdx, votedAt: Date.now() }
+        [poll.id]: { votedOptionIdx: optionIdx, votedAt: Date.now() + 600 }
       }));
     }, 3000);
     
@@ -1799,32 +1804,19 @@ export default function BhuMatApp() {
       <header style={{ height: '56px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff', position: 'sticky', top: 0, zIndex: 40, width: '100%' }}>
         <div style={{ maxWidth: '460px', margin: '0 auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', userSelect: 'none' }}>
-          {/* Brand Stack (BhuMat on top, Early Access beneath) */}
+          {/* Sovereign Brand Stack with Added Right Margins for Breathing Room */}
           <div
             onClick={handleBrandReset}
             title={lang === 'HI' ? 'वोट फीड पर वापस जाएं' : 'Reset & Go to Poll Feed'}
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
+              alignItems: 'center',
               cursor: 'pointer',
-              lineHeight: 1
+              userSelect: 'none',
+              marginRight: '12px' // Clean spacing between BhuMat and the Lok Sabha seat pill & radar
             }}
           >
-            <span style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', letterSpacing: '-0.02em', lineHeight: 1 }}>
-              BhuMat
-            </span>
-            <span style={{
-              fontSize: '7.5px',
-              fontWeight: 800,
-              color: '#64748b',
-              letterSpacing: '0.07em',
-              textTransform: 'uppercase',
-              marginTop: '3px',
-              lineHeight: 1
-            }}>
-              {lang === 'HI' ? 'प्रारंभिक' : 'EARLY ACCESS'}
-            </span>
+            <BhuMatLogo size="sm" animated={true} />
           </div>
 
           {selectedSeat && (
@@ -2709,7 +2701,7 @@ export default function BhuMatApp() {
 ) : (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
                                 {poll.options.map((opt, idx) => {
-                                  const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                                  const optColor = opt.color || OPTION_PALETTE[idx % OPTION_PALETTE.length];
                                   const isUserChoice = !isJanMat && userChoiceIdx === idx;
                                   const showChoiceHighlight = isUserChoice && hasVotedThisCycle;
                                   const pollTallies = cachedTalliesByPoll[poll.id] || [];
@@ -2924,7 +2916,7 @@ export default function BhuMatApp() {
                               }}
                             >
                               {poll.options.map((opt, idx) => {
-                                const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                                const optColor = opt.color || OPTION_PALETTE[idx % OPTION_PALETTE.length];
                                 const optText = lang === 'EN' ? opt.text_en : opt.text_hi;
                                 return (
                                   <div

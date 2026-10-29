@@ -15,19 +15,42 @@ const TIER_HUE_MAP: Record<number, number> = {
   3: 262
 };
 
-function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean): string {
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  let c = hex.replace('#', '');
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
+  const num = parseInt(c, 16);
+  if (isNaN(num)) return { h: 24, s: 95, l: 50 };
+  const r = (num >> 16) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h = Math.round(h * 60);
+  }
+  return { h, s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean, customHex?: string): string {
   if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
   if (isTie) {
-    // Golden gradient for Split Mat (Tie) depending on consensus density
-    if (totalVotes >= 50) return '#d97706'; // Rich Golden Bronze
-    if (totalVotes >= 25) return '#f59e0b'; // Vibrant Amber Gold
-    return '#fcd34d'; // Light Gold Early Contested
+    if (totalVotes >= 50) return '#d97706';
+    if (totalVotes >= 25) return '#f59e0b';
+    return '#fcd34d';
   }
-  const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
+  const hue = customHex ? hexToHsl(customHex).h : (TIER_HUE_MAP[optIdx % 4] ?? 24);
   if (totalVotes >= 150) return `hsl(${hue}, 100%, 42%)`;
-  if (totalVotes >= 50)  return `hsl(${hue}, 95%, 48%)`;
-  if (totalVotes >= 25)  return `hsl(${hue}, 75%, 60%)`;
-  if (totalVotes >= 10)  return `hsl(${hue}, 55%, 72%)`;
+  if (totalVotes >= 50) return `hsl(${hue}, 95%, 48%)`;
+  if (totalVotes >= 25) return `hsl(${hue}, 75%, 60%)`;
+  if (totalVotes >= 10) return `hsl(${hue}, 55%, 72%)`;
   return `hsl(${hue}, 42%, 84%)`;
 }
 
@@ -35,6 +58,7 @@ interface Option {
   id: number;
   text_en: string;
   text_hi: string;
+  color?: string;
 }
 
 interface DrishtiMapProps {
@@ -184,36 +208,52 @@ useEffect(() => {
       )
       .subscribe();
 
-    // Listen to live tally updates to pulse the active seat with its winning color
+    // Listen for ANY citizen's vote in this poll across Bharat in realtime
     const ballotPulseChannel = supabase
-      .channel(`state_ballot_pulse_${pollId}_${Math.random().toString(36).substring(7)}`)
+      .channel(`state_live_ballot_pulse_${pollId}_${Math.random().toString(36).substring(7)}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
-          table: 'constituency_tallies',
+          table: 'lokmat_votes',
           filter: `poll_id=eq.${pollId}`,
         },
         (payload: any) => {
-          const updated = payload.new;
-          if (updated && updated.constituency_name) {
-            const cleanSeat = clean(updated.constituency_name);
-            // Resolve leading color
-            let maxVotes = -1;
-            let leadingIdx = 0;
-            options.forEach((_, idx) => {
-              const c = Number(updated[`opt_${idx}_votes`] ?? updated[`option_${idx}_votes`] ?? 0);
-              if (c > maxVotes) {
-                maxVotes = c;
-                leadingIdx = idx;
-              }
-            });
-            const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
-            setLivePulses((prev) => ({
-              ...prev,
-              [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 },
-            }));
+          const newVote = payload.new;
+          if (newVote) {
+            const targetSeat = clean(newVote.pc_id || newVote.constituency_name || '');
+            const optIdx = Number(newVote.selected_option_id ?? 0);
+            const optColor = options[optIdx]?.color || OPTION_PALETTE[optIdx % OPTION_PALETTE.length];
+            if (targetSeat) {
+              setLivePulses((prev) => ({
+                ...prev,
+                [targetSeat]: { color: optColor, expiresAt: Date.now() + 3200 }
+              }));
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'janmat_anonymous_ballots',
+          filter: `poll_id=eq.${pollId}`,
+        },
+        (payload: any) => {
+          const newVote = payload.new;
+          if (newVote) {
+            const targetSeat = clean(newVote.pc_id || newVote.pc_name || '');
+            const optIdx = Number(newVote.selected_option_id ?? 0);
+            const optColor = options[optIdx]?.color || OPTION_PALETTE[optIdx % OPTION_PALETTE.length];
+            if (targetSeat) {
+              setLivePulses((prev) => ({
+                ...prev,
+                [targetSeat]: { color: optColor, expiresAt: Date.now() + 3200 }
+              }));
+            }
           }
         }
       )
@@ -329,9 +369,12 @@ useEffect(() => {
       if (rect) {
         const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
         const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 80);
+        const relativeY = clientY - rect.top;
+        // Non-occluding anchor: if tapped in top half, render below seat; otherwise render above
+        const targetY = relativeY < 110 ? relativeY + 28 : relativeY - 85;
         setTooltipPos({
-          x: Math.max(12, Math.min(clientX - rect.left - 60, width - 150)),
-          y: Math.max(8, clientY - rect.top - 65),
+          x: Math.max(14, Math.min(clientX - rect.left - 80, width - 195)),
+          y: Math.max(8, targetY),
         });
       }
 
@@ -366,51 +409,57 @@ useEffect(() => {
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
         const isUserSeat = selectedConstituencyName && clean(selectedConstituencyName) === seatName;
 
-        // 1. ACTIVE VOTED OPTION PULSE: If the user just flipped to this map, flash their chosen option color
-        if (isUserSeat && activeVotePulse && (Date.now() - activeVotePulse.votedAt) < 2500) {
-          return OPTION_PALETTE[activeVotePulse.votedOptionIdx % OPTION_PALETTE.length];
-        }
-
         const row = tallyLookup.get(seatName);
-        if (!row) {
-          if (
-            optimisticLocalVote &&
-            userVotedOptionIdx !== null &&
-            userVotedOptionIdx !== undefined &&
-            clean(selectedConstituencyName || '') === seatName
-          ) {
-            return getConstituencyTierColor(userVotedOptionIdx, 1, false);
-          }
-          return UNPOLLED_SEAT_COLOR;
+        const total = Number(row?.total_ballots ?? row?.total_votes ?? 0);
+        const isTie = Boolean(row?.is_tie);
+        const validOptionsCount = options && options.length > 0 ? options.length : 2;
+        let trueLeaderIdx: number | null = null;
+
+        if (row?.leading_option_id !== undefined && row?.leading_option_id !== null) {
+          const parsed = Number(row.leading_option_id);
+          if (parsed >= 0 && parsed < validOptionsCount) trueLeaderIdx = parsed;
         }
 
-        const total = Number(row.total_ballots ?? row.total_votes ?? 0);
-        let winningOptIdx = row.leading_option_id !== undefined && row.leading_option_id !== null ? Number(row.leading_option_id) : null;
-        const isTie = Boolean(row.is_tie);
-
-        // Fallback: Calculate leader from individual option counts if leading_option_id is null
-        if (winningOptIdx === null && total > 0) {
-          const counts = [
-            Number(row.opt_0_count ?? row.opt_0_votes ?? 0),
-            Number(row.opt_1_count ?? row.opt_1_votes ?? 0),
-            Number(row.opt_2_count ?? row.opt_2_votes ?? 0),
-            Number(row.opt_3_count ?? row.opt_3_votes ?? 0)
-          ];
-          const maxVal = Math.max(...counts);
-          if (maxVal > 0) {
-            winningOptIdx = counts.indexOf(maxVal);
+        if (trueLeaderIdx === null && total > 0) {
+          let maxVal = -1;
+          for (let i = 0; i < validOptionsCount; i++) {
+            const count = Number(row[`opt_${i}_count`] ?? row[`opt_${i}_votes`] ?? 0);
+            if (count > maxVal && count > 0) {
+              maxVal = count;
+              trueLeaderIdx = i;
+            }
           }
         }
 
-        if (total === 0 && optimisticLocalVote && clean(selectedConstituencyName || '') === seatName && userVotedOptionIdx !== null) {
-          return getConstituencyTierColor(userVotedOptionIdx, 1, false);
+        const customHex = trueLeaderIdx !== null ? options[trueLeaderIdx]?.color : undefined;
+        const consensusFill = (total === 0 && !row) 
+          ? UNPOLLED_SEAT_COLOR 
+          : getConstituencyTierColor(trueLeaderIdx, total, isTie, customHex);
+
+        // 1. REALTIME PULSE: Flash if this user just voted OR another citizen across Bharat voted in this seat
+        const pulseFromOther = livePulses[seatName];
+        const hasIncomingPulse = pulseFromOther && pulseFromOther.expiresAt > Date.now();
+        const hasUserFlipPulse = isUserSeat && activeVotePulse && (Date.now() - activeVotePulse.votedAt) < 3200;
+
+        if (hasUserFlipPulse && activeVotePulse) {
+          const chosenIdx = activeVotePulse.votedOptionIdx % validOptionsCount;
+          return options[chosenIdx]?.color || OPTION_PALETTE[chosenIdx];
         }
-        return getConstituencyTierColor(winningOptIdx, total, isTie);
+
+        if (hasIncomingPulse) {
+          return pulseFromOther.color;
+        }
+
+        if (total === 0 && optimisticLocalVote && isUserSeat && userVotedOptionIdx !== null) {
+          return getConstituencyTierColor(Math.min(userVotedOptionIdx, validOptionsCount - 1), 1, false, options[userVotedOptionIdx]?.color);
+        }
+
+        return consensusFill;
       })
       .attr('stroke', (d: any) => {
         const p = d.properties || {};
         const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
-        if (selectedSeatKey === seatName) return '#0284c7';
+        if (selectedSeatKey === seatName) return '#0f172a'; // Neutral charcoal border
         if (selectedConstituencyName && clean(selectedConstituencyName) === seatName) return '#10b981';
         const row = tallyLookup.get(seatName);
         const total = Number(row?.total_votes) || 0;
@@ -426,47 +475,20 @@ useEffect(() => {
         return total >= 50 ? 1.0 : 0.6;
       })
       .style('cursor', 'pointer')
-      .on('mousemove', function (event: any, d: any) {
-        mapGroup.selectAll('path.constituency')
-          .attr('stroke', (dt: any) => {
-            const p = dt.properties || {};
-            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
-            return (Number(r?.total_votes) || 0) >= 50 ? '#ffffff' : '#cbd5e1';
-          })
-          .attr('stroke-width', (dt: any) => {
-            const p = dt.properties || {};
-            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
-            return (Number(r?.total_votes) || 0) >= 50 ? 1.0 : 0.6;
-          });
-        d3.select(this).attr('stroke', '#0f172a').attr('stroke-width', 1.8);
-        triggerTooltip(event, d, 0);
-      })
-      .on('mouseleave', function () {
-        mapGroup.selectAll('path.constituency')
-          .attr('stroke', (dt: any) => {
-            const p = dt.properties || {};
-            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
-            return (Number(r?.total_votes) || 0) >= 50 ? '#ffffff' : '#cbd5e1';
-          })
-          .attr('stroke-width', (dt: any) => {
-            const p = dt.properties || {};
-            const r = tallyLookup.get(clean(p.PC_NAME || p.pc_name || ''));
-            return (Number(r?.total_votes) || 0) >= 50 ? 1.0 : 0.6;
-          });
-        setHoveredSeat(null);
-        setTooltipPos(null);
-      })
       .on('click touchstart', function (event: any, d: any) {
         event.stopPropagation();
+        if (event.type === 'touchstart') {
+          event.preventDefault(); // Prevents delayed ghost click on mobile
+        }
         const p = d.properties || {};
         const sKey = clean(p.PC_NAME || p.pc_name || p.name || '');
-        setSelectedSeatKey(sKey);
 
+        // Smooth instant border highlight in D3 without wiping SVG
         mapGroup.selectAll('path.constituency')
           .attr('stroke', (dt: any) => {
             const dp = dt.properties || {};
             const itemKey = clean(dp.PC_NAME || dp.pc_name || '');
-            if (itemKey === sKey) return '#0284c7';
+            if (itemKey === sKey) return '#0f172a'; // Neutral charcoal border
             if (selectedConstituencyName && clean(selectedConstituencyName) === itemKey) return '#10b981';
             const r = tallyLookup.get(itemKey);
             return (Number(r?.total_votes) || 0) >= 50 ? '#ffffff' : '#cbd5e1';
@@ -474,14 +496,15 @@ useEffect(() => {
           .attr('stroke-width', (dt: any) => {
             const dp = dt.properties || {};
             const itemKey = clean(dp.PC_NAME || dp.pc_name || '');
-            if (itemKey === sKey) return 3.0;
-            if (selectedConstituencyName && clean(selectedConstituencyName) === itemKey) return 2.2;
+            // Delicate 1.6px stroke so small seats never turn black
+            if (itemKey === sKey) return 1.6;
+            if (selectedConstituencyName && clean(selectedConstituencyName) === itemKey) return 2.0;
             const r = tallyLookup.get(itemKey);
             return (Number(r?.total_votes) || 0) >= 50 ? 1.0 : 0.6;
           });
 
-        d3.select(this).raise(); // Bring to top of stack
-        triggerTooltip(event, d, 6000);
+        d3.select(this).raise();
+        triggerTooltip(event, d, 5000);
       });
 
     Object.keys(livePulses).forEach((pulsingSeatKey) => {
@@ -534,7 +557,46 @@ useEffect(() => {
         }
       }
     }
-  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, selectedSeatKey, userVotedOptionIdx, optimisticLocalVote, options, lang]);
+  }, [geoData, selectedState, tallies, livePulses, selectedConstituencyName, userVotedOptionIdx, optimisticLocalVote, options, lang]);
+
+  // Timed Transition: Gracefully settles paths back to their consensus color once the pulse expires
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const timer = setTimeout(() => {
+      const svg = d3.select(svgRef.current);
+      svg.selectAll('path.constituency')
+        .transition()
+        .duration(800)
+        .attr('fill', (d: any) => {
+          const p = d.properties || {};
+          const seatName = clean(p.PC_NAME || p.pc_name || p.name || '');
+          const row = (tallies || []).find((t: any) => clean(t.pc_name || t.constituency_name) === seatName);
+          const total = Number(row?.total_ballots ?? row?.total_votes ?? 0);
+          if (total === 0) return UNPOLLED_SEAT_COLOR;
+          const isTie = Boolean(row?.is_tie);
+          const validOptionsCount = options && options.length > 0 ? options.length : 2;
+          let leadIdx: number | null = null;
+          if (row?.leading_option_id !== undefined && row?.leading_option_id !== null) {
+            const parsed = Number(row.leading_option_id);
+            if (parsed >= 0 && parsed < validOptionsCount) leadIdx = parsed;
+          }
+          if (leadIdx === null && total > 0) {
+            let maxVal = -1;
+            for (let i = 0; i < validOptionsCount; i++) {
+              const count = Number(row[`opt_${i}_count`] ?? row[`opt_${i}_votes`] ?? 0);
+              if (count > maxVal && count > 0) {
+                maxVal = count;
+                leadIdx = i;
+              }
+            }
+          }
+          const customHex = leadIdx !== null ? options[leadIdx]?.color : undefined;
+          return getConstituencyTierColor(leadIdx, total, isTie, customHex);
+        });
+    }, 3200);
+
+    return () => clearTimeout(timer);
+  }, [activeVotePulse, livePulses, tallies, options]);
 
   return (
     <div
@@ -577,7 +639,15 @@ tooltipTimeoutRef.current = setTimeout(() => {
           transform-origin: center;
         }
         .state-calm-radar {
-          animation: stateRadarWave 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
+          animation: stateRadarWave 2.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes homeSeatNeonBeacon {
+          0% { stroke: #10b981; stroke-width: 2.2px; filter: drop-shadow(0 0 2px rgba(16,185,129,0.9)); }
+          50% { stroke: #34d399; stroke-width: 3.5px; filter: drop-shadow(0 0 8px rgba(52,211,153,0.9)); }
+          100% { stroke: #10b981; stroke-width: 2.2px; filter: drop-shadow(0 0 2px rgba(16,185,129,0.9)); }
+        }
+        .home-seat-glow {
+          animation: homeSeatNeonBeacon 1.6s ease-in-out infinite;
         }
         @keyframes radarPing {
           0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
