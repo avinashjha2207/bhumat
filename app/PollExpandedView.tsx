@@ -111,7 +111,7 @@ export default function PollExpandedView({
   const [hoveredSeat, setHoveredSeat] = useState<any | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const [livePulses, setLivePulses] = useState<Record<string, { color: string; expiresAt: number }>>({});
-  const [activeInfoPopup, setActiveInfoPopup] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
+  const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeScorecardTooltip, setActiveScorecardTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [mapTooltip, setMapTooltip] = useState<{
@@ -253,28 +253,10 @@ export default function PollExpandedView({
     e.stopPropagation();
     if (infoPopupTimeoutRef.current) clearTimeout(infoPopupTimeoutRef.current);
     const rect = e.currentTarget.getBoundingClientRect();
-    const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
-    
-    // Controlled tooltip width that fits neatly on all mobile devices
-    const popupTargetWidth = Math.min(240, screenW - 28);
-    
-    // Directional anchoring:
-    // If clicked on the right half (e.g. Ujiarpur / Constituency box), anchor to the right
-    // If clicked on the left half (e.g. Bharat box), anchor to the left
-    let computedX: number;
-    if (rect.left > screenW / 2) {
-      computedX = rect.right - popupTargetWidth;
-    } else {
-      computedX = rect.left - 12;
-    }
-    
-    // Strict margin bounds: minimum 14px from left, maximum 14px from right
-    const safeX = Math.max(14, Math.min(computedX, screenW - popupTargetWidth - 14));
     const safeY = Math.max(60, rect.bottom + 8);
-
-    setActiveInfoPopup({ title, desc, x: safeX, y: safeY });
+    setActiveTooltip({ title, desc, y: safeY });
     infoPopupTimeoutRef.current = setTimeout(() => {
-      setActiveInfoPopup(null);
+      setActiveTooltip(null);
     }, 4500);
   };
 
@@ -1029,9 +1011,9 @@ useEffect(() => {
     <div
       ref={containerRef}
       onClick={() => {
-        setActiveInfoPopup(null);
-        setHoveredSeat(null);
-      }}
+      setActiveTooltip(null);
+      setHoveredSeat(null);
+    }}
       style={{
         minHeight: '100dvh',
         backgroundColor: '#f8fafc',
@@ -1063,41 +1045,38 @@ useEffect(() => {
         }
       `}</style>
 
-      {activeInfoPopup && (
+      {/* Safe Screen-Centered Responsive Info Popup (Identical to app/page.tsx) */}
+      {activeTooltip && (
         <div
-          onClick={(e) => {
-            e.stopPropagation();
-            setActiveInfoPopup(null);
-          }}
+          onClick={() => setActiveTooltip(null)}
           style={{
             position: 'fixed',
-            left: `${activeInfoPopup.x}px`,
-            top: `${activeInfoPopup.y}px`,
+            left: '50%',
+            top: `${Math.min(Math.max(70, activeTooltip.y), typeof window !== 'undefined' ? window.innerHeight - 220 : 400)}px`,
+            transform: 'translateX(-50%)',
             zIndex: 99999,
             backgroundColor: '#0f172a',
             color: '#ffffff',
-            padding: '10px 14px',
-            borderRadius: '12px',
-            width: 'calc(100vw - 28px)',
-            maxWidth: '240px',
+            padding: '14px 16px',
+            borderRadius: '16px',
+            width: 'calc(100vw - 32px)',
+            maxWidth: '380px',
             boxSizing: 'border-box',
-            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45)',
             border: '1.5px solid #334155',
             cursor: 'pointer',
-            fontSize: '11px',
-            lineHeight: 1.45,
-            wordBreak: 'break-word',
-            animation: 'fadeIn 0.15s ease-out'
+            animation: 'gentleSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            whiteSpace: 'pre-line'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: '#38bdf8' }}>
-              {activeInfoPopup.title}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 900, color: '#38bdf8', letterSpacing: '-0.01em' }}>
+              {activeTooltip.title}
             </span>
-            <span style={{ fontSize: '10px', color: '#94a3b8', opacity: 0.7 }}>✕</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8', opacity: 0.7, padding: '2px 4px' }}>✕</span>
           </div>
-          <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>
-            {activeInfoPopup.desc}
+          <div style={{ fontSize: '11.5px', color: '#e2e8f0', lineHeight: 1.5, wordBreak: 'break-word', textAlign: 'left' }}>
+            {activeTooltip.desc}
           </div>
         </div>
       )}
@@ -1675,20 +1654,16 @@ useEffect(() => {
               <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
                 {lang === 'HI' ? 'भारत' : 'BHARAT'}
               </span>
-              <span
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setActiveScorecardTooltip({
-                    text: lang === 'HI' ? 'अखिल भारतीय स्तर पर अग्रणी जनमत।' : 'National consensus: Leading public opinion across all 543 parliamentary seats.',
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 8
-                  });
-                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
-                }}
-                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-              >
-                ⓘ
-              </span>
+              <span 
+                  onClick={(e) => triggerInfoPopup(
+                    lang === 'HI' ? 'अखिल भारतीय सहमति' : 'National Consensus',
+                    lang === 'HI' ? 'अखिल भारतीय स्तर पर सभी 543 संसदीय क्षेत्रों में सबसे प्रमुख विकल्प।' : 'National consensus: Leading public opinion across all 543 parliamentary seats.',
+                    e
+                  )}
+                  style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '0 2px' }}
+                >
+                  ⓘ
+                </span>
             </div>
             <div style={{
               fontSize: '11px',
@@ -1728,20 +1703,16 @@ useEffect(() => {
               <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {userState?.toUpperCase() || 'STATE'}
               </span>
-              <span
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setActiveScorecardTooltip({
-                    text: lang === 'HI' ? `सम्पूर्ण ${userState || 'राज्य'} में अग्रणी जनमत।` : `State consensus: Leading public opinion across ${userState || 'state'} constituencies.`,
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 8
-                  });
-                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
-                }}
-                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-              >
-                ⓘ
-              </span>
+              <span 
+                  onClick={(e) => triggerInfoPopup(
+                    lang === 'HI' ? `${userState || 'राज्य'} सहमति` : `${userState || 'State'} Consensus`,
+                    lang === 'HI' ? `राज्य स्तर (${userState}) पर सभी क्षेत्रों में सबसे प्रमुख विकल्प।` : `State consensus: Leading public opinion across ${userState || 'the state'}.`,
+                    e
+                  )}
+                  style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '0 2px' }}
+                >
+                  ⓘ
+                </span>
             </div>
             <div style={{
               fontSize: '11px',
@@ -1781,20 +1752,16 @@ useEffect(() => {
               <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {userSeatName?.toUpperCase() || 'SEAT'}
               </span>
-              <span
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setActiveScorecardTooltip({
-                    text: lang === 'HI' ? `${userSeatName || 'संसदीय सीट'} में अग्रणी जनमत।` : `Constituency consensus: Leading public opinion in ${userSeatName || 'your seat'}.`,
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 8
-                  });
-                  setTimeout(() => setActiveScorecardTooltip(null), 3500);
-                }}
-                style={{ fontSize: '10px', color: '#0284c7', cursor: 'pointer', opacity: 0.8 }}
-              >
-                ⓘ
-              </span>
+              <span 
+                  onClick={(e) => triggerInfoPopup(
+                    lang === 'HI' ? `${userSeatName || 'संसदीय'} जनमत` : `${userSeatName || 'Constituency'} Consensus`,
+                    lang === 'HI' ? `आपके संसदीय क्षेत्र (${userSeatName}) का सत्यापित स्थानीय जनमत परिणाम।` : `Constituency consensus: Leading public opinion in ${userSeatName || 'your local seat'}.`,
+                    e
+                  )}
+                  style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '0 2px' }}
+                >
+                  ⓘ
+                </span>
             </div>
             <div style={{
               fontSize: '11px',

@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: 'BhuMat - The Live Sentiment Scoreboard of Bharat',
   description: 'Real-time, verified public opinion mapped across all 543 Lok Sabha constituencies with zero GPS tracking and 100% secret ballot privacy.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://vote.bhumat.com'),
+  manifest: '/manifest.json',
   alternates: {
     canonical: 'https://vote.bhumat.com',
   },

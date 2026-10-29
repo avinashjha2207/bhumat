@@ -1,9 +1,12 @@
 {
   "name": "BhuMat - Live Public Opinion Scoreboard",
   "short_name": "BhuMat",
-  "description": "Sovereign public sentiment mapped across all 543 Lok Sabha seats.",
-  "start_url": "/",
+  "description": "Sovereign public opinion mapped across all 543 Lok Sabha constituencies.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "icons": [
@@ -14,13 +17,13 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-192x192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512x512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
