@@ -119,7 +119,7 @@ export default function MatParchiModal({
     } else if (isJanMat) {
       stanceSnippet = lang === 'HI'
         ? `\n🔒 *ऑडिट प्रकार:* 100% गोपनीय मतपेटी (Zero Tracking)`
-        : `\n🔒 *Audit Nature:* 100% Anonymous Ballot (Zero Tracking)`;
+        : `\n🔒 *Audit Nature:* 100% Anonymous Vote (Zero Tracking)`;
     }
 
     const shareText = lang === 'HI'
@@ -180,6 +180,39 @@ export default function MatParchiModal({
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // 3. Native Universal Web Share Handler (All Mobile Apps)
+  const handleUniversalShare = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vote.bhumat.com';
+    const cleanSeatParam = encodeURIComponent(seatName);
+    const cleanPollParam = pollId ? `&poll=${encodeURIComponent(pollId)}` : '';
+    
+    let stanceSnippet = '';
+    if (canShowStance && selectedOptionText) {
+      stanceSnippet = lang === 'HI' ? `\n🗳️ मेरा रुख: ${selectedOptionText}` : `\n🗳️ My Stance: ${selectedOptionText}`;
+    }
+
+    const shareTitle = `BhuMat • ${seatName}`;
+    const shareText = lang === 'HI'
+      ? `🇮🇳 भूमत जनमत: ${pollTitle}${stanceSnippet}\nक्या ${seatName} राज्य औसत से सहमत है?\nअपना मत दें:`
+      : `🇮🇳 BhuMat Public Opinion: ${pollTitle}${stanceSnippet}\nDoes ${seatName} agree with the state average?\nCast your vote:`;
+    const shareUrl = `${origin}?seat=${cleanSeatParam}${cleanPollParam}&ref=${referralCode}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return; // User closed share sheet
+      }
+    }
+    // Fallback if system share is not supported
+    handleWhatsAppTextShare();
   };
 
   return (
@@ -351,7 +384,7 @@ export default function MatParchiModal({
           ) : (
             <div style={{ backgroundColor: '#f0f9ff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
               <div style={{ fontSize: '10px', color: '#0369a1', fontWeight: 800, textTransform: 'uppercase' }}>
-                {isJanMat ? (lang === 'HI' ? '🔒 100% गोपनीय मतपेटी' : '🔒 100% Anonymous Ballot') : (lang === 'HI' ? '🔒 निजी मत' : '🔒 Private Citizen Stance')}
+                {isJanMat ? (lang === 'HI' ? '🔒 100% गोपनीय मतपेटी' : '🔒 100% Anonymous Vote') : (lang === 'HI' ? '🔒 निजी मत' : '🔒 Private Citizen Stance')}
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: '#0c4a6e', marginTop: '2px' }}>
                 {lang === 'HI'
@@ -452,7 +485,7 @@ export default function MatParchiModal({
             <span>{isExporting ? (lang === 'HI' ? 'पर्ची तैयार हो रही है...' : 'Generating Image...') : (lang === 'HI' ? 'व्हाट्सएप पे इमेज शेयर करें' : 'Share Image to WhatsApp')}</span>
           </button>
 
-          {/* Action 2: Text Forward Fallback */}
+          {/* Action 2: Text Forward Fallback (Existing Intact) */}
           <button
             type="button"
             onClick={handleWhatsAppTextShare}
@@ -474,6 +507,30 @@ export default function MatParchiModal({
           >
             <span>💬</span>
             <span>{lang === 'HI' ? 'सीधा व्हाट्सएप मैसेज भेजें' : 'Send Direct WhatsApp Link'}</span>
+          </button>
+
+          {/* Action 3: Universal System Share (Instagram, X, WhatsApp, Telegram, etc.) */}
+          <button
+            type="button"
+            onClick={handleUniversalShare}
+            style={{
+              width: '100%',
+              padding: '9px',
+              backgroundColor: '#ffffff',
+              color: '#0284c7',
+              border: '1.5px solid #bae6fd',
+              borderRadius: '10px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px'
+            }}
+          >
+            <span>📤</span>
+            <span>{lang === 'HI' ? 'अन्य ऐप्स पर शेयर करें (Universal Share)' : 'Share via Other Apps (Universal Share)'}</span>
           </button>
         </div>
       </div>

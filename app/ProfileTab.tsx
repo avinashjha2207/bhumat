@@ -221,7 +221,7 @@ export default function ProfileTab({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
           <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            🪪 {lang === 'HI' ? 'सार्वजनिक नागरिक पहचान' : 'Public Citizen Dossier'}
+            🪪 {lang === 'HI' ? 'नागरिक प्रोफ़ाइल' : 'CITIZEN PROFILE'}
           </span>
           <button
             onClick={() => router.push(`/citizen/${encodeURIComponent(username)}`)}
@@ -480,7 +480,7 @@ export default function ProfileTab({
                       lang === 'HI' ? `प्रथम 10 नागरिक (${displayCount}×)` : `Pratham 10 Nagrik (${displayCount}×)`,
                       lang === 'HI'
                         ? `🏛️ यह सम्मान उन नागरिकों को दिया जाता है जिन्होंने अपने संसदीय क्षेत्र में शुरुआती 10 मतों में सहभागिता की है। आपने ${displayCount} प्रश्नों पर यह उपलब्धि हासिल की है! (+25 XP बोनस प्राप्त)`
-                        : `🏛️ Awarded to founding citizens who cast one of the first 10 ballots in their parliamentary constituency. You achieved this across ${displayCount} polls! (+25 XP Bonus each).`,
+                        : `🏛️ Awarded to founding citizens who cast one of the first 10 votes in their parliamentary constituency. You achieved this across ${displayCount} polls! (+25 XP Bonus each).`,
                       e
                     )}
                     style={{
@@ -514,7 +514,7 @@ export default function ProfileTab({
                 </strong>
               </span>
               <span style={{ color: '#fbbf24' }}>
-                {displayMonthlyVotes} / {displayMonthlyVotes < 10 ? 10 : (displayMonthlyVotes < 25 ? 25 : 45)} {lang === 'HI' ? 'मत' : 'Ballots'}
+                {displayMonthlyVotes} / {displayMonthlyVotes < 10 ? 10 : (displayMonthlyVotes < 25 ? 25 : 45)} {lang === 'HI' ? 'मत' : 'Votes'}
               </span>
             </div>
             <div style={{ width: '100%', height: '6px', backgroundColor: '#334155', borderRadius: '999px', marginTop: '8px', overflow: 'hidden' }}>
@@ -698,12 +698,12 @@ export default function ProfileTab({
               {isUnder5 ? (
                 <div style={{ marginTop: '10px' }}>
                   <div style={{ width: '100%', height: '6px', backgroundColor: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.min(100, Math.max(8, (lokmatVotesCastCount / 5) * 100))}%`, height: '100%', backgroundColor: '#0284c7', transition: 'width 0.4s ease' }} />
+                    <div style={{ width: `${lokmatVotesCastCount > 0 ? Math.min(100, Math.round((lokmatVotesCastCount / 5) * 100)) : 0}%`, height: '100%', backgroundColor: '#0284c7', transition: 'width 0.4s ease' }} />
                   </div>
                   <p style={{ fontSize: '11px', color: '#64748b', marginTop: '8px', marginBottom: 0, lineHeight: 1.45 }}>
                     {lang === 'HI'
                       ? `🔒 CAQ स्कोर अनलॉक करने हेतु 5 लोकमत सांस्कृतिक प्रश्नों पर मतदान करें (${lokmatVotesCastCount}/5 पूर्ण)।`
-                      : `🔒 Cast your vote on 5 cultural pulses to unlock your statistical consensus score (${lokmatVotesCastCount} of 5 completed).`}
+                      : `🔒 Cast your vote on 5 cultural polls to unlock your statistical consensus score (${lokmatVotesCastCount} of 5 completed).`}
                   </p>
                 </div>
               ) : (
@@ -927,7 +927,7 @@ export default function ProfileTab({
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <span style={{ fontSize: '11px' }}>🔒</span>
                             <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669' }}>
-                              {lang === 'HI' ? 'संप्रभु गुप्त मत दर्ज ✓' : 'Sovereign Ballot Cast & Tally Sealed ✓'}
+                              {lang === 'HI' ? 'संप्रभु गुप्त मत दर्ज ✓' : 'Sovereign Vote Cast & Tally Sealed ✓'}
                             </span>
                           </div>
                         ) : (
@@ -983,7 +983,7 @@ export default function ProfileTab({
                 <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
                   {lang === 'HI' 
                     ? 'सार्वजनिक प्रोफ़ाइल पर अपने लोकमत विचार दूसरों को दिखाएं।' 
-                    : 'Show your cultural opinions on your public citizen dossier.'}
+                    : 'Show your cultural opinions on your public citizen profile.'}
                 </div>
               </div>
               <button

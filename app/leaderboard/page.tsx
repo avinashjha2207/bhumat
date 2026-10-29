@@ -65,29 +65,29 @@ export default function LeaderboardPage() {
   const [citizenList, setCitizenList] = useState<CitizenStanding[]>([]);
   const [userSeat, setUserSeat] = useState<string | null>(null);
 
-  const CACHE_TTL_MS = 60000;
-
-  // Immediate local hydration
+  const CACHE_TTL_MS = 180000; // 3-minute high-speed cache
   useEffect(() => {
     const saved = safeStorage.getItem('bhumat_user_seat');
     if (saved) setUserSeat(saved);
-
     try {
-      const cachedTime = sessionStorage.getItem('bhumat_lb_time');
       const cachedSpatial = sessionStorage.getItem('bhumat_lb_spatial');
       const cachedCitizens = sessionStorage.getItem('bhumat_lb_citizens');
-
-      if (cachedTime && Date.now() - Number(cachedTime) < CACHE_TTL_MS && cachedSpatial && cachedCitizens) {
-        const parsedSpatial = JSON.parse(cachedSpatial);
-        setSeatsData(parsedSpatial.seats || []);
-        setStatesData(parsedSpatial.states || []);
+      const cachedTime = sessionStorage.getItem('bhumat_lb_time');
+      
+      // Instant render from cache
+      if (cachedSpatial && cachedCitizens) {
+        setSeatsData(JSON.parse(cachedSpatial).seats || []);
+        setStatesData(JSON.parse(cachedSpatial).states || []);
         setCitizenList(JSON.parse(cachedCitizens) || []);
         setLoading(false);
-        return;
       }
-    } catch (e) {}
-
-    fetchLeaderboard();
+      // Revalidate in background only if TTL expired
+      if (!cachedTime || Date.now() - Number(cachedTime) > CACHE_TTL_MS) {
+        fetchLeaderboard(false);
+      }
+    } catch (e) {
+      fetchLeaderboard(true);
+    }
   }, []);
 
   async function fetchLeaderboard(forceRefresh = false) {

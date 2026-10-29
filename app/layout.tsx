@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -49,8 +50,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body style={{ margin: 0, padding: 0, backgroundColor: '#f8fafc' }}>
+    <html lang="en" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+      <head>
+        <style>{`
+          html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw !important;
+            width: 100% !important;
+            position: relative;
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+          }
+          *, *::before, *::after {
+            box-sizing: border-box;
+          }
+        `}</style>
+      </head>
+      <body style={{ margin: 0, padding: 0, backgroundColor: '#f8fafc', overflowX: 'hidden', maxWidth: '100vw', width: '100%' }}>
         {children}
       </body>
     </html>

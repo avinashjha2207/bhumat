@@ -254,14 +254,28 @@ export default function PollExpandedView({
     if (infoPopupTimeoutRef.current) clearTimeout(infoPopupTimeoutRef.current);
     const rect = e.currentTarget.getBoundingClientRect();
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 360;
-    const popupWidth = Math.min(260, screenW - 32);
-    // Strict clamp: never bleed past 16px left or 16px right margin
-    const clampedX = Math.max(16, Math.min(rect.left - (popupWidth / 2) + 12, screenW - popupWidth - 16));
-    const clampedY = Math.max(65, rect.bottom + 8);
-    setActiveInfoPopup({ title, desc, x: clampedX, y: clampedY });
+    
+    // Controlled tooltip width that fits neatly on all mobile devices
+    const popupTargetWidth = Math.min(240, screenW - 28);
+    
+    // Directional anchoring:
+    // If clicked on the right half (e.g. Ujiarpur / Constituency box), anchor to the right
+    // If clicked on the left half (e.g. Bharat box), anchor to the left
+    let computedX: number;
+    if (rect.left > screenW / 2) {
+      computedX = rect.right - popupTargetWidth;
+    } else {
+      computedX = rect.left - 12;
+    }
+    
+    // Strict margin bounds: minimum 14px from left, maximum 14px from right
+    const safeX = Math.max(14, Math.min(computedX, screenW - popupTargetWidth - 14));
+    const safeY = Math.max(60, rect.bottom + 8);
+
+    setActiveInfoPopup({ title, desc, x: safeX, y: safeY });
     infoPopupTimeoutRef.current = setTimeout(() => {
       setActiveInfoPopup(null);
-    }, 3500);
+    }, 4500);
   };
 
   const handleSwitchToGrid = () => {
@@ -1051,23 +1065,29 @@ useEffect(() => {
 
       {activeInfoPopup && (
         <div
-          onClick={() => setActiveInfoPopup(null)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveInfoPopup(null);
+          }}
           style={{
             position: 'fixed',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            top: `${Math.min(activeInfoPopup.y, typeof window !== 'undefined' ? window.innerHeight - 190 : 350)}px`,
-            zIndex: 140,
+            left: `${activeInfoPopup.x}px`,
+            top: `${activeInfoPopup.y}px`,
+            zIndex: 99999,
             backgroundColor: '#0f172a',
             color: '#ffffff',
-            padding: '12px 14px',
-            borderRadius: '14px',
-            width: 'calc(100vw - 36px)',
-            maxWidth: '320px',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            width: 'calc(100vw - 28px)',
+            maxWidth: '240px',
             boxSizing: 'border-box',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
             border: '1.5px solid #334155',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            fontSize: '11px',
+            lineHeight: 1.45,
+            wordBreak: 'break-word',
+            animation: 'fadeIn 0.15s ease-out'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -1268,7 +1288,7 @@ useEffect(() => {
               backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px',
               padding: '10px 14px', marginTop: '12px', fontSize: '11px', color: '#166534', lineHeight: 1.45
             }}>
-              <strong>🔒 {lang === 'HI' ? '100% गोपनीय मतपेटी' : '100% Secret Ballot'}:</strong>{' '}
+              <strong>🔒 {lang === 'HI' ? '100% गोपनीय मतपेटी' : '100% Secret Vote'}:</strong>{' '}
               {lang === 'HI'
                 ? 'ईवीएम स्याही की तरह, भूमत यह सत्यापित करता है कि आपने मत दिया है (ताकि दोहरे मत रोके जा सकें), लेकिन आपने किस विकल्प को चुना, यह कोई नहीं जान सकता।'
                 : 'Just like voting ink on your finger, BhuMat verifies that you voted to block duplicate ballots, but nobody - not even our engineers - can see which option you chose.'}
@@ -1687,7 +1707,7 @@ useEffect(() => {
                 : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
             <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
-              {bharatStats.total} {lang === 'HI' ? 'मत' : 'Ballots'}
+              {bharatStats.total} {lang === 'HI' ? 'मत' : 'Votes'}
             </div>
           </div>
 
@@ -1740,7 +1760,7 @@ useEffect(() => {
                 : (lang === 'HI' ? 'प्रतीक्षारत' : 'Awaiting')}
             </div>
             <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
-              {stateStats.total} {lang === 'HI' ? 'मत' : 'Ballots'}
+              {stateStats.total} {lang === 'HI' ? 'मत' : 'Votes'}
             </div>
           </div>
 
@@ -1798,7 +1818,7 @@ useEffect(() => {
             </div>
             <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
               {userSeatStats && userSeatStats.totalVotes >= 50
-                ? `${userSeatStats.totalVotes} Ballots`
+                ? `${userSeatStats.totalVotes} Votes`
                 : userSeatStats && userSeatStats.totalVotes > 0
                 ? `${Math.min(100, Math.max(2, Math.round((userSeatStats.totalVotes / 50) * 100)))}% Quorum`
                 : (lang === 'HI' ? 'प्रारंभिक चरण' : 'Early Stage')}
@@ -1840,7 +1860,7 @@ useEffect(() => {
                       : `${userSeatStats.leadingPercent}% of participating local voters favor this stance.`)
                   : (lang === 'HI'
                       ? 'आपके क्षेत्र का मत अभी संकलित हो रहा है। अपना मत देकर स्थानीय दिशा तय करें।'
-                      : 'Initial ballots forming the consensus baseline for this constituency.')}
+                      : 'Initial votes forming the consensus baseline for this constituency.')}
               </span>
             </div>
 
@@ -2065,7 +2085,7 @@ useEffect(() => {
                       lang === 'HI' ? 'कांटे की टक्कर (Battlegrounds Radar)' : 'Battlegrounds Radar',
                       lang === 'HI'
                         ? 'यह उन सीटों को चमकाता है जहां शीर्ष 2 विकल्पों में 8% से कम का अंतर है। एकतरफा सीटें हल्की हो जाती हैं।'
-                        : 'Illuminates razor-thin contested seats where the margin between the top 2 options is <= 8% (min 5 ballots). Decisive seats are dimmed.',
+                        : 'Illuminates razor-thin contested seats where the margin between the top 2 options is <= 8% (min 5 votes). Decisive seats are dimmed.',
                       e
                     )}
                     style={{ fontSize: '11px', color: '#0284c7', cursor: 'pointer', padding: '2px 4px' }}

@@ -370,10 +370,10 @@ useEffect(() => {
         const clientX = event.clientX || (event.touches?.[0]?.clientX ?? rect.left + width / 2);
         const clientY = event.clientY || (event.touches?.[0]?.clientY ?? rect.top + 80);
         const relativeY = clientY - rect.top;
-        // Non-occluding anchor: if tapped in top half, render below seat; otherwise render above
-        const targetY = relativeY < 110 ? relativeY + 28 : relativeY - 85;
+        // Substantially increased distance in both directions: +45px downwards or -115px upwards
+        const targetY = relativeY < 120 ? relativeY + 45 : relativeY - 115;
         setTooltipPos({
-          x: Math.max(14, Math.min(clientX - rect.left - 80, width - 195)),
+          x: Math.max(12, Math.min(clientX - rect.left - 90, width - 200)),
           y: Math.max(8, targetY),
         });
       }
