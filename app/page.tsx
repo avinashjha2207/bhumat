@@ -3151,12 +3151,12 @@ export default function BhuMatApp() {
                                           lang === 'HI' ? (
                                             <span>
                                               <strong>{selectedSeat?.name || 'क्षेत्र'}</strong> में <strong>{homePct}%</strong> नागरिक <em>{optLabel}</em> के साथ हैं
-                                              {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${Math.abs(delta)}%` : `-${Math.abs(delta)}%`} राज्य औसत से)` : ''}
+                                              {Math.abs(delta) >= 3 ? ` (राज्य औसत से ${Math.abs(delta)}% ${delta > 0 ? 'अधिक' : 'कम'})` : ''}
                                             </span>
                                           ) : (
                                             <span>
                                               In <strong>{selectedSeat?.name || 'Your Seat'}</strong>, <strong>{homePct}%</strong> back <em>{optLabel}</em>
-                                              {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${Math.abs(delta)}%` : `${delta}%`} vs State)` : ''}
+                                              {Math.abs(delta) >= 3 ? ` (${delta > 0 ? `+${delta}% above` : `${Math.abs(delta)}% below`} State avg)` : ''}
                                             </span>
                                           )
                                         )}
