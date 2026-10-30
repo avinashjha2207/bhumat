@@ -171,6 +171,21 @@ export default function BhuMatApp() {
     const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  // Check for Month-End Season Rollover
+  useEffect(() => {
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastSeenSeason = safeStorage.getItem('bhumat_last_seen_season');
+
+    if (lastSeenSeason && lastSeenSeason !== currentMonthKey) {
+      showPointerToast(
+        lang === 'HI'
+          ? `🎉 नया नागरिक सत्र प्रारंभ! पिछले माह का जनमत रिकॉर्ड सुरक्षित है। नई रैंकिंग खुली!`
+          : `🎉 New Civic Season Active! Previous season tallies sealed. Month-1 rankings live!`
+      );
+    }
+    safeStorage.setItem('bhumat_last_seen_season', currentMonthKey);
+  }, []);
   const isSubmittingVoteRef = useRef(false);
   const [activePlayingPollId, setActivePlayingPollId] = useState<string | null>(null);
   const [matParchiState, setMatParchiState] = useState<{
@@ -297,6 +312,27 @@ export default function BhuMatApp() {
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<'ALL' | 'JanMat' | 'LokMat'>('ALL');
   const [toast, setToast] = useState<{ msg: string; x: number; y: number } | null>(null);
+  const [adminBroadcast, setAdminBroadcast] = useState<{ id: string; message_en: string; message_hi: string; type?: 'info' | 'urgent' } | null>(null);
+  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
+
+  useEffect(() => {
+    // Check for active broadcast from database
+    supabase
+      .from('admin_broadcasts')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.id) {
+          const dismissedId = safeStorage.getItem('bhumat_dismissed_broadcast');
+          if (dismissedId !== data.id) {
+            setAdminBroadcast(data);
+          }
+        }
+      });
+  }, []);
   const [activeTooltip, setActiveTooltip] = useState<{ title: string; desc: string; x: number; y: number } | null>(null);
   const infoPopupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [expandedPoll, setExpandedPoll] = useState<Poll | null>(null);
@@ -1871,12 +1907,78 @@ export default function BhuMatApp() {
         </div>
       </header>
 
+
       {/* Main Content Area */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 14px 120px 14px' }}>
         
         {/* TAB 1: VOTE FEED */}
         {activeTab === 'vote' && (
           <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+{/* 📢 Admin Sovereign Broadcast Card (Aligned to Carousel Geometry) */}
+            {adminBroadcast && !isBroadcastDismissed && (
+              <div
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  backgroundColor: adminBroadcast.type === 'urgent' ? '#fff5f5' : '#f0f9ff',
+                  border: `1.5px solid ${adminBroadcast.type === 'urgent' ? '#fecaca' : '#bae6fd'}`,
+                  borderRadius: '16px',
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  boxShadow: adminBroadcast.type === 'urgent'
+                    ? '0 2px 8px rgba(220, 38, 38, 0.08)'
+                    : '0 2px 8px rgba(2, 132, 199, 0.06)',
+                  animation: 'gentleSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                  <span style={{ fontSize: '15px', flexShrink: 0 }}>
+                    {adminBroadcast.type === 'urgent' ? '🚨' : '📢'}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 750,
+                      color: adminBroadcast.type === 'urgent' ? '#991b1b' : '#0369a1',
+                      lineHeight: 1.4,
+                      wordBreak: 'break-word',
+                      whiteSpace: 'pre-line'
+                    }}
+                  >
+                    {lang === 'HI' ? adminBroadcast.message_hi : adminBroadcast.message_en}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBroadcastDismissed(true);
+                    safeStorage.setItem('bhumat_dismissed_broadcast', adminBroadcast.id);
+                  }}
+                  title={lang === 'HI' ? 'हटाएं' : 'Dismiss'}
+                  style={{
+                    background: adminBroadcast.type === 'urgent' ? '#fee2e2' : '#e0f2fe',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '22px',
+                    height: '22px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: adminBroadcast.type === 'urgent' ? '#991b1b' : '#0369a1',
+                    fontSize: '11px',
+                    fontWeight: 900,
+                    flexShrink: 0
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+      
             {/* Horizontal Civic Carousel (Explains BhuMat, Cadence, & Rules) */}
             {/* Horizontal Civic Carousel (Explains BhuMat, Cadence, & Rules) */}
             <CivicCarousel
@@ -2098,7 +2200,7 @@ export default function BhuMatApp() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '15px' }}>⚔️</span>
-                        <span style={{ fontSize: '12px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 900, color: '#0f172a', letterSpacing: '0.04em' }}>
                           {lang === 'HI' ? `${selectedSeat.name} क्षेत्रीय मुकाबला` : `${selectedSeat.name} Regional Turf War`}
                         </span>
                       </div>
@@ -2156,7 +2258,7 @@ export default function BhuMatApp() {
                                 gap: '6px'
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>
                                     {lang === 'HI' ? 'अचयनित पड़ोसी क्षेत्र (0 मत)' : 'Awaiting First Ballots'}
                                   </span>
                                   <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700 }}>
@@ -2224,7 +2326,7 @@ export default function BhuMatApp() {
 
                 {/* Pillar Explainer Sub-bar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px', marginBottom: '-10px' }}>
-                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b', letterSpacing: '0.02em' }}>
                     {lang === 'HI' ? 'दैनिक जनमत श्रेणियां' : 'Daily Ballot Pillars'}
                   </span>
                   <span
@@ -2699,7 +2801,7 @@ export default function BhuMatApp() {
   >
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <span style={{ fontSize: '16px' }}>📍</span>
-      <span style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <span style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1', letterSpacing: '0.04em' }}>
         {lang === 'HI' ? `लक्षित क्षेत्र: ${poll.target_seats.join(', ')}` : `Target Electorate: ${poll.target_seats.join(', ')}`}
       </span>
     </div>
@@ -3213,8 +3315,7 @@ export default function BhuMatApp() {
                               <div style={{
                                 fontSize: '10px',
                                 fontWeight: 800,
-                                color: '#64748b',
-                                textTransform: 'uppercase',
+                                color: '#64748b',                                
                                 letterSpacing: '0.04em',
                                 marginBottom: '5px',
                                 display: 'flex',
@@ -3940,8 +4041,8 @@ export default function BhuMatApp() {
             {/* 4-Box Electoral & Constitutional Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? 'सांसद (2024)' : 'INCUMBENT MP (2024)'}
+                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+                  {lang === 'HI' ? 'सांसद (2024)' : 'Incumbent MP (2024)'}
                 </div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
                   {seatDossier?.incumbent_mp ? `${seatDossier.incumbent_mp}` : 'Awaiting Data'}
@@ -3954,8 +4055,8 @@ export default function BhuMatApp() {
               </div>
 
               <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? '2024 मतदान प्रतिशत' : '2024 VOTER TURNOUT'}
+                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+                  {lang === 'HI' ? '2024 मतदान प्रतिशत' : '2024 Voter Turnout'}
                 </div>
                 <div style={{ fontSize: '15px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
                   {seatDossier?.turnout_pct ? `${seatDossier.turnout_pct}%` : '65.5%'}
@@ -3966,8 +4067,8 @@ export default function BhuMatApp() {
               </div>
 
               <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? 'आरक्षण स्थिति' : 'RESERVATION'}
+                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+                  {lang === 'HI' ? 'आरक्षण स्थिति' : 'Reservation'}
                 </div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
                   {seatDossier?.reservation_status || 'GEN'}
@@ -3975,8 +4076,8 @@ export default function BhuMatApp() {
               </div>
 
               <div style={{ backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  {lang === 'HI' ? 'विधानसभा सीटें' : 'ASSEMBLY SEGMENTS'}
+                <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 700 }}>
+                  {lang === 'HI' ? 'विधानसभा सीटें' : 'Assembly Segments'}
                 </div>
                 <div style={{ fontSize: '14px', fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
                   {seatDossier?.assembly_segments?.length || seatDossier?.assembly_segments_count || 6} Seats
@@ -3987,8 +4088,8 @@ export default function BhuMatApp() {
             {/* Authentic Constituent Assembly Segments Badges */}
             {seatDossier?.assembly_segments && seatDossier.assembly_segments.length > 0 && (
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 12px' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
-                  {lang === 'HI' ? 'अंतर्गत विधानसभा क्षेत्र (विधानसभा):' : 'CONSTITUENT ASSEMBLY SEGMENTS:'}
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 800, marginBottom: '6px' }}>
+                  {lang === 'HI' ? 'अंतर्गत विधानसभा क्षेत्र (विधानसभा):' : 'Constituent Assembly Segments:'}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '120px', overflowY: 'auto' }}>
                   {seatDossier.assembly_segments.map((ac: any, idx: number) => (

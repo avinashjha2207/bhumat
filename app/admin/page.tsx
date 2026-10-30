@@ -258,6 +258,13 @@ export default function AdminAuditPanel() {
   const [proposals, setProposals] = useState<any[]>([]);
   const [viralityStats, setViralityStats] = useState<any>(null);
 
+  // Sovereign Flash Bulletin Broadcast State
+  const [activeBroadcast, setActiveBroadcast] = useState<any | null>(null);
+  const [broadcastMsgEn, setBroadcastMsgEn] = useState('');
+  const [broadcastMsgHi, setBroadcastMsgHi] = useState('');
+  const [broadcastType, setBroadcastType] = useState<'info' | 'urgent'>('info');
+  const [isPublishingBroadcast, setIsPublishingBroadcast] = useState(false);
+
   // Sandbox State
   const [simTargetPollId, setSimTargetPollId] = useState('');
   const [simSeat, setSimSeat] = useState('Hajipur');
@@ -411,6 +418,66 @@ export default function AdminAuditPanel() {
     }
   };
 
+  async function fetchActiveBroadcast() {
+    try {
+      const { data } = await supabase
+        .from('admin_broadcasts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) {
+        setActiveBroadcast(data);
+        if (data.is_active) {
+          setBroadcastMsgEn(data.message_en || '');
+          setBroadcastMsgHi(data.message_hi || '');
+          setBroadcastType(data.type || 'info');
+        }
+      }
+    } catch (e) {}
+  }
+
+  const handleSaveBroadcast = async (shouldActivate: boolean) => {
+    if (shouldActivate && (!broadcastMsgEn.trim() || !broadcastMsgHi.trim())) {
+      alert('Please provide both English and Hindi broadcast messages.');
+      return;
+    }
+    setIsPublishingBroadcast(true);
+    try {
+      // Deactivate all older broadcasts first
+      await supabase.from('admin_broadcasts').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (shouldActivate) {
+        const { data, error } = await supabase
+          .from('admin_broadcasts')
+          .insert({
+            message_en: broadcastMsgEn.trim(),
+            message_hi: broadcastMsgHi.trim(),
+            type: broadcastType,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (!error && data) {
+          setActiveBroadcast(data);
+          alert('✓ Sovereign Broadcast is now LIVE across all user screens!');
+        } else {
+          alert('Error publishing broadcast: ' + error?.message);
+        }
+      } else {
+        setActiveBroadcast(null);
+        setBroadcastMsgEn('');
+        setBroadcastMsgHi('');
+        alert('✓ Active broadcast deactivated.');
+      }
+    } catch (err: any) {
+      alert('Broadcast operation failed: ' + err.message);
+    } finally {
+      setIsPublishingBroadcast(false);
+    }
+  };
+
   async function fetchPlatformSettings() {
     try {
       const { data } = await supabase
@@ -438,6 +505,7 @@ export default function AdminAuditPanel() {
       fetchProposals();
       fetchPlatformSettings();
       fetchViralityStats();
+      fetchActiveBroadcast();
     }
   }, [isAuthenticated]);
 
@@ -1519,6 +1587,109 @@ export default function AdminAuditPanel() {
                     {weeklyBallots} Ballots / 7d
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#047857', marginTop: '2px' }}>Across {activeStatesCount} States & UTs</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 📢 SOVEREIGN BROADCAST COMMAND CONSOLE */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '18px',
+              border: '1.5px solid #0284c7',
+              padding: '18px 20px',
+              marginBottom: '22px',
+              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.05)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 900, backgroundColor: '#0284c7', color: '#ffffff', padding: '3px 8px', borderRadius: '6px' }}>
+                    📢 SOVEREIGN FLASH BULLETIN
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#334155' }}>
+                    Direct-to-Citizen Top Bar Broadcast (Feed, Breaking, Maintenance, Cadence)
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: activeBroadcast?.is_active ? '#ecfdf5' : '#f1f5f9',
+                  color: activeBroadcast?.is_active ? '#065f46' : '#64748b',
+                  border: `1px solid ${activeBroadcast?.is_active ? '#a7f3d0' : '#cbd5e1'}`
+                }}>
+                  {activeBroadcast?.is_active ? '● LIVE BROADCASTING' : '○ DORMANT (NO ACTIVE BANNER)'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 750, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    English Message:
+                  </label>
+                  <input
+                    type="text"
+                    value={broadcastMsgEn}
+                    onChange={(e) => setBroadcastMsgEn(e.target.value)}
+                    placeholder="e.g. Special Poll Alert: 2026 Union Budget debate is live across all 543 seats!"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '12px', fontWeight: 600 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 750, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Hindi Translation (Devanagari):
+                  </label>
+                  <input
+                    type="text"
+                    value={broadcastMsgHi}
+                    onChange={(e) => setBroadcastMsgHi(e.target.value)}
+                    placeholder="उदा. विशेष जनमत अलर्ट: 2026 केंद्रीय बजट पर सभी 543 सीटों पर मतदान जारी!"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '12px', fontWeight: 600 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="broadcastType"
+                      checked={broadcastType === 'info'}
+                      onChange={() => setBroadcastType('info')}
+                    />
+                    🔵 General / Informational
+                  </label>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#991b1b', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="broadcastType"
+                      checked={broadcastType === 'urgent'}
+                      onChange={() => setBroadcastType('urgent')}
+                    />
+                    🚨 Critical / Urgent Alert
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {activeBroadcast?.is_active && (
+                    <button
+                      type="button"
+                      disabled={isPublishingBroadcast}
+                      onClick={() => handleSaveBroadcast(false)}
+                      style={{ padding: '8px 14px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      🛑 Deactivate Banner
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isPublishingBroadcast}
+                    onClick={() => handleSaveBroadcast(true)}
+                    style={{ padding: '8px 16px', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)' }}
+                  >
+                    {isPublishingBroadcast ? 'Publishing...' : '🚀 Broadcast to Citizens'}
+                  </button>
                 </div>
               </div>
             </div>

@@ -198,7 +198,7 @@ export default function ScheduleTab({
                   : 'Shows which questions unlock on each date. 🟠 Orange dots mark 08:00 AM LokMat drops, 🟢 Green dots mark 08:00 PM JanMat audits. Once you cast a vote, the dot turns into a checkmark (✓).',
                 e
               )}
-              style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
               <span>{lang === 'HI' ? 'दैनिक कैलेंडर' : 'Daily Schedule Matrix'}</span>
               <span style={{ fontSize: '10px' }}>ⓘ</span>
@@ -541,7 +541,7 @@ export default function ScheduleTab({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 4px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>
             {lang === 'EN' ? 'Daily Drop Rhythm' : 'दैनिक मतदान समय'}
           </span>
           <span
@@ -630,7 +630,7 @@ export default function ScheduleTab({
                     : 'These are questions scheduled to unlock in the coming days. Options remain strictly sealed until the drop time to ensure complete fairness.',
                   e
                 )}
-                style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ fontSize: '12.5px', fontWeight: 900, color: '#0f172a', letterSpacing: '0.04em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
               >
                 <span>{lang === 'HI' ? 'आगामी प्रश्न' : 'Upcoming Scheduled Drops'} ({filteredList.length})</span>
                 <span style={{ fontSize: '10.5px', color: '#0284c7' }}>ⓘ</span>

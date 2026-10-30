@@ -1299,7 +1299,7 @@ useEffect(() => {
                 display: isAllBallotsFlipped ? 'none' : 'block'
               }}
             >
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '14px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '14px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>{lang === 'HI' ? 'प्राथमिकता विश्लेषण' : 'All Preference Breakdown'}</span>
                 <span style={{ color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span>🌱</span>
@@ -2131,7 +2131,7 @@ useEffect(() => {
               padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
                   {lang === 'HI' ? 'अग्रणी विकल्प फ़िल्टर:' : 'Filter Leading Stance:'}
                 </span>
                 {selectedOptionFilter !== null && (
@@ -2239,7 +2239,7 @@ useEffect(() => {
             <div style={{ overflowX: 'auto', maxHeight: '420px', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', minWidth: '380px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '10.5px' }}>
                 <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
-                  <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                  <tr style={{ borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '10px', letterSpacing: '0.02em' }}>
                     <th style={{ padding: '7px 4px', fontWeight: 800, width: '28%' }}>{lang === 'HI' ? 'संसदीय क्षेत्र' : 'Constituency'}</th>
                     <th style={{ padding: '7px 4px', fontWeight: 800, width: '20%' }}>{lang === 'HI' ? 'राज्य' : 'State'}</th>
                     <th style={{ padding: '7px 4px', fontWeight: 800, width: '30%' }}>{lang === 'HI' ? 'अग्रणी रुख' : 'Leading Stance'}</th>

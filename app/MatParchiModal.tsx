@@ -252,7 +252,7 @@ export default function MatParchiModal({
         <div style={{ padding: '16px 18px 0 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '15px' }}>🇮🇳</span>
-            <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', letterSpacing: '0.04em' }}>
               {lang === 'HI' ? 'अखिल भारतीय जनमत पर्ची' : 'Public Opinion of Bharat'}
             </span>
           </div>
@@ -299,8 +299,7 @@ export default function MatParchiModal({
                 color: isJanMat ? '#0369a1' : '#b45309',
                 backgroundColor: isJanMat ? '#e0f2fe' : '#fef3c7',
                 padding: '2px 7px',
-                borderRadius: '6px',
-                textTransform: 'uppercase'
+                borderRadius: '6px'
               }}>
                 {isJanMat ? 'JanMat • District Audit' : 'LokMat • Public Culture'}
               </span>
@@ -345,6 +344,7 @@ export default function MatParchiModal({
                 {options.map((opt: any, idx: number) => {
                   const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
                   const rawLabel = lang === 'HI' ? (opt.text_hi || opt.text_en) : opt.text_en;
+                  // Clean and trim option text for compact card layout
                   const label = rawLabel ? rawLabel.split('(')[0].trim() : '';
                   const pct = optionPercentages[idx] !== undefined ? optionPercentages[idx] : null;
 
@@ -354,16 +354,35 @@ export default function MatParchiModal({
                       style={{
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'space-between',
                         gap: '6px',
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        textOverflow: 'ellipsis'
+                        minWidth: 0,
+                        boxSizing: 'border-box'
                       }}
                     >
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: optColor, flexShrink: 0 }} />
-                      <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {label} {pct !== null ? <strong style={{ color: optColor, fontWeight: 900, marginLeft: '2px' }}>({pct}%)</strong> : ''}
-                      </span>
+                      {/* Left: Color Dot + Clean Truncated Label */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: optColor, flexShrink: 0 }} />
+                        <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {label}
+                        </span>
+                      </div>
+
+                      {/* Right: Unclipped, Tabular Percentage Badge */}
+                      {pct !== null && (
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 900,
+                          color: optColor,
+                          flexShrink: 0,
+                          backgroundColor: `${optColor}12`,
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          fontVariantNumeric: 'tabular-nums'
+                        }}>
+                          {pct}%
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -374,7 +393,7 @@ export default function MatParchiModal({
           {/* Stance or Cryptographic Shield Row */}
           {canShowStance ? (
             <div style={{ backgroundColor: '#ecfdf5', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #a7f3d0' }}>
-              <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 800, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 800 }}>
                 {lang === 'HI' ? 'दर्ज मत (My Vote)' : 'My Vote'}
               </div>
               <div style={{ fontSize: '14px', fontWeight: 900, color: '#065f46', marginTop: '2px' }}>
@@ -383,7 +402,7 @@ export default function MatParchiModal({
             </div>
           ) : (
             <div style={{ backgroundColor: '#f0f9ff', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
-              <div style={{ fontSize: '10px', color: '#0369a1', fontWeight: 800, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '10px', color: '#0369a1', fontWeight: 800 }}>
                 {isJanMat ? (lang === 'HI' ? '🔒 100% गोपनीय मतपेटी' : '🔒 100% Anonymous Vote') : (lang === 'HI' ? '🔒 निजी मत' : '🔒 Private Citizen Stance')}
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: '#0c4a6e', marginTop: '2px' }}>
@@ -507,30 +526,6 @@ export default function MatParchiModal({
           >
             <span>💬</span>
             <span>{lang === 'HI' ? 'सीधा व्हाट्सएप मैसेज भेजें' : 'Send Direct WhatsApp Link'}</span>
-          </button>
-
-          {/* Action 3: Universal System Share (Instagram, X, WhatsApp, Telegram, etc.) */}
-          <button
-            type="button"
-            onClick={handleUniversalShare}
-            style={{
-              width: '100%',
-              padding: '9px',
-              backgroundColor: '#ffffff',
-              color: '#0284c7',
-              border: '1.5px solid #bae6fd',
-              borderRadius: '10px',
-              fontSize: '11.5px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '5px'
-            }}
-          >
-            <span>📤</span>
-            <span>{lang === 'HI' ? 'अन्य ऐप्स पर शेयर करें (Universal Share)' : 'Share via Other Apps (Universal Share)'}</span>
           </button>
         </div>
       </div>

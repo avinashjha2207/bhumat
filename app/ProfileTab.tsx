@@ -220,8 +220,8 @@ export default function ProfileTab({
       {/* ============================================================== */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            🪪 {lang === 'HI' ? 'नागरिक प्रोफ़ाइल' : 'CITIZEN PROFILE'}
+          <span style={{ fontSize: '11px', fontWeight: 900, color: '#0369a1', letterSpacing: '0.05em' }}>
+            🪪 {lang === 'HI' ? 'नागरिक प्रोफ़ाइल' : 'Citizen Profile'}
           </span>
           <button
             onClick={() => router.push(`/citizen/${encodeURIComponent(username)}`)}
@@ -269,7 +269,6 @@ export default function ProfileTab({
                 fontWeight: 900,
                 color: '#38bdf8',
                 letterSpacing: '0.05em',
-                textTransform: 'uppercase',
                 backgroundColor: 'rgba(56, 189, 248, 0.12)',
                 border: '1px solid rgba(56, 189, 248, 0.3)',
                 padding: '3px 8px',
@@ -754,14 +753,14 @@ export default function ProfileTab({
           gap: '10px'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              📊 {lang === 'HI' ? 'सहभागिता इतिहास' : 'PARTICIPATION HISTORY'}
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>
+              📊 {lang === 'HI' ? 'सहभागिता इतिहास' : 'Participation History'}
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
             {/* Box 1: LokMat */}
             <div style={{ backgroundColor: '#fffbeb', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #fde68a' }}>
-              <div style={{ fontSize: '9.5px', color: '#92400e', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <div style={{ fontSize: '9.5px', color: '#92400e', fontWeight: 800, letterSpacing: '0.03em' }}>
                 {lang === 'HI' ? '🌅 लोकमत' : '🌅 LokMat'}
               </div>
               <div style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', marginTop: '2px' }}>
@@ -771,7 +770,7 @@ export default function ProfileTab({
 
             {/* Box 2: JanMat */}
             <div style={{ backgroundColor: '#ecfdf5', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #a7f3d0' }}>
-              <div style={{ fontSize: '9.5px', color: '#065f46', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <div style={{ fontSize: '9.5px', color: '#065f46', fontWeight: 800, letterSpacing: '0.03em' }}>
                 {lang === 'HI' ? '🌆 जनमत' : '🌆 JanMat'}
               </div>
               <div style={{ fontSize: '18px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
@@ -781,7 +780,7 @@ export default function ProfileTab({
 
             {/* Box 3: Total Ballots */}
             <div style={{ backgroundColor: '#f8fafc', padding: '10px 8px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
-              <div style={{ fontSize: '9.5px', color: '#334155', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <div style={{ fontSize: '9.5px', color: '#334155', fontWeight: 800, letterSpacing: '0.03em' }}>
                 {lang === 'HI' ? '📊 कुल मत' : '📊 Total'}
               </div>
               <div style={{ fontSize: '18px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
@@ -805,7 +804,7 @@ export default function ProfileTab({
           gap: '12px'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em' }}>
               🗳️ {lang === 'HI' ? 'मेरे द्वारा दिए गए मत' : 'My Voted Polls & Audits'}
             </span>
             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>
@@ -961,7 +960,7 @@ export default function ProfileTab({
       {/* ZONE 2: PRIVATE ACCOUNT & SETTINGS                             */}
       {/* ============================================================== */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '6px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0 4px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 900, color: '#64748b', letterSpacing: '0.05em', padding: '0 4px' }}>
           ⚙️ {lang === 'HI' ? 'खाता एवं निजी सेटिंग्स' : 'Account & Private Settings'}
         </span>
 
@@ -1025,7 +1024,7 @@ export default function ProfileTab({
                           : '⚡ DBG is BhuMat’s civic utility credit:\n• How to earn: 7-day streak (+1 DBG), 45 seasonal votes (+1 DBG), or verified referrals (+2 DBG).\n• Where to spend: Shift constituency seat (1 DBG), edit handle (1 DBG), or suggest topics (5 DBG).',
                         e
                       )}
-                      style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', letterSpacing: '0.04em', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                     >
                       <span>{lang === 'HI' ? 'नागरिक क्रेडिट शेष' : 'CIVIC DBG CREDITS'}</span>
                       <span style={{ fontSize: '10px' }}>ⓘ</span>
@@ -1035,8 +1034,11 @@ export default function ProfileTab({
               </div>
             </div>
             
+            
+              {/* Action Buttons: Restored to Exact Screenshot 115403 Layout with Integrated Info Prompts */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <button
+                type="button"
                 onClick={() => setShowSponsorModal(true)}
                 style={{
                   padding: '8px 12px',
@@ -1049,17 +1051,36 @@ export default function ProfileTab({
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  justifyContent: 'space-between',
+                  gap: '6px'
                 }}
               >
-                <span>🎯</span>
-                <span>{lang === 'HI' ? 'लोकल पोल होस्ट करें (50 DBG)' : 'Sponsor Poll (50 DBG)'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>🎯</span>
+                  <span>{lang === 'HI' ? 'लोकल पोल प्रायोजित करें (50 DBG)' : 'Sponsor Poll (50 DBG)'}</span>
+                </div>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInfo(
+                      lang === 'HI' ? 'लोकल पोल प्रायोजित करें (50 DBG)' : 'Sponsor Local Poll (50 DBG)',
+                      lang === 'HI'
+                        ? 'अपने संसदीय क्षेत्र के लिए एक विशिष्ट लाइव जनमत प्रश्न प्रकाशित करें। यह सीधे आपके क्षेत्र के नागरिकों को दिखेगा।'
+                        : 'Deploy a custom live poll targeted specifically to your Lok Sabha constituency. Seen and voted on by local citizens.',
+                      e
+                    );
+                  }}
+                  style={{ fontSize: '11px', color: '#059669', opacity: 0.8, padding: '0 2px' }}
+                >
+                  ⓘ
+                </span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setShowSuggestModal(true)}
                 style={{
-                  padding: '6px 10px',
+                  padding: '6px 12px',
                   backgroundColor: '#f8fafc',
                   border: '1px solid #cbd5e1',
                   borderRadius: '8px',
@@ -1069,14 +1090,32 @@ export default function ProfileTab({
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px'
+                  justifyContent: 'space-between',
+                  gap: '6px'
                 }}
               >
-                <span>💡</span>
-                <span>{lang === 'HI' ? 'संपादकीय सुझाव (5 DBG)' : 'Suggest Poll (5 DBG)'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>💡</span>
+                  <span>{lang === 'HI' ? 'संपादकीय सुझाव (5 DBG)' : 'Suggest Poll (5 DBG)'}</span>
+                </div>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInfo(
+                      lang === 'HI' ? 'प्रश्न का सुझाव दें (5 DBG)' : 'Suggest Editorial Topic (5 DBG)',
+                      lang === 'HI'
+                        ? 'राष्ट्रीय या सांस्कृतिक बहस के लिए भूमत संपादकीय डेस्क को प्रश्न प्रस्तावित करें। स्वीकृत होने पर आपका नाम श्रेय में दिखेगा।'
+                        : 'Submit a question to the editorial review queue for consideration as an upcoming national or regional drop.',
+                      e
+                    );
+                  }}
+                  style={{ fontSize: '10.5px', color: '#0284c7', opacity: 0.8, padding: '0 2px' }}
+                >
+                  ⓘ
+                </span>
               </button>
             </div>
-          </div>
+            </div>
 
           <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '14px', paddingTop: '10px' }}>
             <div 
@@ -1183,7 +1222,7 @@ export default function ProfileTab({
         <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '20px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', letterSpacing: '0.04em' }}>
-              {lang === 'EN' ? 'INVITE CITIZENS TO BHUMAT' : 'नागरिकों को आमंत्रित करें'}
+              {lang === 'EN' ? 'Invite Citizens To BhuMat' : 'नागरिकों को आमंत्रित करें'}
             </span>
             <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669' }}>
               +2 DBG / {lang === 'EN' ? 'Verified Invite' : 'सत्यापित आमंत्रण'}

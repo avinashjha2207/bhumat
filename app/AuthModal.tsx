@@ -360,7 +360,7 @@ export default function AuthModal({
         {step === 'INPUT' ? (
           <form onSubmit={handleRequestOtp} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+              <label style={{ fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
                 {activeChannel === 'PHONE'
                   ? (lang === 'HI' ? 'मोबाइल नंबर (+91)' : 'Mobile Number (10 Digits)')
                   : (lang === 'HI' ? 'ईमेल पता' : 'Citizen Email Address')}
@@ -408,7 +408,7 @@ export default function AuthModal({
           <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
                   {lang === 'HI' ? '6-अंकीय OTP दर्ज करें' : 'Enter 6-Digit OTP Code'}
                 </label>
                 <button

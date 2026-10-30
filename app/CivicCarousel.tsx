@@ -26,7 +26,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         : '543 Constituencies. Direct Citizen Voice.',
       body: lang === 'HI'
         ? 'भूमत देश के हर संसदीय क्षेत्र की वास्तविक आवाज़ को सीधे राष्ट्रीय मानचित्र पर लाता है। यहां हर जिले की राय वहां के स्थानीय नागरिक खुद तय करते हैं।'
-        : 'BhuMat brings public sentiment directly from the ground to the map. Every Lok Sabha constituency speaks through its own verified local residents, building a living, transparent national scoreboard.',
+        : 'BhuMat brings public sentiment directly from the ground to the map. Every Lok Sabha constituency speaks through its own local residents, building a living, transparent national scoreboard.',
       actionLabel: null,
       actionTab: null
     },
@@ -43,7 +43,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         : 'Your Identity & Your Vote Are Never Linked',
       body: lang === 'HI'
         ? 'जैसे मतदान केंद्र पर उंगली की स्याही सिर्फ यह दर्ज करती है कि आपने वोट दिया, वैसे ही भूमत पर आपकी पहचान और आपकी पसंद दो अलग-अलग बंद कमरों में रहती है। आपने किसे चुना, यह कोई नहीं जान सकता, भूमत भी नहीं।'
-        : 'Like indelible ink on your finger, mobile verification only proves you showed up (blocking fake bots). The option you select drops into an encrypted vault with zero phone numbers, zero tokens, and zero timestamps. No one, not even BhuMat can see your vote.',
+        : 'Like indelible ink on your finger, mobile verification only proves you showed up (blocking fake bots). The option you select drops into an encrypted vault with zero phone numbers, zero tokens, and zero timestamps. No one, not even BhuMat engineers can see your vote.',
       actionLabel: lang === 'HI' ? 'सुरक्षा नियम ❯' : 'Security Shield ❯',
       actionTab: 'search' as const
     },
@@ -60,7 +60,7 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
         : 'Vote First, Then Reveal the Collective Mood',
       body: lang === 'HI'
         ? 'ताकि पहले से दिख रहे रुझान आपके व्यक्तिगत फैसले को प्रभावित न करें। जैसे ही आप अपना मत दर्ज करते हैं, आपके जिले और पूरे देश के आंकड़े तुरंत खुल जाते हैं।'
-        : 'To keep public opinion completely honest and free from peer pressure, live constituency percentages and heatmaps unlock only after you vote. Your sincere voice comes first.',
+        : 'To keep public opinion completely honest and free from peer pressure, live constituency percentages and Drishti heatmaps unlock only after you vote. Your sincere voice comes first.',
       actionLabel: null,
       actionTab: null
     },
@@ -134,11 +134,11 @@ export default function CivicCarousel({ lang, onNavigateTab }: CivicCarouselProp
     }
   ];
 
-  // Auto-scroll every 7 seconds
+  // Auto-scroll every 15 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 7000);
+    }, 15000);
     return () => clearInterval(timer);
   }, [slides.length]);
 
