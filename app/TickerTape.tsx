@@ -18,8 +18,8 @@ function getOptionLabel(opt: any, lang: 'EN' | 'HI'): string {
   return opt.text_en || opt.text_hi || '';
 }
 
-function formatTickerStance(text: string, maxLen = 20): string {
-  if (!text) return 'Consensus Building';
+function formatTickerStance(text: string, maxLen = 22): string {
+  if (!text) return 'Consensus Active';
   let clean = text.split('(')[0].trim();
   if (clean.length > maxLen) {
     clean = clean.slice(0, maxLen - 1).trim() + '…';
@@ -27,11 +27,12 @@ function formatTickerStance(text: string, maxLen = 20): string {
   return clean;
 }
 
-function determineLeadingOption(tally: any, optionsCount: number): { leadIdx: number; isTie: boolean } {
-  if (!tally) return { leadIdx: 0, isTie: false };
+function determineLeadingOption(tally: any, optionsCount: number): { leadIdx: number; isTie: boolean; totalVotes: number } {
+  if (!tally) return { leadIdx: 0, isTie: false, totalVotes: 0 };
+  const totalVotes = Number(tally.total_votes || tally.total_ballots || 0);
 
   if (tally.leading_option_id !== undefined && tally.leading_option_id !== null) {
-    return { leadIdx: Number(tally.leading_option_id), isTie: Boolean(tally.is_tie) };
+    return { leadIdx: Number(tally.leading_option_id), isTie: Boolean(tally.is_tie), totalVotes };
   }
 
   let maxVotes = -1;
@@ -49,7 +50,7 @@ function determineLeadingOption(tally: any, optionsCount: number): { leadIdx: nu
     }
   }
 
-  return { leadIdx, isTie: tieCount > 1 };
+  return { leadIdx, isTie: tieCount > 1, totalVotes };
 }
 
 export default function TickerTape({
@@ -63,58 +64,91 @@ export default function TickerTape({
   const streamItems = useMemo(() => {
     if (!options || options.length === 0) return [];
 
-    const activeTallies = tallies.filter(
+    const activeTallies = (tallies || []).filter(
       (t) => Number(t.total_votes || t.total_ballots || 0) > 0
     );
 
+    // Scenario A: At least one seat has cast ballots
     if (activeTallies.length > 0) {
-      return activeTallies.map((t) => {
+      const items = activeTallies.map((t) => {
         const pcName = t.constituency_name || t.pc_name || 'Bharat';
         const stName = t.state_name || t.state_ut || '';
-        const { leadIdx, isTie } = determineLeadingOption(t, options.length);
+        const { leadIdx, isTie, totalVotes } = determineLeadingOption(t, options.length);
         const optText = getOptionLabel(options[leadIdx], lang);
 
         return {
           seat: pcName,
           state: stName,
           stance: isTie
-            ? (lang === 'HI' ? 'बराबर मत' : 'Split Mat')
+            ? (lang === 'HI' ? 'बराबर मत (Split Mat)' : 'Split Mat')
             : formatTickerStance(optText),
-          isFortified: Number(t.total_votes || t.total_ballots || 0) >= 50,
-          isTie
+          isFortified: totalVotes >= 50,
+          isTie,
+          isCallout: false
         };
       });
+
+      // If only 1 or 2 seats have voted, interleave authentic regional discovery callouts
+      if (items.length < 4) {
+        const callouts = [
+          {
+            seat: lang === 'HI' ? 'अखिल भारतीय जनमत' : 'Pan-Bharat Scoreboard',
+            state: '543 Seats',
+            stance: lang === 'HI' ? 'मतदान कर अपने क्षेत्र का मत दर्ज करें' : 'Cast ballot to unlock your seat',
+            isFortified: false,
+            isTie: false,
+            isCallout: true
+          },
+          {
+            seat: lang === 'HI' ? 'संवैधानिक कोरम' : 'Constitutional Quorum',
+            state: '50 Votes',
+            stance: lang === 'HI' ? '50 सत्यापित मतों पर सीट प्रमाणित' : '50 verified votes unlocks map color',
+            isFortified: true,
+            isTie: false,
+            isCallout: true
+          }
+        ];
+        return [...items, ...callouts];
+      }
+
+      return items;
     }
 
-    const sampleSeats = [
-      { pc: 'Darbhanga', st: 'Bihar' },
-      { pc: 'Bangalore South', st: 'Karnataka' },
-      { pc: 'Kanpur', st: 'UP' },
-      { pc: 'Nagpur', st: 'Maharashtra' },
-      { pc: 'New Delhi', st: 'Delhi' },
-      { pc: 'Patna Sahib', st: 'Bihar' },
-      { pc: 'Hyderabad', st: 'Telangana' },
-      { pc: 'Jaipur', st: 'Rajasthan' }
+    // Scenario B: Zero votes across all 543 seats (Fresh / Day-0 launch state)
+    // NEVER show fake stance data. Show authentic awaiting-consensus messaging.
+    return [
+      {
+        seat: lang === 'HI' ? 'अखिल भारतीय जनमत' : 'Pan-Bharat Scoreboard',
+        state: '543 Seats',
+        stance: lang === 'HI' ? 'शुरुआती मतों की प्रतीक्षा जारी' : 'Awaiting first verified ballots',
+        isFortified: false,
+        isTie: false,
+        isCallout: true
+      },
+      {
+        seat: lang === 'HI' ? 'संसदीय सीट' : 'Constituency Telemetry',
+        state: 'Live',
+        stance: lang === 'HI' ? 'पहला मत देकर अपनी सीट सक्रिय करें' : 'Be the first to vote from your seat',
+        isFortified: true,
+        isTie: false,
+        isCallout: true
+      },
+      {
+        seat: lang === 'HI' ? 'गोपनीय मतपेटी' : 'Secret Ballot Vault',
+        state: 'Zero GPS',
+        stance: lang === 'HI' ? '100% गोपनीय व सत्यापित' : '100% anonymous & verified',
+        isFortified: false,
+        isTie: false,
+        isCallout: true
+      }
     ];
-
-    return sampleSeats.map((seed, idx) => {
-      const optIdx = idx % options.length;
-      const optText = getOptionLabel(options[optIdx], lang);
-      return {
-        seat: seed.pc,
-        state: seed.st,
-        stance: formatTickerStance(optText),
-        isFortified: idx % 2 === 0,
-        isTie: false
-      };
-    });
   }, [tallies, options, lang]);
 
-  // Standard static duplicate list
+  // Duplicate stream items to achieve smooth, seamless marquee looping
   const loopItems = useMemo(() => {
     if (streamItems.length === 0) return [];
     let list = [...streamItems];
-    while (list.length < 8) {
+    while (list.length < 6) {
       list = [...list, ...streamItems];
     }
     return [...list, ...list];
@@ -122,8 +156,7 @@ export default function TickerTape({
 
   if (loopItems.length === 0) return null;
 
-  // Compute fixed duration purely from item count so it NEVER mutates or flashes after mount
-  const calculatedDuration = Math.max(24, Math.round(loopItems.length * 2.8));
+  const calculatedDuration = Math.max(26, Math.round(loopItems.length * 3.5));
 
   return (
     <div
@@ -163,7 +196,7 @@ export default function TickerTape({
         }
       `}</style>
 
-      {/* Pinned Left LIVE 543 Badge */}
+      {/* Pinned Left LIVE 543 Indicator Badge */}
       <div
         style={{
           position: 'absolute',
@@ -203,7 +236,7 @@ export default function TickerTape({
         </span>
       </div>
 
-      {/* Smooth Marquee Track with Deterministic Duration */}
+      {/* Marquee Track with Deterministic Continuous Duration */}
       <div style={{ width: '100%', overflow: 'hidden', paddingLeft: '86px' }}>
         <div
           className="bhumat-constant-track"
@@ -224,8 +257,8 @@ export default function TickerTape({
                 whiteSpace: 'nowrap'
               }}
             >
-              <span style={{ color: '#ffffff', fontWeight: 800 }}>
-                📍 {item.seat}
+              <span style={{ color: item.isCallout ? '#38bdf8' : '#ffffff', fontWeight: 800 }}>
+                {item.isCallout ? '⚡' : '📍'} {item.seat}
               </span>
               {item.state && (
                 <span style={{ fontSize: '9px', color: '#64748b' }}>

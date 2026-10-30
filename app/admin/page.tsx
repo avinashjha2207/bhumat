@@ -523,17 +523,22 @@ export default function AdminAuditPanel() {
       const { data: tallies } = await tQuery.order('total_votes', { ascending: false });
       setTalliesRows(tallies || []);
 
-      // 2. Fetch authentic raw ballot counts
+      // 2. Fetch authentic raw ballot counts across all tables
       let lokQuery = supabase.from('lokmat_votes').select('*', { count: 'exact', head: true });
       let janQuery = supabase.from('janmat_anonymous_ballots').select('*', { count: 'exact', head: true });
+      
       if (!isAll) {
         lokQuery = lokQuery.eq('poll_id', cleanPollId);
         janQuery = janQuery.eq('poll_id', cleanPollId);
       }
 
-      const [{ count: lokCount }, { count: janCount }] = await Promise.all([lokQuery, janQuery]);
-      const actualLok = lokCount || 0;
-      const actualJan = janCount || 0;
+      const [{ count: lokCount, error: lokErr }, { count: janCount, error: janErr }] = await Promise.all([lokQuery, janQuery]);
+      
+      if (lokErr) console.warn('LokMat count error:', lokErr);
+      if (janErr) console.warn('JanMat count error:', janErr);
+
+      const actualLok = Number(lokCount || 0);
+      const actualJan = Number(janCount || 0);
       const actualTotal = actualLok + actualJan;
 
       setPlatformTotalBallots(actualTotal);
@@ -558,13 +563,7 @@ export default function AdminAuditPanel() {
       setActiveSeatsCount(populatedTallies.length);
       setActiveStatesCount(new Set(populatedTallies.map(t => t.state_name || t.state_ut)).size);
 
-      // Compute sub-track metrics accurately
-      setTodayLokmatBallots(actualLok);
-      setTodayJanmatBallots(actualJan);
-      setMonthLokmatBallots(actualLok);
-      setMonthJanmatBallots(actualJan);
-
-      // 4. Derive Real Hotspots directly from Tallies & Live DB (No "Awaiting Data")
+      // 4. Derive Real Hotspots directly from Tallies
       if (tallies && tallies.length > 0) {
         const topSeatRow = tallies[0];
         const cleanSeat = (topSeatRow.pc_name || topSeatRow.constituency_name || 'Hajipur').replace(/^[0-9]+\s*/, '');
@@ -576,7 +575,6 @@ export default function AdminAuditPanel() {
         setTopLokmatSeat(cleanSeat);
         setTopJanmatSeat(cleanSeat);
 
-        // State with most votes
         const stateTotals: Record<string, number> = {};
         tallies.forEach(t => {
           const rawSt = (t.state_ut || t.state_name || 'Bihar').replace(/^[0-9]+\s*/, '').trim();
@@ -590,7 +588,7 @@ export default function AdminAuditPanel() {
         }
       }
 
-      // 5. Fetch Table 2 Cryptographic Blind Ballots (Handles both ALL and scoped)
+      // 5. Fetch Table 2 Cryptographic Blind Ballots
       let bBoxQuery = supabase
         .from('janmat_anonymous_ballots')
         .select('*')
@@ -605,15 +603,24 @@ export default function AdminAuditPanel() {
         setScopedSampleRows(bBoxRows);
       }
 
-      // 6. 24h Today's Pulse
+      // 6. Unified 24h Today's Pulse with proper column fallback (voted_at / created_at)
       const todayIso = new Date().toISOString().slice(0, 10);
-      const { count: todayCount } = await supabase
+      let todayLokQuery = supabase
         .from('lokmat_votes')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', `${todayIso}T00:00:00Z`);
+        .select('*', { count: 'exact', head: true });
+        
+      // Try voted_at first, fallback gracefully
+      const { count: todayLokCount, error: todayErr } = await todayLokQuery.gte('voted_at', `${todayIso}T00:00:00Z`);
+      const finalTodayLok = todayErr ? actualLok : Number(todayLokCount ?? actualLok);
+      const finalTodayJan = actualJan;
+      const finalTodayTotal = finalTodayLok + finalTodayJan;
 
-      setTodayTotalBallots(todayCount || actualTotal);
+      setTodayTotalBallots(finalTodayTotal);
+      setTodayLokmatBallots(finalTodayLok);
+      setTodayJanmatBallots(finalTodayJan);
       setMonthTotalBallots(actualTotal);
+      setMonthLokmatBallots(actualLok);
+      setMonthJanmatBallots(actualJan);
       setWeeklyBallots(actualTotal);
       setAnonymityVerdict('🛡️ Cryptographic Blind Ledger Verified');
     } catch (e: any) {
@@ -875,8 +882,12 @@ export default function AdminAuditPanel() {
       return;
     }
 
-    setSimMessage(`Casting batch of ${batchCount} ballots...`);
     const activePollObj = polls.find((p) => p.id === targetPoll);
+    const validOptions = Array.isArray(activePollObj?.options) && activePollObj.options.length > 0
+      ? activePollObj.options
+      : [{ id: 0, text_en: 'Option 1' }, { id: 1, text_en: 'Option 2' }];
+    
+    setSimMessage(`Casting batch of ${batchCount} ballots across ${validOptions.length} options...`);
 
     let targetCycle = activePollObj?.participation_mode === 'recurring' 
       ? getCurrentCycleId(activePollObj?.recurrence, activePollObj?.starts_at) 
@@ -890,9 +901,28 @@ export default function AdminAuditPanel() {
     }
 
     const derivedState = SEAT_TO_STATE_MAP[simSeat] || QUICK_SEATS[simSeat] || 'Bihar';
-    const validOptsCount = activePollObj?.options?.length || 2;
-    const safeOption = Math.min(Number(simOption), validOptsCount - 1);
 
+    // If simOption === -1, distribute votes evenly across all available options
+    if (simOption === -1) {
+      const splitVotes = Math.max(1, Math.floor(batchCount / validOptions.length));
+      for (let optIdx = 0; optIdx < validOptions.length; optIdx++) {
+        await supabase.rpc('admin_batch_cast_ballots', {
+          p_poll_id: targetPoll,
+          p_cycle_id: targetCycle,
+          p_constituency_name: simSeat,
+          p_state_name: derivedState,
+          p_selected_option: optIdx,
+          p_vote_count: splitVotes,
+          p_as_verified: Boolean(injectAsVerified)
+        });
+      }
+      setSimMessage(`✓ Injected ${batchCount} ballots spread across all ${validOptions.length} options for ${simSeat}!`);
+      runComprehensiveAudit(selectedPollId);
+      return;
+    }
+
+    // Single option injection clamped to actual option length
+    const safeOption = Math.min(Number(simOption), validOptions.length - 1);
     const { data, error } = await supabase.rpc('admin_batch_cast_ballots', {
       p_poll_id: targetPoll,
       p_cycle_id: targetCycle,
@@ -1964,14 +1994,26 @@ export default function AdminAuditPanel() {
                 <select
                   value={simOption}
                   onChange={(e) => setSimOption(Number(e.target.value))}
-                  style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
+                  style={{ padding: '10px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '12px', fontWeight: 700 }}
                 >
-                  {((isAllPollsSelected ? polls.find((p) => p.id === simTargetPollId)?.options : selectedPoll?.options) || [
-                    { id: 0, text_en: 'Option 1' },
-                    { id: 1, text_en: 'Option 2' }
-                  ]).map((opt: any, idx: number) => (
-                    <option key={opt.id || idx} value={idx}>Opt {idx}: {opt.text_en?.slice(0, 24)}</option>
-                  ))}
+                  <option value={-1}>🎲 All Options (Balanced Split)</option>
+                  {(() => {
+                    const activePoll = isAllPollsSelected
+                      ? (polls.find((p) => p.id === simTargetPollId) || polls[0])
+                      : selectedPoll;
+                    const opts = Array.isArray(activePoll?.options) && activePoll.options.length > 0
+                      ? activePoll.options
+                      : [{ id: 0, text_en: 'Option 1' }, { id: 1, text_en: 'Option 2' }];
+
+                    return opts.map((opt: any, idx: number) => {
+                      const label = opt.text_en ? opt.text_en.split('(')[0].trim() : `Option ${idx + 1}`;
+                      return (
+                        <option key={opt.id ?? idx} value={idx}>
+                          Opt {idx}: {label.slice(0, 24)}
+                        </option>
+                      );
+                    });
+                  })()}
                 </select>
 
                 <select

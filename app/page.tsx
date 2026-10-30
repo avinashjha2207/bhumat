@@ -1581,7 +1581,15 @@ export default function BhuMatApp() {
   return (
     <div
       onClick={() => setActiveTooltip(null)}
-      style={{ minHeight: '100dvh', backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+      style={{
+        minHeight: '100dvh',
+        width: '100%',
+        backgroundColor: '#f8fafc',
+        color: '#0f172a',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}
     >
       <style>{`
         html, body {
