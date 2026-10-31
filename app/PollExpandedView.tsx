@@ -1,11 +1,14 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { toBlob } from 'html-to-image';
 import { supabase, safeStorage } from './utils/supabaseClient';
 import TickerTape from './TickerTape';
 import { getCurrentCycleId } from './utils/cycleManager';
 import MatParchiModal from './MatParchiModal';
+import SamvaadSection, { SamvaadIcon } from './components/SamvaadSection';
+import AuthModal from './AuthModal';
 
 const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
 const UNPOLLED_SEAT_COLOR = '#e2e8f0';
@@ -44,19 +47,38 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
 }
 
 function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isTie: boolean, customHex?: string): string {
-  if (totalVotes === 0) return UNPOLLED_SEAT_COLOR;
+  if (totalVotes === 0 || optIdx === null) return UNPOLLED_SEAT_COLOR;
   if (isTie) {
-    if (totalVotes >= 50) return '#d97706'; // Rich Golden Bronze
-    if (totalVotes >= 25) return '#f59e0b'; // Radiant Amber Gold
-    return '#fcd34d'; // Soft Gold for Early Contested
+    if (totalVotes >= 50) return '#d97706';
+    if (totalVotes >= 25) return '#f59e0b';
+    return '#fcd34d';
   }
-  if (optIdx === null) return UNPOLLED_SEAT_COLOR;
-  const baseHue = customHex ? hexToHsl(customHex).h : (TIER_HUE_MAP[optIdx % 4] ?? 24);
-  if (totalVotes >= 150) return `hsl(${baseHue}, 100%, 42%)`;
-  if (totalVotes >= 50)  return `hsl(${baseHue}, 95%, 48%)`;
-  if (totalVotes >= 25)  return `hsl(${baseHue}, 75%, 60%)`;
-  if (totalVotes >= 10)  return `hsl(${baseHue}, 55%, 72%)`;
-  return `hsl(${baseHue}, 42%, 84%)`;
+  
+  // If custom color is provided, preserve its authentic saturation and lightness
+  if (customHex && customHex !== '#ffffff' && customHex !== '#fff') {
+    const hsl = hexToHsl(customHex);
+    // For low-saturation neutral colors (slate, charcoal, black, gray)
+    if (hsl.s <= 25) {
+      if (totalVotes >= 150) return `hsl(${hsl.h}, ${hsl.s}%, 22%)`;
+      if (totalVotes >= 50)  return `hsl(${hsl.h}, ${hsl.s}%, 38%)`;
+      if (totalVotes >= 25)  return `hsl(${hsl.h}, ${hsl.s}%, 55%)`;
+      if (totalVotes >= 10)  return `hsl(${hsl.h}, ${hsl.s}%, 72%)`;
+      return `hsl(${hsl.h}, ${hsl.s}%, 85%)`;
+    }
+    // For saturated colors, modulate saturation with quorum
+    if (totalVotes >= 150) return `hsl(${hsl.h}, ${Math.max(70, hsl.s)}%, 42%)`;
+    if (totalVotes >= 50)  return `hsl(${hsl.h}, ${Math.max(65, hsl.s)}%, 48%)`;
+    if (totalVotes >= 25)  return `hsl(${hsl.h}, ${Math.max(50, hsl.s)}%, 60%)`;
+    if (totalVotes >= 10)  return `hsl(${hsl.h}, ${Math.max(35, hsl.s)}%, 72%)`;
+    return `hsl(${hsl.h}, 30%, 84%)`;
+  }
+
+  const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
+  if (totalVotes >= 150) return `hsl(${hue}, 100%, 42%)`;
+  if (totalVotes >= 50)  return `hsl(${hue}, 95%, 48%)`;
+  if (totalVotes >= 25)  return `hsl(${hue}, 75%, 60%)`;
+  if (totalVotes >= 10)  return `hsl(${hue}, 55%, 72%)`;
+  return `hsl(${hue}, 42%, 84%)`;
 }
 
 interface Poll {
@@ -218,7 +240,57 @@ export default function PollExpandedView({
   const zoomBehaviorRef = useRef<any>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showParchi, setShowParchi] = useState(false);
+  const [showSamvaadModal, setShowSamvaadModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  // Complete Viewport Scroll Freeze when Samvaad bottom sheet is active
+  useEffect(() => {
+    if (showSamvaadModal) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      const prevTouchAction = document.body.style.touchAction;
+
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+        document.body.style.touchAction = prevTouchAction;
+      };
+    }
+  }, [showSamvaadModal]);
   const [isAllBallotsFlipped, setIsAllBallotsFlipped] = useState(false);
+  const [topSamvaadComment, setTopSamvaadComment] = useState<any | null>(null);
+  const [samvaadTotalCount, setSamvaadTotalCount] = useState<number>(0);
+
+  // Pre-fetch Samvaad metrics and comments on mount for instant 0ms modal opening
+  useEffect(() => {
+    if (!poll?.id || (poll.category || '').toLowerCase() !== 'lokmat') return;
+    async function prefetchSamvaad() {
+      try {
+        const { data, count } = await supabase
+          .from('samvaad_comments')
+          .select('*', { count: 'exact' })
+          .eq('poll_id', poll.id)
+          .in('status', ['ACTIVE', 'QUARANTINED'])
+          .order('net_karma', { ascending: false });
+
+        if (count !== null) setSamvaadTotalCount(count);
+        if (data && data.length > 0) {
+          const rootComments = data.filter((c: any) => !c.parent_id);
+          setTopSamvaadComment(rootComments[0] || data[0]);
+        }
+      } catch (err) {
+        console.error('Error prefetching Samvaad:', err);
+      }
+    }
+    prefetchSamvaad();
+  }, [poll?.id, poll?.category]);
 
   const PC_ALIASES: Record<string, string> = {
     'ahmadabad': 'ahmedabad',
@@ -1611,8 +1683,9 @@ useEffect(() => {
           </div>
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           <button
+            type="button"
             onClick={() => setShowParchi(true)}
             style={{
               padding: '10px 16px',
@@ -1630,8 +1703,35 @@ useEffect(() => {
             }}
           >
             <span>📜</span>
-            <span>{lang === 'HI' ? 'मत पर्ची (डिजिटल स्लिप)' : 'Mat Parchi'}</span>
+            <span>{lang === 'HI' ? 'मत पर्ची' : 'Mat Parchi'}</span>
           </button>
+
+          {(poll.category || '').toLowerCase() === 'lokmat' && (
+            <button
+              type="button"
+              onClick={() => setShowSamvaadModal(true)}
+              style={{
+                padding: '10px 14px',
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '12px',
+                color: '#0f172a',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+              }}
+            >
+              <SamvaadIcon size={14} color="#0f172a" />
+              <span>{lang === 'HI' ? 'संवाद' : 'Samvaad'}</span>
+              <span style={{ fontSize: '10px', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '999px', fontWeight: 800 }}>
+                {samvaadTotalCount}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Card 3: 3-Box Comparison Ledger (Derived Directly from Matrix Truth) */}
@@ -1805,7 +1905,53 @@ useEffect(() => {
           </div>
         </div>
 
-{/* Citizen Pulse: Contextual Regional Shifts */}
+        {/* Samvaad Teaser Container (Clean & Subdued) */}
+        {(poll.category || '').toLowerCase() === 'lokmat' && (
+          <div
+            onClick={() => setShowSamvaadModal(true)}
+            style={{
+              backgroundColor: '#ffffff',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '12px 14px',
+              marginBottom: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <SamvaadIcon size={14} color="#0f172a" />
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
+                  {lang === 'HI' ? 'संवाद • शीर्ष विचार' : 'Samvaad • Top Perspective'}
+                </span>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#0f172a' }}>
+                {samvaadTotalCount > 0 ? `${samvaadTotalCount} विचार ❯` : (lang === 'HI' ? 'विचार जोड़ें ❯' : 'Join Discussion ❯')}
+              </span>
+            </div>
+
+            {topSamvaadComment && topSamvaadComment.status !== 'DELETED' ? (
+              <div style={{ fontSize: '12px', color: '#1e293b', lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>@{topSamvaadComment.username}</span>
+                <span style={{ fontSize: '10.5px', color: '#64748b', marginLeft: '4px' }}>
+                  (📍 {topSamvaadComment.pc_name}):
+                </span>{' '}
+                &ldquo;{topSamvaadComment.comment_text.slice(0, 110)}
+                {topSamvaadComment.comment_text.length > 110 ? '…' : ''}&rdquo;
+              </div>
+            ) : (
+              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                {lang === 'HI' ? 'नागरिक संवाद में अपना विचार दर्ज करें।' : 'Tap to open discussion and view community perspectives.'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Citizen Pulse: Contextual Regional Shifts */}
         <div style={{
           backgroundColor: '#ffffff',
           border: '1.5px solid #e2e8f0',
@@ -2409,6 +2555,89 @@ useEffect(() => {
           </button>
         </div>
 
+        {/* Native Mobile Bottom Sheet / Modal for Samvaad (Escaped to document.body) */}
+        {showSamvaadModal && isMounted && createPortal(
+          <div
+            onClick={() => setShowSamvaadModal(false)}
+            onTouchMove={(e) => {
+              if (e.target === e.currentTarget) e.preventDefault();
+            }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100dvh',
+              zIndex: 999999,
+              backgroundColor: 'rgba(15, 23, 42, 0.65)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              overscrollBehavior: 'none',
+              margin: 0,
+              padding: 0
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: '#ffffff',
+                borderTopLeftRadius: '24px',
+                borderTopRightRadius: '24px',
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+                width: '100%',
+                maxWidth: '460px',
+                height: '80dvh',
+                maxHeight: '80dvh',
+                display: 'flex',
+                flexDirection: 'column',
+                padding: '12px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px',
+                boxSizing: 'border-box',
+                boxShadow: '0 -12px 48px rgba(0, 0, 0, 0.3)',
+                borderTop: '1px solid #cbd5e1',
+                borderLeft: '1px solid #e2e8f0',
+                borderRight: '1px solid #e2e8f0',
+                borderBottom: 'none',
+                overflow: 'hidden',
+                margin: 0,
+                transform: 'translateZ(0)'
+              }}
+            >
+              {/* Drag Handle Indicator */}
+              <div style={{ width: '36px', height: '4px', backgroundColor: '#cbd5e1', borderRadius: '2px', alignSelf: 'center', marginBottom: '8px', flexShrink: 0 }} />
+              <SamvaadSection
+                pollId={poll.id}
+                pollCategory={poll.category}
+                lang={lang}
+                userSeat={userSeatName || 'Constituency'}
+                userState={userState || 'Bharat'}
+                selectedOptionText={
+                  userVotedOptionIdx !== null && poll.options[userVotedOptionIdx]
+                    ? (lang === 'HI' ? poll.options[userVotedOptionIdx].text_hi : poll.options[userVotedOptionIdx].text_en)
+                    : ''
+                }
+                selectedOptionId={userVotedOptionIdx}
+                hasVoted={userVotedOptionIdx !== null && userVotedOptionIdx !== undefined}
+                isModal={true}
+                onClose={() => setShowSamvaadModal(false)}
+                onRequireAuth={() => {
+                  setShowSamvaadModal(false);
+                  setShowAuthModal(true);
+                }}
+                onUpdateMetrics={(count, topComment) => {
+                  setSamvaadTotalCount(count);
+                  if (topComment) setTopSamvaadComment(topComment);
+                }}
+              />
+            </div>
+          </div>,
+          document.body
+        )}
+
 <MatParchiModal
   isOpen={showParchi}
   onClose={() => setShowParchi(false)}
@@ -2425,6 +2654,22 @@ useEffect(() => {
   stateName={userState || 'National'}
   username={safeStorage.getItem('bhumat_username') || 'Citizen'}
   lang={lang}
+/>
+
+<AuthModal
+  isOpen={showAuthModal}
+  onClose={() => {
+    setShowAuthModal(false);
+    setShowSamvaadModal(true); // Seamlessly return user back into Samvaad
+  }}
+  lang={lang}
+  requiredFor="JanMat"
+  userSeat={userSeatName || 'Constituency'}
+  userState={userState || 'Bharat'}
+  onSuccess={() => {
+    setShowAuthModal(false);
+    setShowSamvaadModal(true);
+  }}
 />
 
       </main>

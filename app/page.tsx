@@ -17,6 +17,7 @@ import ProfileTab from './ProfileTab';
 import CivicCarousel from './CivicCarousel';
 import BhuMatLogo from './BhuMatLogo';
 
+
 const DrishtiMap = dynamic(() => import('./DrishtiMap'), {
   ssr: false,
   loading: () => (
@@ -1448,13 +1449,17 @@ export default function BhuMatApp() {
     const upcoming: Poll[] = [];
     const archived: Poll[] = [];
 
+    const nowTime = Date.now();
     polls.forEach((p) => {
+      const dropTime = p.starts_at ? new Date(p.starts_at).getTime() : 0;
       const schedule = evaluatePollSchedule(p);
-      if (schedule.statusLabel === 'ACTIVE') {
-        live.push(p);
-      } else if (schedule.statusLabel === 'UPCOMING') {
+      
+      // Robust Check: If starts_at is in the future, it is UPCOMING
+      if (dropTime > nowTime || schedule.statusLabel === 'UPCOMING') {
         upcoming.push(p);
-      } else if (schedule.statusLabel === 'ARCHIVED') {
+      } else if (schedule.statusLabel === 'ACTIVE' || (p.is_active !== false && dropTime <= nowTime)) {
+        live.push(p);
+      } else {
         archived.push(p);
       }
     });
@@ -2009,19 +2014,20 @@ export default function BhuMatApp() {
               </div>
             )}
       
-            {/* Horizontal Civic Carousel (Explains BhuMat, Cadence, & Rules) */}
-            {/* Horizontal Civic Carousel (Explains BhuMat, Cadence, & Rules) */}
-            <CivicCarousel
-              lang={lang}
-              onNavigateTab={(target) => {
-                if (target === 'rankings') {
-                  router.push('/leaderboard');
-                } else if (target === 'schedule' || target === 'search') {
-                  setActiveTab(target);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }}
-            />
+            {/* Horizontal Civic Carousel & Guest Runway: Only rendered for confirmed citizens */}
+            {isConfirmed && (
+              <CivicCarousel
+                lang={lang}
+                onNavigateTab={(target) => {
+                  if (target === 'rankings') {
+                    router.push('/leaderboard');
+                  } else if (target === 'schedule' || target === 'search') {
+                    setActiveTab(target);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+              />
+            )}
 
             {/* Animated 3-Step Guest Runway Indicator Meter */}
             {!linkedPhone && isConfirmed && (

@@ -46,11 +46,31 @@ function getConstituencyTierColor(optIdx: number | null, totalVotes: number, isT
     if (totalVotes >= 25) return '#f59e0b';
     return '#fcd34d';
   }
-  const hue = customHex ? hexToHsl(customHex).h : (TIER_HUE_MAP[optIdx % 4] ?? 24);
+  
+  // If custom color is provided, preserve its authentic saturation and lightness
+  if (customHex && customHex !== '#ffffff' && customHex !== '#fff') {
+    const hsl = hexToHsl(customHex);
+    // For low-saturation neutral colors (slate, charcoal, black, gray)
+    if (hsl.s <= 25) {
+      if (totalVotes >= 150) return `hsl(${hsl.h}, ${hsl.s}%, 22%)`;
+      if (totalVotes >= 50)  return `hsl(${hsl.h}, ${hsl.s}%, 38%)`;
+      if (totalVotes >= 25)  return `hsl(${hsl.h}, ${hsl.s}%, 55%)`;
+      if (totalVotes >= 10)  return `hsl(${hsl.h}, ${hsl.s}%, 72%)`;
+      return `hsl(${hsl.h}, ${hsl.s}%, 85%)`;
+    }
+    // For saturated colors, modulate saturation with quorum
+    if (totalVotes >= 150) return `hsl(${hsl.h}, ${Math.max(70, hsl.s)}%, 42%)`;
+    if (totalVotes >= 50)  return `hsl(${hsl.h}, ${Math.max(65, hsl.s)}%, 48%)`;
+    if (totalVotes >= 25)  return `hsl(${hsl.h}, ${Math.max(50, hsl.s)}%, 60%)`;
+    if (totalVotes >= 10)  return `hsl(${hsl.h}, ${Math.max(35, hsl.s)}%, 72%)`;
+    return `hsl(${hsl.h}, 30%, 84%)`;
+  }
+
+  const hue = TIER_HUE_MAP[optIdx % 4] ?? 24;
   if (totalVotes >= 150) return `hsl(${hue}, 100%, 42%)`;
-  if (totalVotes >= 50) return `hsl(${hue}, 95%, 48%)`;
-  if (totalVotes >= 25) return `hsl(${hue}, 75%, 60%)`;
-  if (totalVotes >= 10) return `hsl(${hue}, 55%, 72%)`;
+  if (totalVotes >= 50)  return `hsl(${hue}, 95%, 48%)`;
+  if (totalVotes >= 25)  return `hsl(${hue}, 75%, 60%)`;
+  if (totalVotes >= 10)  return `hsl(${hue}, 55%, 72%)`;
   return `hsl(${hue}, 42%, 84%)`;
 }
 
@@ -625,6 +645,14 @@ tooltipTimeoutRef.current = setTimeout(() => {
       }}
     >
       <style>{`
+      @keyframes radarRippleOuter {
+          0% { transform: scale(0.6); opacity: 0.8; }
+          100% { transform: scale(2.4); opacity: 0; }
+        }
+        @keyframes radarRippleInner {
+          0% { transform: scale(0.6); opacity: 0.9; }
+          100% { transform: scale(1.8); opacity: 0; }
+        }
         @keyframes stateRadarWave {
           0% { r: 6px; opacity: 0.95; stroke-width: 2.5px; }
           100% { r: 34px; opacity: 0; stroke-width: 0.3px; }
@@ -709,32 +737,46 @@ tooltipTimeoutRef.current = setTimeout(() => {
                 📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'लोकसभा सीटें' : 'Lok Sabha Seats'})` : ''}
               </span>
               <div style={{
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '5px',
-  backgroundColor: '#ecfdf5',
-  border: '1px solid #a7f3d0',
-  padding: '2px 8px',
-  borderRadius: '999px',
-  fontSize: '10px',
-  fontWeight: 800,
-  color: '#065f46'
-}}>
-  <div style={{ position: 'relative', width: '12px', height: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{
-                position: 'absolute',
-                width: '100%',
-                height: '100%',
-                borderRadius: '50%',
-                border: '1.5px solid #10b981',
-                animation: 'radarPing 2.2s infinite cubic-bezier(0.2, 0.8, 0.4, 1)'
-              }} />
-              <span style={{ fontSize: '10px', lineHeight: 1, zIndex: 2 }}>📡</span>
-            </div>
-            <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#065f46' }}>
-              {lang === 'HI' ? 'लाइव दृष्टि मैप' : 'Live Drishti Map'}
-            </span>
-</div>
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                padding: '3px 8px',
+                borderRadius: '999px',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: '#065f46'
+              }}>
+                <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '12px', height: '12px', flexShrink: 0 }}>
+                  <span style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    backgroundColor: '#10b981',
+                    opacity: 0.4,
+                    animation: 'radarRippleOuter 2.2s cubic-bezier(0, 0.2, 0.8, 1) infinite'
+                  }} />
+                  <span style={{
+                    position: 'absolute',
+                    width: '70%',
+                    height: '70%',
+                    borderRadius: '50%',
+                    backgroundColor: '#10b981',
+                    opacity: 0.7,
+                    animation: 'radarRippleInner 2.2s cubic-bezier(0, 0.2, 0.8, 1) 0.4s infinite'
+                  }} />
+                  <span style={{
+                    position: 'relative',
+                    width: '5px',
+                    height: '5px',
+                    borderRadius: '50%',
+                    backgroundColor: '#059669'
+                  }} />
+                </span>
+                <span>{lang === 'HI' ? 'लाइव दृष्टि' : 'Live Drishti'}</span>
+              </div>
             </div>
 
             {isPioneer && (

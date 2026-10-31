@@ -62,27 +62,37 @@ export default function ScheduleTab({
   const [scheduleCategoryFilter, setScheduleCategoryFilter] = useState<'ALL' | 'LokMat' | 'JanMat'>('ALL');
   const [scheduleMonthOffset, setScheduleMonthOffset] = useState<number>(0);
 
-  // Anchor to day 1 to prevent 31st end-of-month rollover bugs
-  const todayDate = new Date();
-  const rawTargetMonth = todayDate.getMonth() + (scheduleMonthOffset || 0);
-  const currentYear = todayDate.getFullYear() + Math.floor(rawTargetMonth / 12);
-  const currentMonth = ((rawTargetMonth % 12) + 12) % 12;
-  const baseDate = new Date(currentYear, currentMonth, 1);
+  // Anchor explicitly to day 1 to prevent 31st overflow rollover
+  const nowAnchor = new Date();
+  const targetYear = nowAnchor.getMonth() + (scheduleMonthOffset || 0) > 11
+    ? nowAnchor.getFullYear() + Math.floor((nowAnchor.getMonth() + (scheduleMonthOffset || 0)) / 12)
+    : nowAnchor.getFullYear();
+  const targetMonth = ((nowAnchor.getMonth() + (scheduleMonthOffset || 0)) % 12 + 12) % 12;
+  const baseDate = new Date(targetYear, targetMonth, 1);
+
+  const currentYear = baseDate.getFullYear();
+  const currentMonth = baseDate.getMonth();
   const seasonNumber = currentMonth + 1;
   const activeMonthName = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
   const activeMonthShort = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'short' }).toUpperCase();
   const seasonTitleText = lang === 'HI'
     ? `${activeMonthName} सत्र (सत्र ${seasonNumber} • ${currentYear})`
     : `${activeMonthName} Season (Season ${seasonNumber} • ${currentYear})`;
+    
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayRaw = new Date(currentYear, currentMonth, 1).getDay();
   const startOffset = (firstDayRaw + 6) % 7;
   const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
-  const safeSelectedDay = Math.min(selectedCalendarDay, daysInMonth);
+  
+  // Reset selected day to 1 if viewing a different month or if day exceeds days in month
+  const safeSelectedDay = scheduleMonthOffset === 0
+    ? Math.min(selectedCalendarDay, daysInMonth)
+    : Math.min(selectedCalendarDay, daysInMonth) === 31 ? 1 : Math.min(selectedCalendarDay, daysInMonth);
+
   const selectedDateObj = new Date(currentYear, currentMonth, safeSelectedDay);
   const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
 
-  const isViewingCurrentMonth = currentMonth === todayDate.getMonth() && currentYear === todayDate.getFullYear();
+  const isViewingCurrentMonth = currentMonth === nowAnchor.getMonth() && currentYear === nowAnchor.getFullYear();
   const pollsForSelectedDay = polls
     .filter((p) => {
       const dropDateStr = p.starts_at || p.next_starts_at;
@@ -151,7 +161,10 @@ export default function ScheduleTab({
             <button
               type="button"
               disabled={scheduleMonthOffset === 0}
-              onClick={() => setScheduleMonthOffset(0)}
+              onClick={() => {
+                setScheduleMonthOffset(0);
+                setSelectedCalendarDay(new Date().getDate()); // Restores today (31st Oct)
+              }}
               style={{
                 padding: '4px 10px',
                 borderRadius: '6px',
@@ -166,16 +179,15 @@ export default function ScheduleTab({
               ◀ {lang === 'HI' ? 'चालू माह' : 'Current Month'}
             </button>
             <span style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a' }}>
-              {(() => {
-                const d = new Date();
-                d.setMonth(d.getMonth() + scheduleMonthOffset);
-                return d.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' });
-              })()}
+              {baseDate.toLocaleDateString(lang === 'HI' ? 'hi-IN' : 'en-IN', { month: 'long', year: 'numeric' })}
             </span>
             <button
               type="button"
               disabled={scheduleMonthOffset === 1}
-              onClick={() => setScheduleMonthOffset(1)}
+              onClick={() => {
+                setScheduleMonthOffset(1);
+                setSelectedCalendarDay(1); // Anchors selection to 1st of November
+              }}
               style={{
                 padding: '4px 10px',
                 borderRadius: '6px',

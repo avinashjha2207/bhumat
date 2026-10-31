@@ -62,6 +62,7 @@ interface ProfileTabProps {
   setIsChangeSeatModalOpen: (open: boolean) => void;
   syncWallet: (token: string) => Promise<void>;
   triggerInfoPopup?: (title: string, desc: string, e: React.MouseEvent) => void;
+  onOpenAuthModal?: (method?: 'JanMat' | 'LokMat' | 'General') => void;
 }
 
 function maskPhoneNumber(phone?: string | null): string {
@@ -115,7 +116,8 @@ export default function ProfileTab({
   setSeatSearchInput,
   setIsChangeSeatModalOpen,
   syncWallet,
-  triggerInfoPopup
+  triggerInfoPopup,
+  onOpenAuthModal
 }: ProfileTabProps) {
   const router = useRouter();
   const handleInfo = (title: string, desc: string, e: React.MouseEvent) => {
@@ -1306,29 +1308,70 @@ export default function ProfileTab({
             <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatVotingSince(votingSinceDate, lang)}</span>
           </div>
 
-          {/* Masked Credentials Strip */}
-          <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {/* Masked Credentials & Secondary Account Binding */}
+          <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Phone Row */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-              <span
-                onClick={(e) => handleInfo(
-                  lang === 'HI' ? 'गोपनीयता व नागरिक सत्यापन' : 'Privacy Shield & Verification',
-                  lang === 'HI' 
-                    ? 'सत्यापन केवल फर्जी बॉट्स रोकने हेतु है। आपकी पहचान कभी भी आपके जनमत गुप्त मतों से नहीं जोड़ी जाती।' 
-                    : 'One-time verification eliminates automated bots. Your identity is never linked to your confidential JanMat votes.',
-                  e
-                )}
-                style={{ color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
-              >
-                <span>{linkedPhone ? '📱' : (linkedEmail ? '✉️' : '👤')} {lang === 'HI' ? 'सत्यापित अकाउंट:' : 'Linked Account:'}</span>
-                <span style={{ fontSize: '10px', color: '#0284c7' }}>ⓘ</span>
+              <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>📱</span>
+                <span>{lang === 'HI' ? 'मोबाइल नंबर:' : 'Mobile Number:'}</span>
               </span>
-              <span style={{ fontWeight: 800, color: (linkedPhone || linkedEmail) ? '#0284c7' : '#94a3b8' }}>
-                {linkedPhone 
-                  ? maskPhoneNumber(linkedPhone) 
-                  : (linkedEmail 
-                      ? maskEmailAddress(linkedEmail) 
-                      : (lang === 'HI' ? 'अतिथि (असत्यापित)' : 'Guest (Unverified)'))}
+              {linkedPhone ? (
+                <span style={{ fontWeight: 700, color: '#059669', fontSize: '11px' }}>
+                  ✓ {maskPhoneNumber(linkedPhone)}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenAuthModal) onOpenAuthModal('JanMat');
+                  }}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ＋ {lang === 'HI' ? 'मोबाइल जोड़ें' : 'Link Mobile'}
+                </button>
+              )}
+            </div>
+
+            {/* Email Row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+              <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>✉️</span>
+                <span>{lang === 'HI' ? 'रिकवरी ईमेल:' : 'Recovery Email:'}</span>
               </span>
+              {linkedEmail ? (
+                <span style={{ fontWeight: 700, color: '#059669', fontSize: '11px' }}>
+                  ✓ {maskEmailAddress(linkedEmail)}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenAuthModal) onOpenAuthModal('General');
+                  }}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    color: '#64748b',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ＋ {lang === 'HI' ? 'ईमेल जोड़ें' : 'Link Email'}
+                </button>
+              )}
             </div>
           </div>
 

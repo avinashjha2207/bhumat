@@ -204,8 +204,10 @@ export default function AdminAuditPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState('');
   const [authError, setAuthError] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'AUDIT' | 'CREATE_POLL'>('AUDIT');
-
+  const [activeAdminTab, setActiveAdminTab] = useState<'AUDIT' | 'CREATE_POLL' | 'SAMVAAD'>('AUDIT');
+  const [samvaadComments, setSamvaadComments] = useState<any[]>([]);
+  const [samvaadFilter, setSamvaadFilter] = useState<'ALL' | 'FLAGGED' | 'QUARANTINED' | 'DELETED'>('FLAGGED');
+  const [samvaadActionLoading, setSamvaadActionLoading] = useState<string | null>(null);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<string>('ALL');
 
@@ -478,6 +480,64 @@ export default function AdminAuditPanel() {
     }
   };
 
+  async function fetchSamvaadComments() {
+    try {
+      let query = supabase
+        .from('samvaad_comments')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (samvaadFilter === 'FLAGGED') {
+        query = query.gt('flag_count', 0).neq('status', 'DELETED');
+      } else if (samvaadFilter === 'QUARANTINED') {
+        query = query.eq('status', 'QUARANTINED');
+      } else if (samvaadFilter === 'DELETED') {
+        query = query.eq('status', 'DELETED');
+      }
+
+      const { data, error } = await query.limit(100);
+      if (!error && data) {
+        setSamvaadComments(data);
+      }
+    } catch (e) {
+      console.error('Error fetching samvaad comments:', e);
+    }
+  }
+
+  const handleUpdateSamvaadStatus = async (commentId: string, newStatus: 'ACTIVE' | 'QUARANTINED' | 'DELETED') => {
+    if (newStatus === 'DELETED' && !confirm('Permanently take down this comment from public view?')) return;
+    setSamvaadActionLoading(commentId);
+    try {
+      const { error } = await supabase
+        .from('samvaad_comments')
+        .update({ status: newStatus, flag_count: newStatus === 'ACTIVE' ? 0 : undefined })
+        .eq('id', commentId);
+
+      if (!error) {
+        setSamvaadComments((prev) =>
+          prev.map((c) => (c.id === commentId ? { ...c, status: newStatus, flag_count: newStatus === 'ACTIVE' ? 0 : c.flag_count } : c))
+        );
+      } else {
+        alert('Failed to update comment status: ' + error.message);
+      }
+    } finally {
+      setSamvaadActionLoading(null);
+    }
+  };
+
+  const handleTogglePinSamvaad = async (commentId: string, currentPin: boolean) => {
+    const { error } = await supabase
+      .from('samvaad_comments')
+      .update({ is_pinned: !currentPin })
+      .eq('id', commentId);
+
+    if (!error) {
+      setSamvaadComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, is_pinned: !currentPin } : c))
+      );
+    }
+  };
+
   async function fetchPlatformSettings() {
     try {
       const { data } = await supabase
@@ -506,8 +566,15 @@ export default function AdminAuditPanel() {
       fetchPlatformSettings();
       fetchViralityStats();
       fetchActiveBroadcast();
+      fetchSamvaadComments();
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated && activeAdminTab === 'SAMVAAD') {
+      fetchSamvaadComments();
+    }
+  }, [activeAdminTab, samvaadFilter, isAuthenticated]);
 
   async function runComprehensiveAudit(pollId: string) {
     setLoading(true);
@@ -1152,7 +1219,27 @@ export default function AdminAuditPanel() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveAdminTab(prev => prev === 'AUDIT' ? 'CREATE_POLL' : 'AUDIT')}
+              onClick={() => setActiveAdminTab(prev => prev === 'SAMVAAD' ? 'AUDIT' : 'SAMVAAD')}
+              style={{
+                padding: '8px 14px',
+                backgroundColor: activeAdminTab === 'SAMVAAD' ? '#0f172a' : '#f8fafc',
+                color: activeAdminTab === 'SAMVAAD' ? '#ffffff' : '#0f172a',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <span>💬</span>
+              <span>Samvaad Moderation</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveAdminTab(prev => prev === 'CREATE_POLL' ? 'AUDIT' : 'CREATE_POLL')}
               style={{ padding: '8px 16px', backgroundColor: activeAdminTab === 'CREATE_POLL' ? '#0f172a' : '#0284c7', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
             >
               {activeAdminTab === 'CREATE_POLL' ? '← Back to Live Audit' : '＋ Deploy New Poll'}
@@ -1163,7 +1250,161 @@ export default function AdminAuditPanel() {
           </div>
         </div>
 
-        {activeAdminTab === 'CREATE_POLL' ? (
+        {activeAdminTab === 'SAMVAAD' ? (
+          /* SAMVAAD DELIBERATION & MODERATION HUB */
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', border: '1.5px solid #cbd5e1', padding: '24px', boxShadow: '0 4px 16px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 900, backgroundColor: '#0f172a', color: '#ffffff', padding: '3px 8px', borderRadius: '6px' }}>
+                    💬 SAMVAAD MODERATION
+                  </span>
+                  <h2 style={{ fontSize: '18px', fontWeight: 900, margin: 0, color: '#0f172a' }}>
+                    Citizen Deliberation & Community Grievance Desk
+                  </h2>
+                </div>
+                <p style={{ fontSize: '12.5px', color: '#64748b', margin: '4px 0 0 0' }}>
+                  IT Rules Intermediary Compliance: Review community-flagged comments, manage quarantines, and issue takedowns.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {(['FLAGGED', 'QUARANTINED', 'ALL', 'DELETED'] as const).map((filterKey) => (
+                  <button
+                    key={filterKey}
+                    type="button"
+                    onClick={() => setSamvaadFilter(filterKey)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid ' + (samvaadFilter === filterKey ? '#0284c7' : '#cbd5e1'),
+                      backgroundColor: samvaadFilter === filterKey ? '#e0f2fe' : '#ffffff',
+                      color: samvaadFilter === filterKey ? '#0369a1' : '#475569',
+                      fontSize: '11.5px',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {filterKey === 'FLAGGED' && '⚠️ Flagged'}
+                    {filterKey === 'QUARANTINED' && '🛡️ Quarantined'}
+                    {filterKey === 'ALL' && '🌐 All Feed'}
+                    {filterKey === 'DELETED' && '🗑️ Takedowns'}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={fetchSamvaadComments}
+                  style={{ padding: '6px 10px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  ↻ Refresh
+                </button>
+              </div>
+            </div>
+
+            {samvaadComments.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 20px', backgroundColor: '#f8fafc', borderRadius: '14px', border: '1px dashed #cbd5e1' }}>
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>✓</div>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Zero Pending Flags in This Queue</div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>All citizen deliberation threads are currently in good standing.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {samvaadComments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    style={{
+                      backgroundColor: comment.status === 'QUARANTINED' ? '#fffbeb' : (comment.status === 'DELETED' ? '#fef2f2' : '#ffffff'),
+                      border: '1.5px solid ' + (comment.flag_count >= 5 ? '#f59e0b' : (comment.status === 'DELETED' ? '#fecaca' : '#e2e8f0')),
+                      borderRadius: '14px',
+                      padding: '14px 16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '12.5px', fontWeight: 850, color: '#0f172a' }}>
+                          @{comment.username}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, backgroundColor: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                          📍 {comment.pc_name} ({comment.state_name})
+                        </span>
+                        {comment.selected_option_text && (
+                          <span style={{ fontSize: '11px', color: '#059669', fontWeight: 700, backgroundColor: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
+                            ✓ Voted: {comment.selected_option_text.slice(0, 24)}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                          {new Date(comment.created_at).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', backgroundColor: comment.net_karma >= 0 ? '#ecfdf5' : '#fef2f2', color: comment.net_karma >= 0 ? '#059669' : '#dc2626' }}>
+                          Karma: {comment.net_karma > 0 ? `+${comment.net_karma}` : comment.net_karma}
+                        </span>
+                        {comment.flag_count > 0 && (
+                          <span style={{ fontSize: '11px', fontWeight: 900, padding: '2px 8px', borderRadius: '6px', backgroundColor: '#fee2e2', color: '#dc2626' }}>
+                            ⚠️ {comment.flag_count} Flags
+                          </span>
+                        )}
+                        <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#475569', textTransform: 'uppercase' }}>
+                          {comment.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: 1.45, fontWeight: 500, margin: '6px 0 12px 0', wordBreak: 'break-word' }}>
+                      {comment.comment_text}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        Poll ID: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{comment.poll_id}</span>
+                        {comment.parent_id && <span style={{ marginLeft: '8px', color: '#0284c7' }}>↳ Reply to comment</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePinSamvaad(comment.id, Boolean(comment.is_pinned))}
+                          style={{ padding: '5px 10px', backgroundColor: comment.is_pinned ? '#fef3c7' : '#ffffff', border: '1px solid #cbd5e1', color: comment.is_pinned ? '#b45309' : '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: 750, cursor: 'pointer' }}
+                        >
+                          {comment.is_pinned ? '★ Unpin' : '☆ Pin to Top'}
+                        </button>
+                        {comment.status !== 'ACTIVE' && (
+                          <button
+                            type="button"
+                            disabled={samvaadActionLoading === comment.id}
+                            onClick={() => handleUpdateSamvaadStatus(comment.id, 'ACTIVE')}
+                            style={{ padding: '5px 12px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            ✓ Restore / Clear Flags
+                          </button>
+                        )}
+                        {comment.status !== 'QUARANTINED' && comment.status !== 'DELETED' && (
+                          <button
+                            type="button"
+                            disabled={samvaadActionLoading === comment.id}
+                            onClick={() => handleUpdateSamvaadStatus(comment.id, 'QUARANTINED')}
+                            style={{ padding: '5px 12px', backgroundColor: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            🛡️ Quarantine
+                          </button>
+                        )}
+                        {comment.status !== 'DELETED' && (
+                          <button
+                            type="button"
+                            disabled={samvaadActionLoading === comment.id}
+                            onClick={() => handleUpdateSamvaadStatus(comment.id, 'DELETED')}
+                            style={{ padding: '5px 12px', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            🗑️ Take Down
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeAdminTab === 'CREATE_POLL' ? (
           /* COMPLETE EDITORIAL STUDIO */
           <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '28px', boxShadow: '0 4px 16px rgba(0,0,0,0.03)' }}>
             <span style={{ fontSize: '11px', fontWeight: 800, backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '6px' }}>
