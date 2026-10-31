@@ -555,10 +555,12 @@ useEffect(() => {
         ? (lang === 'HI' ? poll.options[winningIdx]?.text_hi : poll.options[winningIdx]?.text_en) || (lang === 'HI' ? 'खंडित मत' : 'Split Mat')
         : (lang === 'HI' ? 'मतदान की प्रतीक्षा' : 'Awaiting Ballots');
 
+      const winningOpt = winningIdx !== null ? poll.options[winningIdx] : null;
+      const customOptClr = winningOpt?.color;
       const color = tie
         ? TIE_COLOR
         : winningIdx !== null
-        ? OPTION_PALETTE[winningIdx % OPTION_PALETTE.length]
+        ? ((customOptClr && customOptClr !== '#ffffff' && customOptClr !== '#fff') ? customOptClr : OPTION_PALETTE[winningIdx % OPTION_PALETTE.length])
         : '#64748b';
 
       return { total, text, percent: pct, color };
@@ -758,7 +760,8 @@ useEffect(() => {
         }
 
         const opt = poll.options[leadingIdx] || poll.options[0];
-        const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+        const rawCustomColor = opt?.color || OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+        const optColor = (rawCustomColor === '#ffffff' || rawCustomColor === '#fff') ? '#38bdf8' : rawCustomColor;
         const optText = lang === 'HI' ? opt.text_hi : opt.text_en;
 
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : window.innerWidth / 2);
@@ -1309,7 +1312,10 @@ useEffect(() => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {poll.options.map((opt, idx) => {
-                  const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                  const customClr = opt.color;
+                  const optColor = (customClr && customClr !== '#ffffff' && customClr !== '#fff') 
+                    ? customClr 
+                    : OPTION_PALETTE[idx % OPTION_PALETTE.length];
                   const activeCounts = poll.options.map((_, oIdx) =>
                     tallies.reduce((sum, r) => sum + (Number(r[`opt_${oIdx}_votes`] ?? r[`opt_${oIdx}_count`] ?? 0)), 0)
                   );
@@ -1768,8 +1774,14 @@ useEffect(() => {
               fontWeight: 800,
               color: userSeatStats && userSeatStats.totalVotes > 0 
                 ? (userSeatStats.isTie 
-                    ? '#475569' 
-                    : (poll.options[userSeatStats.leadingOptionIdx]?.color || OPTION_PALETTE[(userSeatStats.leadingOptionIdx ?? 0) % OPTION_PALETTE.length]))
+                    ? '#d97706' 
+                    : (() => {
+                        const seatOpt = userSeatStats.leadingOptionIdx !== null && userSeatStats.leadingOptionIdx !== undefined
+                          ? poll.options[userSeatStats.leadingOptionIdx]
+                          : null;
+                        const c = seatOpt?.color;
+                        return (c && c !== '#ffffff' && c !== '#fff') ? c : OPTION_PALETTE[(userSeatStats.leadingOptionIdx ?? 0) % OPTION_PALETTE.length];
+                      })())
                 : '#94a3b8',
               margin: '4px 0',
               height: '32px',
@@ -2147,7 +2159,10 @@ useEffect(() => {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {poll.options.map((opt, idx) => {
                   const isSelected = selectedOptionFilter === idx;
-                  const optColor = OPTION_PALETTE[idx % OPTION_PALETTE.length];
+                  const customClr = opt.color;
+                  const optColor = (customClr && customClr !== '#ffffff' && customClr !== '#fff') 
+                    ? customClr 
+                    : OPTION_PALETTE[idx % OPTION_PALETTE.length];
                   return (
                     <button
                       key={opt.id}

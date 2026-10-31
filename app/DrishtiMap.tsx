@@ -351,7 +351,10 @@ useEffect(() => {
           stanceColor = TIE_COLOR;
         } else if (winningOptIdx !== null && highest > 0) {
           leadText = (lang === 'HI' ? options[winningOptIdx]?.text_hi : options[winningOptIdx]?.text_en) || (lang === 'HI' ? 'अग्रणी' : 'Leading');
-          stanceColor = OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
+          const customClr = options[winningOptIdx]?.color;
+          stanceColor = (customClr && customClr !== '#ffffff' && customClr !== '#fff')
+            ? customClr
+            : OPTION_PALETTE[winningOptIdx % OPTION_PALETTE.length];
         }
 
         if (totalVotes >= 50) trendBadge = lang === 'HI' ? '🛡️ कोरम पूर्ण' : '🛡️ Fortified';

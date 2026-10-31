@@ -2,6 +2,18 @@
 
 import React, { useMemo } from 'react';
 
+const OPTION_PALETTE = ['#f97316', '#10b981', '#0ea5e9', '#8b5cf6'];
+
+interface TickerItem {
+  seat: string;
+  state: string;
+  stance: string;
+  stanceColor?: string;
+  isFortified: boolean;
+  isTie: boolean;
+  isCallout: boolean;
+}
+
 interface TickerTapeProps {
   tallies: any[];
   options: any[];
@@ -61,7 +73,7 @@ export default function TickerTape({
 }: TickerTapeProps) {
   const isJanMat = pollCategory === 'JanMat';
 
-  const streamItems = useMemo(() => {
+  const streamItems = useMemo<TickerItem[]>(() => {
     if (!options || options.length === 0) return [];
 
     const activeTallies = (tallies || []).filter(
@@ -74,7 +86,12 @@ export default function TickerTape({
         const pcName = t.constituency_name || t.pc_name || 'Bharat';
         const stName = t.state_name || t.state_ut || '';
         const { leadIdx, isTie, totalVotes } = determineLeadingOption(t, options.length);
-        const optText = getOptionLabel(options[leadIdx], lang);
+        const optObj = options[leadIdx];
+        const optText = getOptionLabel(optObj, lang);
+        const customClr = optObj?.color;
+        const stanceColor = (customClr && customClr !== '#ffffff' && customClr !== '#fff')
+          ? customClr
+          : OPTION_PALETTE[leadIdx % OPTION_PALETTE.length];
 
         return {
           seat: pcName,
@@ -82,6 +99,7 @@ export default function TickerTape({
           stance: isTie
             ? (lang === 'HI' ? 'बराबर मत (Split Mat)' : 'Split Mat')
             : formatTickerStance(optText),
+          stanceColor: isTie ? '#f59e0b' : stanceColor,
           isFortified: totalVotes >= 50,
           isTie,
           isCallout: false
@@ -268,11 +286,9 @@ export default function TickerTape({
               <span style={{ color: '#475569', fontSize: '10px' }}>:</span>
               <span
                 style={{
-                  color: item.isTie
-                    ? '#f59e0b'
-                    : item.isFortified
-                    ? '#38bdf8'
-                    : '#34d399',
+                  color: item.isCallout
+                    ? (item.isFortified ? '#38bdf8' : '#34d399')
+                    : (item.stanceColor || (item.isTie ? '#f59e0b' : '#34d399')),
                   fontWeight: 800
                 }}
               >
