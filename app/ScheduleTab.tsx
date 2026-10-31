@@ -62,10 +62,12 @@ export default function ScheduleTab({
   const [scheduleCategoryFilter, setScheduleCategoryFilter] = useState<'ALL' | 'LokMat' | 'JanMat'>('ALL');
   const [scheduleMonthOffset, setScheduleMonthOffset] = useState<number>(0);
 
-  const baseDate = new Date();
-  baseDate.setMonth(baseDate.getMonth() + (scheduleMonthOffset || 0));
-  const currentYear = baseDate.getFullYear();
-  const currentMonth = baseDate.getMonth();
+  // Anchor to day 1 to prevent 31st end-of-month rollover bugs
+  const todayDate = new Date();
+  const rawTargetMonth = todayDate.getMonth() + (scheduleMonthOffset || 0);
+  const currentYear = todayDate.getFullYear() + Math.floor(rawTargetMonth / 12);
+  const currentMonth = ((rawTargetMonth % 12) + 12) % 12;
+  const baseDate = new Date(currentYear, currentMonth, 1);
   const seasonNumber = currentMonth + 1;
   const activeMonthName = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'long' });
   const activeMonthShort = baseDate.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { month: 'short' }).toUpperCase();
@@ -80,8 +82,7 @@ export default function ScheduleTab({
   const selectedDateObj = new Date(currentYear, currentMonth, safeSelectedDay);
   const selectedDayWeekday = selectedDateObj.toLocaleString(lang === 'HI' ? 'hi-IN' : 'en-US', { weekday: 'short' }).toUpperCase();
 
-  const today = new Date();
-  const isViewingCurrentMonth = currentMonth === today.getMonth() && currentYear === today.getFullYear();
+  const isViewingCurrentMonth = currentMonth === todayDate.getMonth() && currentYear === todayDate.getFullYear();
   const pollsForSelectedDay = polls
     .filter((p) => {
       const dropDateStr = p.starts_at || p.next_starts_at;

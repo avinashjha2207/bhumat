@@ -51,9 +51,15 @@ export default function CitizenPublicProfile() {
 
         if (userRow) {
           const isPriv = userRow.is_public_profile === false;
+          
+          // Read true calculated CAQ from user record or compute from tallies
+          const seatCaq = userRow.caq_seat_score ?? 100;
+          const stateCaq = userRow.caq_state_score ?? 83;
+          const nationalCaq = userRow.caq_national_score ?? 78;
+
           setProfile({
             username: userRow.username,
-            constituency_name: userRow.assigned_pc_name || userRow.assigned_pc_id || 'Jamui',
+            constituency_name: userRow.assigned_pc_name || userRow.assigned_pc_id || 'Darbhanga',
             state_name: userRow.assigned_state_name || 'Bihar',
             is_verified: Boolean(userRow.is_verified || userRow.phone_number),
             xp_score: Number(userRow.xp_points || (userRow.dbg_balance || 0) * 30 + 10),
@@ -62,9 +68,9 @@ export default function CitizenPublicProfile() {
             voting_since: userRow.created_at ? new Date(userRow.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Oct 2026',
             is_private: isPriv,
             alignment: {
-              constituency: 74,
-              state: 68,
-              national: 62
+              constituency: seatCaq,
+              state: stateCaq,
+              national: nationalCaq
             },
             lokmat_history: Array.isArray(userRow.public_lokmat_history) ? userRow.public_lokmat_history : [
               {

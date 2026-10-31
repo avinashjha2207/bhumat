@@ -197,7 +197,9 @@ useEffect(() => {
                   leadingIdx = optIdx;
                 }
               });
-              const optColor = OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+              const optObj = options && options[leadingIdx];
+              const rawColor = optObj?.color || OPTION_PALETTE[leadingIdx % OPTION_PALETTE.length];
+              const optColor = (rawColor === '#ffffff' || rawColor === '#fff') ? '#38bdf8' : rawColor;
               setLivePulses((prev) => ({
                 ...prev,
                 [cleanSeat]: { color: optColor, expiresAt: Date.now() + 3800 },
@@ -700,9 +702,8 @@ tooltipTimeoutRef.current = setTimeout(() => {
                 padding: '2px 8px',
                 borderRadius: '6px',
                 letterSpacing: '0.04em',
-                textTransform: 'uppercase',
               }}>
-                📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'सीटें' : 'SEATS'})` : ''}
+                📍 {selectedState.toUpperCase()} {seatCount > 0 ? `(${seatCount} ${lang === 'HI' ? 'लोकसभा सीटें' : 'Lok Sabha Seats'})` : ''}
               </span>
               <div style={{
   display: 'inline-flex',

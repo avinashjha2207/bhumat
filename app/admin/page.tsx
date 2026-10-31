@@ -883,10 +883,20 @@ export default function AdminAuditPanel() {
     }
 
     const activePollObj = polls.find((p) => p.id === targetPoll);
+
+    // Safeguard: Block accidental injection into scheduled future drops unless confirmed
+    if (activePollObj?.starts_at && new Date(activePollObj.starts_at).getTime() > Date.now()) {
+      const dropFormatted = new Date(activePollObj.starts_at).toLocaleString();
+      const allowEarly = confirm(
+        `⏳ SCHEDULE LOCK WARNING:\n\n"${activePollObj.title_en}" is scheduled to unlock in the future (${dropFormatted}).\n\nInjecting votes now will register ballots before citizens can vote. Do you want to proceed anyway?`
+      );
+      if (!allowEarly) return;
+    }
+
     const validOptions = Array.isArray(activePollObj?.options) && activePollObj.options.length > 0
       ? activePollObj.options
       : [{ id: 0, text_en: 'Option 1' }, { id: 1, text_en: 'Option 2' }];
-    
+
     setSimMessage(`Casting batch of ${batchCount} ballots across ${validOptions.length} options...`);
 
     let targetCycle = activePollObj?.participation_mode === 'recurring' 
